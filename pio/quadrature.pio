@@ -1,63 +1,73 @@
-; EVN ALPHA quadrature encoder — 1 motor per PIO state machine (pio0, SM0–SM3).
+; EVN ALPHA quadrature encoder with sub-step timing — pio0, SM0–SM3 (4 motors).
 ;
-; Adapted from the official Raspberry Pi pico-examples "quadrature_encoder"
-; (BSD-3-Clause, (c) 2023 Raspberry Pi (Trading) Ltd.), with the C init/fetch
-; helpers folded into hal_encoder.c.
+; Faithful port of the official Raspberry Pi pico-examples
+; "quadrature_encoder_substep" (BSD-3-Clause, (c) 2023 Raspberry Pi (Trading)
+; Ltd.). Counts steps AND timestamps the last transition so the CPU can compute
+; a jitter-free fractional position + speed estimate — exactly what the Phase 7
+; Luenberger observer needs at single-tick low speeds.
 ;
-; Continuously shifts the 2 phase pins into ISR and uses the lower 4 bits as a
-; computed jump to increment / decrement / hold a step counter in Y. The count
-; is pushed (non-blocking) to the RX FIFO; the CPU drains it at 1 kHz.
-;
-; Max step rate ≈ sysclk / 10  (200 MHz → 20 Msteps/sec — far beyond any
-; EVN motor encoder). Pins: A on `base`, B on `base+1` (both pulled up).
-; Motors with B on the lower pin (M2/M4) are sign-flipped in hal_encoder.c.
-;
-; MUST be loaded at origin 0 (uses computed jumps into a jump table).
+; Constraints:
+;   - 32 instructions, MUST load at origin 0 (computed jump table at addr 16).
+;   - Pushes TWO words per sample (step, cycles) via autopush; only pushes when
+;     the RX FIFO has room for both (execctrl STATUS hack: rx_fifo < 1).
+;   - All loop branches are 13 cycles → max step rate ≈ sysclk/13
+;     (200 MHz → ~15.4 Msteps/s, far beyond any EVN motor).
+;   - Pins: A on `base`, B on `base+1`, both pulled up.
 
 .pio_version 0
-
-.program evn_quad
+.program evn_quad_substep
 .origin 0
 
-; jump table for the low 4 bits of {prev(2), cur(2)}:
-; 00 state
-    JMP update    ; read 00
-    JMP decrement ; read 01
-    JMP increment ; read 10
-    JMP update    ; read 11
-; 01 state
-    JMP increment ; read 00
-    JMP update    ; read 01
-    JMP update    ; read 10
-    JMP decrement ; read 11
-; 10 state
-    JMP decrement ; read 00
-    JMP update    ; read 01
-    JMP update    ; read 10
-    JMP increment ; read 11
-; 11 state (first two entries in the table; decrement/others in place)
-    JMP update    ; read 00
-    JMP increment ; read 01
+; reached via "MOV PC, ~STATUS" when FIFO has room; also once at start
+    IN X, 32
+    IN Y, 32
+
+update_state:
+    OUT ISR, 2          ; low 2 bits = negated previous pin state
+    IN PINS, 2          ; next 2 bits = new pin state  -> 4-bit index in ISR
+    MOV OSR, ~ISR
+    MOV PC, OSR         ; computed jump into table at address 16
+
 decrement:
-    ; JMP Y-- to the NEXT address = pure "decrement Y", no branch side effect
-    JMP Y--, update ; read 10
-
+    JMP Y--, decrement_cont
+decrement_cont:
+    SET X, 1            ; mark direction: X high bit set when decrementing
+    MOV X, ::X
+check_fifo:
 .wrap_target
-update:
-    MOV ISR, Y      ; report current count
-    PUSH noblock
-
-sample_pins:
-    ; shift last 2-bit state (in OSR) + new 2-bit pin state into ISR → 4-bit index
-    OUT ISR, 2
-    IN PINS, 2
-    MOV OSR, ISR    ; remember state for next iteration
-    MOV PC, ISR     ; computed jump into the table
+    JMP X--, check_fifo_cont   ; count loops since last transition
+check_fifo_cont:
+    MOV PC, ~STATUS     ; push only when FIFO has space for both words
 
 increment:
-    ; PIO has no increment: negate, decrement, negate
-    MOV Y, ~Y
+    MOV Y, ~Y           ; increment via negate/decrement/negate
     JMP Y--, increment_cont
 increment_cont:
     MOV Y, ~Y
+    SET X, 0
 .wrap
+
+invalid:
+    JMP update_state    ; both phases changed at once (transient)
+
+; --- jump table (address 16+), delays equalise every branch to 13 cycles ---
+    JMP invalid
+    JMP increment	[0]
+    JMP decrement	[1]
+    JMP check_fifo	[4]
+
+    JMP decrement	[1]
+    JMP invalid
+    JMP check_fifo	[4]
+    JMP increment	[0]
+
+    JMP increment	[0]
+    JMP check_fifo	[4]
+    JMP invalid
+    JMP decrement	[1]
+
+    JMP check_fifo	[4]
+    JMP decrement	[1]
+    JMP increment	[0]
+    ; fallthrough target when FIFO full / invalid: re-sample
+    JMP update_state	[1]

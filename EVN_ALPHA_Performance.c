@@ -41,12 +41,16 @@ static void motor_test_step(void) {
     static const float  duty [] = {  0.60f,   0.0f,    -0.60f,     0.0f    };
 
     // measure encoder delta over the phase that JUST ran, then advance
-    int32_t c = hal_encoder_get_count((evn_encoder_id_t)s_test_motor);
+    evn_encoder_id_t e = (evn_encoder_id_t)s_test_motor;
+    int32_t c = hal_encoder_get_count(e);
     int32_t delta = c - s_prev_count;
     s_prev_count = c;
     int ran = (s_phase + 3) & 3;   // phase that just finished
-    printf("Motor %d ran %-5s duty=%+.2f  enc=%ld  (delta=%+ld)\n",
-           s_test_motor + 1, names[ran], (double)duty[ran], (long)c, (long)delta);
+    int32_t spd = hal_encoder_get_speed_substep(e);
+    int32_t pos = hal_encoder_get_position_substep(e);
+    printf("Motor %d ran %-5s duty=%+.2f  steps=%ld (delta=%+ld)  substep_pos=%ld speed=%ld s/s %s\n",
+           s_test_motor + 1, names[ran], (double)duty[ran], (long)c, (long)delta,
+           (long)pos, (long)spd, hal_encoder_is_stopped(e) ? "[stopped]" : "");
 
     // now command the NEXT phase
     switch (s_phase) {

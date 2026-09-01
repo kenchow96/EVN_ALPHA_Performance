@@ -14,8 +14,8 @@ Legend: ✅ confirmed · ❓ needs confirmation · ⚠️ known-deviation (accep
 | A2 | I2C at **400 kHz** is within every attached device's tolerance | `hal_i2c.c` | Spec §7.3 default; BQ25887 works at it | Scan + read every planned sensor type at 400 kHz | ✅ BQ only |
 | A3 | **5 ms** ADC settle after BQ25887 one-shot trigger (not 3 ms) | `hal_battery.c` `BQ_ADC_SETTLE_US` | Empirical — 3 ms returned 0s, 5 ms returned valid | Scope the ADC-ready flag / poll conversion-done bit instead of fixed delay | ❓ confirm no marginal reads |
 | A4 | Battery **reads ~0.8% low** (7.12 V vs 7.18 V multimeter) is a constant offset, not drift | `hal_battery.c` | Single measurement | Track across charge cycles; calibrate constant in Phase 9 | ⚠️ monitor (action item) |
-| A5 | Encoder 1 kHz FIFO drain is fast enough that the 4-deep RX FIFO never overflows at max motor speed | `hal_encoder.c` | ~1150 counts/s observed ≪ FIFO capacity at 1 kHz | Max-RPM spin; check for missed steps vs known revolutions | ❓ needs max-speed test |
-| A6 | Quadrature single edge-count-per-FIFO-value resolution is acceptable (we count full steps, not 4× substep) | `pio/quadrature.pio` | Used the simpler official `quadrature_encoder` (not `_substep`) | Confirm counts/revolution = motor CPR (not ¼ of it) | ❓ needs CPR check |
+| A5 | Encoder 1 kHz FIFO drain is fast enough that the RX FIFO never overflows at max motor speed | `hal_encoder.c` | ~1150 counts/s observed ≪ FIFO capacity at 1 kHz | Max-RPM spin; check for missed steps vs known revolutions | ❓ needs max-speed test |
+| A6 | ~~single edge-count resolution~~ **Substep encoder now in use** (fractional position + edge-timed speed). Remaining: confirm integer counts/revolution = motor datasheet CPR | `pio/quadrature.pio` | Switched to official `quadrature_encoder_substep` (per user directive) for jitter-free low-speed velocity | Spin 1 known revolution; verify CPR. Optionally run `substep` phase-size calibration | ❓ needs CPR check |
 
 ## B. Architecture / Concurrency
 

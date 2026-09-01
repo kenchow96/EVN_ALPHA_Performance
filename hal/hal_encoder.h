@@ -44,4 +44,12 @@ void hal_encoder_reset(evn_encoder_id_t id);
  * -1 for M2/M4 (B on the lower pin); override here if your wiring differs. */
 void hal_encoder_set_sign(evn_encoder_id_t id, int8_t sign);
 
+/* --- Substep (high-resolution) accessors for the motion engine ---
+ * The substep PIO timestamps each edge, giving a fractional position and a
+ * low-noise speed estimate that stays smooth at single-tick low speeds
+ * (feeds the Luenberger observer in Phase 7). */
+int32_t hal_encoder_get_position_substep(evn_encoder_id_t id); /* substeps (256/step-cycle) */
+int32_t hal_encoder_get_speed_substep(evn_encoder_id_t id);    /* substeps / second */
+bool    hal_encoder_is_stopped(evn_encoder_id_t id);
+
 #endif /* HAL_ENCODER_H */
