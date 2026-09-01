@@ -1,6 +1,6 @@
 # EVN ALPHA Performance — Master Plan
 
-Status of phases is kept in the [Status Board](#status-board) and updated at every verified checkpoint. This document is the single source of truth for sequencing; [AGENTS.md](../AGENTS.md) holds the mandatory working rules.
+Status of phases is kept in the [Status Board](#status-board) and updated at every verified checkpoint. This document is the single source of truth for sequencing; [AGENTS.md](../AGENTS.md) holds the mandatory working rules. Unverified assumptions are tracked in [ASSUMPTIONS.md](ASSUMPTIONS.md) — close them before building dependent phases.
 
 ## 1. Mission & Quantitative Success Metrics
 
@@ -143,12 +143,13 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | Phase | State | Verified On | Commit |
 | :--- | :--- | :--- | :--- |
 | 0 — Foundation | ✅ Done | 2026-09-01 | `ea1bddc` |
-| 1 — Measurement & Core 1 skeleton | ⬜ Not started | — | — |
-| 2 — Motor PWM | ✅ Done | 2026-09-01 | see commit |
-| 3 — PIO encoders | ✅ Done | 2026-09-01 | see commit |
+| 1 — Measurement & Core 1 skeleton | ⬜ Next | — | — |
+| 2 — Motor PWM | ✅ Done | 2026-09-01 | `4b898f3` |
+| 3 — PIO encoders | ✅ Done | 2026-09-01 | `4b898f3` |
 | 4 — I2C mux | ✅ Done | 2026-09-01 | `a63422a` |
 | 5 — Battery telemetry | ✅ Done | 2026-09-01 | `f556bc8` |
 | 6 — PIO servos | ✅ Done | 2026-09-01 | `a16a5d3` |
+| — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
 | 7 — Motion engine | ⬜ Not started | — | — |
 | 8 — Drive base | ⬜ Not started | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |

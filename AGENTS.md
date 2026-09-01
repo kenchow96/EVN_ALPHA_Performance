@@ -13,6 +13,7 @@ Read these first. They are the ground truth for all hardware decisions:
 1. [docs/EVN ALPHA Hardware Reference.md](docs/EVN%20ALPHA%20Hardware%20Reference.md) — complete pinout, flash geometry, motion-control architecture (cascaded PID + Luenberger observer + trajectory profiler), PWM/PIO peripheral conflict analysis
 2. [docs/EVN Alpha I2C Architecture Specification.md](docs/EVN%20Alpha%20I2C%20Architecture%20Specification.md) — dual TCA9548A mux topology (16 ports), dual-core I2C/DMA engine design
 3. [docs/PLAN.md](docs/PLAN.md) — phased master plan, quantitative targets, efficiency protocol, Status Board. **Check the Status Board before starting any work and update it at every verified checkpoint.**
+4. [docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md) — every unverified assumption, where it's baked in, and how to falsify it. **Confirm assumptions before building dependent phases on top; update the status column as each is closed.**
 
 Items tagged `[GROUND TRUTH]` are non-negotiable hardware facts. Items tagged `[RECOMMENDATION / DERIVED]` are the agreed architecture — deviate only with justification.
 
@@ -34,17 +35,45 @@ Items tagged `[GROUND TRUTH]` are non-negotiable hardware facts. Items tagged `[
 ## Repository Layout
 
 ```
-├── EVN_ALPHA_Performance.c     # Main application entry (currently LED/button hardware test)
-├── hal/                        # HAL modules — hal_led (GP25), hal_button (GP24, debounced); future: motor, encoder, i2c, battery, servo, nvm
+├── EVN_ALPHA_Performance.c     # Main entry — subsystem self-tests on a non-blocking Core 0 scheduler
+├── hal/                        # HAL modules (all hardware access lives here)
+│   ├── hal_led.c/h             #   User LED GP25 (direct SIO)
+│   ├── hal_button.c/h          #   User button GP24, state-machine debouncer
+│   ├── hal_i2c.c/h             #   Dual TCA9548A mux, 16 ports, channel caching, stuck-bus recovery
+│   ├── hal_battery.c/h         #   BQ25887 on port 16, lock-free cache, 50 Hz dispatcher
+│   ├── hal_uart.c/h            #   Serial1 (uart0 GP0/1) + Serial2 (uart1 GP8/9), IRQ ring-buffer RX
+│   ├── hal_servo.c/h           #   4ch PIO PWM on pio1, 50 Hz, µs pulses (Slice-5-safe)
+│   ├── hal_motor.c/h           #   4× DRV8833, 25 kHz hardware PWM, direction setters
+│   └── hal_encoder.c/h         #   4× PIO quadrature on pio0, 1 kHz drain, sign setters
 ├── motion/                     # Core 1 real-time control engine (planned)
-├── pio/                        # PIO programs: quadrature.pio, servo.pio (planned)
-├── bench/                      # Cycle-count harness + results/*.csv (planned)
-├── tools/                      # Host-side scripts (planned)
+├── pio/                        # quadrature.pio (pio0), servo.pio (pio1)
+├── bench/                      # RESULTS.md + results/*.csv (planned cycle harness)
+├── tools/                      # serial_capture.py (agent reads board serial directly)
 ├── docs/                       # Authoritative specs + PLAN.md (read first!)
-├── build/                      # Ninja build output (UF2/ELF artifacts; do not commit)
-├── CMakeLists.txt              # Pico SDK 2.3.0 build config
+├── build/                      # Ninja build output (do not commit)
+├── CMakeLists.txt              # Pico SDK 2.3.0, PICO_BOARD=pico, 200 MHz, 16MB flash overrides
 └── pico_sdk_import.cmake
 ```
+
+## Reading Board Output (no manual serial monitor)
+
+Use `python tools/serial_capture.py --time N [--expect "substr"]` to read the
+board's USB-CDC output directly. Auto-detects the RP2040 COM port (usually
+COM7). `--expect` exits non-zero if the substring never appears — use it as a
+machine-checkable acceptance gate.
+
+## Hard-Won Gotchas (do not relearn)
+
+- **I2C probe = 1-byte read**, never 0-byte write (0-byte writes don't clock the
+  bus on SDK 2.3.0 @ 200 MHz → phantom ACKs on every address).
+- **PIO output needs explicit OE**: `pio_sm_set_consecutive_pindirs(..., true)`
+  or `set pins` never drives the pad (symptom: runs fine, no physical motion).
+- **BQ25887 one-shot ADC needs ~5 ms settle** (not 3 ms) before reads.
+- **`i2c_get_baudrate()` doesn't exist** — capture `i2c_init()`'s return value.
+- **A from-scratch custom board header broke USB enumeration.** Stay on
+  `PICO_BOARD pico` + `PICO_FLASH_SIZE_BYTES`/`PICO_FLASH_SPI_CLKDIV` overrides.
+- **Flash via picotool UF2** (`picotool load -f build\X.uf2 -x`) when in BOOTSEL;
+  the OpenOCD `Flash` task needs a CMSIS-DAP probe attached.
 
 ## Build & Deploy (VS Code Tasks)
 
