@@ -126,6 +126,8 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         a->active_startup_reference_governor = false;
         a->friction_feedforward_permille = 500u;
         a->active_friction_feedforward_permille = 500u;
+        a->edge_watchdog_enabled = false;
+        a->active_edge_watchdog_enabled = false;
         a->traj.active = false;
         a->traj.done = true;
         a->cmd_seq = 0;
@@ -156,6 +158,7 @@ void evn_motion_move_to_test(uint8_t axis, float target_deg,
     a->cmd_trajectory_type = a->trajectory_type;
     a->cmd_startup_reference_governor = a->startup_reference_governor;
     a->cmd_friction_feedforward_permille = a->friction_feedforward_permille;
+    a->cmd_edge_watchdog_enabled = a->edge_watchdog_enabled;
     a->cmd_auto_coast_ms = auto_coast_ms;
     a->cmd_active      = true;
     __dmb();
@@ -326,6 +329,11 @@ void evn_motion_set_startup_release_speed(uint8_t axis, float speed_degs) {
     s_axis[axis].pid.startup_release_speed_mdegs = speed_degs * 1000.0f;
 }
 
+void evn_motion_set_edge_watchdog(uint8_t axis, bool enabled) {
+    if (axis > 3 || !(s_mask & (1u << axis))) return;
+    s_axis[axis].edge_watchdog_enabled = enabled;
+}
+
 const evn_pid_t *evn_motion_axis_pid(uint8_t axis) {
     if (axis > 3) return NULL;
     return &s_axis[axis].pid;
@@ -371,6 +379,7 @@ void __not_in_flash_func(evn_motion_tick)(void) {
             bool startup_reference_governor = a->cmd_startup_reference_governor;
             uint16_t friction_feedforward_permille =
                 a->cmd_friction_feedforward_permille;
+            bool edge_watchdog_enabled = a->cmd_edge_watchdog_enabled;
             uint32_t auto_coast_ms = a->cmd_auto_coast_ms;
             __dmb();
             if (a->cmd_seq == c0) {          /* stable read */
@@ -396,6 +405,7 @@ void __not_in_flash_func(evn_motion_tick)(void) {
                     a->active_startup_reference_governor = startup_reference_governor;
                     a->active_friction_feedforward_permille =
                         friction_feedforward_permille;
+                    a->active_edge_watchdog_enabled = edge_watchdog_enabled;
                     a->holding = true;
                     a->auto_coast_deadline_ms = auto_coast_ms ? s_time_ms + auto_coast_ms : 0;
                     a->stat_done = false;
@@ -460,10 +470,22 @@ void __not_in_flash_func(evn_motion_tick)(void) {
         float trajectory_time = a->traj.t;
         evn_trajectory_update(&a->traj, MOTION_DT, &pos_ref, &vel_ref, &accel_ref);
         float abs_vel_ref = vel_ref < 0.0f ? -vel_ref : vel_ref;
+        bool edge_watchdog_stuck = false;
+        if (a->active_edge_watchdog_enabled && a->traj.active &&
+            abs_vel_ref > 5000.0f) {
+            uint32_t expected_edge_us = 500000000u / (uint32_t)abs_vel_ref;
+            uint32_t edge_timeout_us = 2u * expected_edge_us + 2000u;
+            if (edge_timeout_us < 10000u) edge_timeout_us = 10000u;
+            if (edge_timeout_us > 250000u) edge_timeout_us = 250000u;
+            edge_watchdog_stuck =
+                hal_encoder_get_transition_age_us(a->encoder) > edge_timeout_us;
+        }
         if (a->traj.active && a->pid.start_duty > 0.2f &&
-            startup_displacement < 100.0f && abs_vel_ref > 5000.0f) {
+            ((startup_displacement < 100.0f && abs_vel_ref > 5000.0f) ||
+             edge_watchdog_stuck)) {
             a->traj.t = trajectory_time;
         }
+        a->pid.motion_stuck = edge_watchdog_stuck;
 
         /* Model coefficients are discretized for 5 ms. Average the voltage
          * actually applied over five 1 ms control ticks before one update. */

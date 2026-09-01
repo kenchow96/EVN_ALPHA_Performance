@@ -270,6 +270,10 @@ int32_t hal_encoder_get_speed_substep(evn_encoder_id_t id) {
     return (int32_t)s_enc[id].speed * s_sign[id];
 }
 
+uint32_t hal_encoder_get_transition_age_us(evn_encoder_id_t id) {
+    return time_us_32() - s_enc[id].prev_trans_us;
+}
+
 bool hal_encoder_is_stopped(evn_encoder_id_t id) {
     return s_enc[id].stopped != 0;
 }

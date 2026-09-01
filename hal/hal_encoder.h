@@ -53,6 +53,7 @@ void hal_encoder_set_sign(evn_encoder_id_t id, int8_t sign);
  * (feeds the Luenberger observer in Phase 7). */
 int32_t hal_encoder_get_position_substep(evn_encoder_id_t id); /* substeps (256/step-cycle) */
 int32_t hal_encoder_get_speed_substep(evn_encoder_id_t id);    /* substeps / second */
+uint32_t hal_encoder_get_transition_age_us(evn_encoder_id_t id);
 bool    hal_encoder_is_stopped(evn_encoder_id_t id);
 
 #endif /* HAL_ENCODER_H */

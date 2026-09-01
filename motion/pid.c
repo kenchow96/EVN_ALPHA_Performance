@@ -18,6 +18,7 @@ void evn_pid_init(evn_pid_t *p) {
     p->min_duty = 0.12f;        /* stiction-break floor (12% duty) */
     p->start_duty = 0.12f;
     p->startup_release_speed_mdegs = 0.0f;
+    p->motion_stuck = false;
     p->vel_window = PID_SPEED_WINDOW;
     evn_pid_reset(p, 0.0f);
 }
@@ -110,7 +111,8 @@ float evn_pid_update(evn_pid_t *p,
                     (displacement < 100.0f ||
                      (p->startup_release_speed_mdegs > 0.0f &&
                       displacement < 5000.0f &&
-                      abs_speed < p->startup_release_speed_mdegs));
+                      abs_speed < p->startup_release_speed_mdegs) ||
+                     p->motion_stuck);
     bool approaching = ae > p->deadzone_mdeg &&
                        abs_vel_ref < 5000.0f && abs_speed < 5000.0f;
     if (starting || approaching) {

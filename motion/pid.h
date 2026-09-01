@@ -54,6 +54,7 @@ typedef struct {
     float min_duty;
     float start_duty;
     float startup_release_speed_mdegs;
+    bool  motion_stuck;
 
     /* state */
     float integrator;   /* accumulated integral contribution in duty units */

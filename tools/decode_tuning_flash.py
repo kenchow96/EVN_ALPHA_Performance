@@ -23,6 +23,7 @@ TRAJECTORY_RUN_ID = 0x26090202
 STARTUP_GOVERNOR_RUN_ID = 0x26090203
 FRICTION_SWEEP_RUN_ID = 0x26090204
 STARTUP_RELEASE_RUN_ID = 0x26090205
+EDGE_WATCHDOG_RUN_ID = 0x26090206
 SCHEMA_VERSION = 1
 SUPER_MAGIC = 0x31535645
 RECORD_MAGIC = 0x31525645
@@ -162,6 +163,7 @@ def decode_header(page, case_index, run_id):
         "startup_reference_governor": read_u32(page, 42),
         "friction_feedforward_permille": read_u32(page, 43),
         "startup_release_speed_mdegs": read_u32(page, 44),
+        "edge_watchdog_enabled": read_u32(page, 45),
     }
     if (header["schema_version"] != SCHEMA_VERSION or
             header["run_id"] != run_id or
@@ -174,6 +176,10 @@ def decode_header(page, case_index, run_id):
 
 
 def case_name(header):
+    if header["run_id"] == EDGE_WATCHDOG_RUN_ID:
+        prefix = "E" if header["edge_watchdog_enabled"] else "D"
+        direction = "pos" if header["delta_mdeg"] >= 0 else "neg"
+        return f"{prefix}{header['repeat_index']}_{direction}"
     if header["run_id"] == STARTUP_RELEASE_RUN_ID:
         direction = "pos" if header["delta_mdeg"] >= 0 else "neg"
         return (f"H{header['startup_release_speed_mdegs'] // 1000}_"
@@ -304,6 +310,7 @@ def decode(image, output_dir):
                         header["friction_feedforward_permille"],
                     "startup_release_speed_mdegs":
                         header["startup_release_speed_mdegs"],
+                    "edge_watchdog_enabled": bool(header["edge_watchdog_enabled"]),
                 },
                 "battery_pre_run": {
                     "pack_mv": header["battery_pack_mv"],

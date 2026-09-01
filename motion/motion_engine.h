@@ -48,6 +48,8 @@ typedef struct {
     bool                   active_startup_reference_governor;
     uint16_t               friction_feedforward_permille;
     uint16_t               active_friction_feedforward_permille;
+    bool                   edge_watchdog_enabled;
+    bool                   active_edge_watchdog_enabled;
 
     /* commanded state (Core 0 → Core 1 handover) */
     volatile uint32_t cmd_seq;
@@ -60,6 +62,7 @@ typedef struct {
     volatile evn_trajectory_type_t cmd_trajectory_type;
     volatile bool     cmd_startup_reference_governor;
     volatile uint16_t cmd_friction_feedforward_permille;
+    volatile bool     cmd_edge_watchdog_enabled;
     volatile uint32_t cmd_auto_coast_ms;
     uint32_t          cmd_consumed_seq;   /* Core 1: last cmd_seq acted upon */
 
@@ -125,6 +128,7 @@ void evn_motion_set_trajectory_type(uint8_t axis, evn_trajectory_type_t type);
 void evn_motion_set_startup_reference_governor(uint8_t axis, bool enabled);
 void evn_motion_set_friction_feedforward(uint8_t axis, uint16_t permille);
 void evn_motion_set_startup_release_speed(uint8_t axis, float speed_degs);
+void evn_motion_set_edge_watchdog(uint8_t axis, bool enabled);
 /* Read an axis' current PID block (Core 0 debug/console use only). */
 const evn_pid_t *evn_motion_axis_pid(uint8_t axis);
 void evn_motion_set_observer(int32_t stall_speed_limit, int32_t stall_time_ms,
