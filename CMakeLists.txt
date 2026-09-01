@@ -75,7 +75,8 @@ target_link_libraries(EVN_ALPHA_Performance
         hardware_uart
         hardware_pio
         hardware_pwm
-        hardware_flash)
+        hardware_flash
+        hardware_watchdog)
 
 # Add the standard include files to the build
 target_include_directories(EVN_ALPHA_Performance PRIVATE

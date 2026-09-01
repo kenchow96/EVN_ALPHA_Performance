@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "hardware/watchdog.h"
 #include "pico/bootrom.h"
 #include "pico/stdlib.h"
 
@@ -23,6 +24,7 @@
 #define TUNING_BATTERY_MIN_CELL_MV  3000u
 #define TUNING_FLASH_SETTLE_US      20000ULL
 #define TUNING_CORE_PAUSE_TIMEOUT_US 10000u
+#define TUNING_WATCHDOG_MS           5000u
 
 typedef struct {
     evn_trajectory_type_t trajectory_type;
@@ -74,12 +76,9 @@ static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
 
 static auto_state_t s_state = AUTO_DISABLED;
 static uint32_t s_case_index;
-static uint32_t s_trace_row;
-static uint32_t s_trace_crc;
 static uint64_t s_deadline_us;
 static evn_battery_state_t s_battery;
 static evn_tuning_record_header_t s_header;
-static uint8_t s_page[EVN_TUNING_PAGE_SIZE];
 
 static void coast_all(void) {
     for (uint8_t axis = 0; axis < EVN_MOTOR_COUNT; axis++) evn_motion_coast(axis);
@@ -176,28 +175,11 @@ static bool battery_safe(void) {
            s_battery.vcell2_mv >= TUNING_BATTERY_MIN_CELL_MV;
 }
 
-static bool build_trace_page(void) {
-    if (s_trace_row >= s_header.trace_rows) return false;
-    memset(s_page, 0xFF, sizeof s_page);
-    uint32_t rows = s_header.trace_rows - s_trace_row;
-    if (rows > EVN_TUNING_PAGE_SIZE / EVN_TUNING_TRACE_ROW_BYTES)
-        rows = EVN_TUNING_PAGE_SIZE / EVN_TUNING_TRACE_ROW_BYTES;
-    int32_t *words = (int32_t *)s_page;
-    for (uint32_t row = 0; row < rows; row++) {
-        int32_t *dst = &words[row * 8u];
-        if (!evn_motion_trace_row(s_trace_row + row, &dst[0], &dst[1], &dst[2],
-                                  &dst[3], &dst[4], &dst[5], &dst[6], &dst[7]))
-            return false;
-    }
-    s_trace_crc = hal_tuning_log_crc32(s_trace_crc, s_page,
-                                       rows * EVN_TUNING_TRACE_ROW_BYTES);
-    s_trace_row += rows;
-    return true;
-}
-
 void autonomous_tuning_init(void) {
 #if EVN_AUTONOMOUS_TUNING
     coast_all();
+    watchdog_enable(TUNING_WATCHDOG_MS, true);
+    watchdog_update();
     s_case_index = 0;
     s_deadline_us = time_us_64() + TUNING_BATTERY_WAIT_US;
     s_state = AUTO_LOG_BEGIN;
@@ -212,6 +194,7 @@ bool autonomous_tuning_active(void) {
 
 void autonomous_tuning_service(void) {
     if (s_state == AUTO_DISABLED) return;
+    watchdog_update();
     uint64_t now = time_us_64();
 
     switch (s_state) {
@@ -324,8 +307,6 @@ void autonomous_tuning_service(void) {
                 s_header.status = EVN_TUNING_STATUS_INTERNAL_ERROR;
                 s_state = AUTO_COMMIT;
             } else {
-                s_trace_row = 0;
-                s_trace_crc = 0;
                 if (evn_core1_pause(TUNING_CORE_PAUSE_TIMEOUT_US))
                     s_state = AUTO_WRITE_TRACE;
                 else
@@ -336,21 +317,19 @@ void autonomous_tuning_service(void) {
 
     case AUTO_WRITE_TRACE:
         coast_all();
-        if (!build_trace_page() ||
-            !hal_tuning_log_program_trace_page(
-                s_case_index, 1u + (s_trace_row - 1u) /
-                                  (EVN_TUNING_PAGE_SIZE / EVN_TUNING_TRACE_ROW_BYTES),
-                s_page)) {
+        uint32_t trace_rows;
+        const void *trace = evn_motion_trace_data(&trace_rows);
+        if (trace_rows == 0 || trace_rows > EVN_TUNING_MAX_TRACE_ROWS ||
+            !hal_tuning_log_program_trace(s_case_index, trace, trace_rows)) {
             s_header.status = EVN_TUNING_STATUS_INTERNAL_ERROR;
             s_header.trace_rows = 0;
-            s_trace_crc = 0;
             s_state = AUTO_COMMIT;
             break;
         }
-        if (s_trace_row >= s_header.trace_rows) {
-            s_header.trace_crc32 = s_trace_crc;
-            s_state = AUTO_COMMIT;
-        }
+        s_header.trace_rows = trace_rows;
+        s_header.trace_crc32 = hal_tuning_log_crc32(
+            0, trace, trace_rows * EVN_TUNING_TRACE_ROW_BYTES);
+        s_state = AUTO_COMMIT;
         break;
 
     case AUTO_COMMIT:

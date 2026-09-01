@@ -126,14 +126,18 @@ bool hal_tuning_log_erase_case(uint32_t case_index) {
     return safe_erase(slot_offset(case_index), EVN_TUNING_SLOT_SIZE);
 }
 
-bool hal_tuning_log_program_trace_page(uint32_t case_index, uint32_t page_index,
-                                       const uint8_t data[EVN_TUNING_PAGE_SIZE]) {
-    uint32_t page_count = EVN_TUNING_SLOT_SIZE / EVN_TUNING_PAGE_SIZE;
-    if (!data || case_index >= EVN_TUNING_CASE_COUNT ||
-        page_index == 0 || page_index >= page_count)
+bool hal_tuning_log_program_trace(uint32_t case_index, const void *data,
+                                  uint32_t rows) {
+    if (!data || case_index >= EVN_TUNING_CASE_COUNT || rows == 0 ||
+        rows > EVN_TUNING_MAX_TRACE_ROWS)
         return false;
-    return safe_program(slot_offset(case_index) + page_index * EVN_TUNING_PAGE_SIZE,
-                        data, EVN_TUNING_PAGE_SIZE);
+    size_t bytes = rows * EVN_TUNING_TRACE_ROW_BYTES;
+    size_t program_bytes = (bytes + EVN_TUNING_PAGE_SIZE - 1u) &
+                           ~(EVN_TUNING_PAGE_SIZE - 1u);
+    if (program_bytes > EVN_TUNING_SLOT_SIZE - EVN_TUNING_HEADER_SIZE)
+        return false;
+    return safe_program(slot_offset(case_index) + EVN_TUNING_HEADER_SIZE,
+                        (const uint8_t *)data, program_bytes);
 }
 
 bool hal_tuning_log_commit_case(uint32_t case_index,

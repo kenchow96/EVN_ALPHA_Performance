@@ -1,21 +1,25 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, launch pulse density):** Commits through
-> `e17f707` and twelve autonomous datasets are verified. The 2x2 ramp factorial
-> found no reliable gain from 1200 ms launch or 400 ms restart. Across
-> independent exact settings, 800/200 and 200/200 tie at mean 10/12, while
-> 800/200 lowers mean acceleration (1384 vs 1431 deg/s2) and improves duty
-> smoothness (0.849 vs 0.805); keep 800/200 provisionally. Remaining failure is
-> static-friction release. Next test a 4-tick, 1 kHz-native startup floor pulse
-> density of 4/4, 3/4, 2/4, 1/4 ticks, active only during initial breakaway
-> inside 5 deg; watchdog restarts remain continuous. Two repeats, both
-> directions. Keep 0.65 start, W40/K5, 0.55 hold,
+> **RESUME POINT (2026-09-02, pulse rerun recovery):** Commit `4696c08`
+> deployed the 4/4, 3/4, 2/4, 1/4 startup-floor pulse sweep. It did not enter
+> BOOTSEL within six minutes; COM7 and the reset interface remained enumerated
+> but unresponsive, so no partial journal could be extracted. Every motion was
+> still bounded by the Core 1 4 s auto-coast. Root cause hypothesis is repeated
+> flash-lockout churn: each 760-row trace used 95 separate page-program
+> handshakes. The build now uses one contiguous aligned trace program (three
+> flash lockouts per case total) and a 5 s hardware watchdog; a flash stall will
+> reboot and retry only the header-uncommitted slot. It builds cleanly, has no
+> diagnostics, and uses fresh run ID `0x2609020F` with `Z*` decoded case names.
+> **Board is stalled in application mode and motors are auto-coasted. One
+> physical power-cycle into BOOTSEL is required**, then flash and rerun the same
+> pulse matrix. Acceptance: 16/16 committed records/trace CRCs and automatic
+> BOOTSEL completion. Keep 0.65 start, W40/K5, 0.55 hold,
 > governor, trapezoid, 0.5x friction, 10 deg/s release, base endpoint gain, and
 > edge watchdog. Each case erases its fixed
 > slot while coasted, requires a battery sample age <=250 ms (pack >=6.5 V,
 > cells >=3.0 V), runs with the 4 s
 > Core 1 auto-coast, logs 760 trace rows, aborts on any missed RT tick, writes
-> trace pages under lockout, and commits the CRC header last. Completion enters
+> one trace block under lockout, and commits the CRC header last. Completion enters
 > ROM BOOTSEL. Preserve all prior UF2s. Phase 8 remains blocked until
 > all four axes pass `tools/motion_metrics.py` and beat the measured baseline.
 

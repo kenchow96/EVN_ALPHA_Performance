@@ -29,6 +29,7 @@ static bool       s_ff_on = true;   /* model-based feedforward (validated ON) */
 typedef struct {
     int32_t t_ms, ref_mdeg, enc_mdeg, hat_mdeg, vref_mdegs, what_mdegs, duty_milli, cur_01ma;
 } evn_trace_row_t;
+_Static_assert(sizeof(evn_trace_row_t) == 32, "trace row layout must remain stable");
 static evn_trace_row_t s_trace[EVN_TRACE_MAX];
 static volatile uint8_t  s_trace_axis = 0;
 static volatile uint32_t s_trace_count = 0;
@@ -57,6 +58,12 @@ bool evn_motion_trace_info(uint8_t *axis, uint32_t *count, bool *armed) {
     *count = s_trace_count;
     *armed = s_trace_armed;
     return true;
+}
+
+const void *evn_motion_trace_data(uint32_t *rows) {
+    __dmb();
+    *rows = s_trace_count;
+    return s_trace;
 }
 
 bool evn_motion_trace_row(uint32_t i, int32_t *t_ms, int32_t *ref_mdeg,

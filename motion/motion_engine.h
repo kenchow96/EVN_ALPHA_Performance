@@ -147,6 +147,7 @@ bool evn_motion_feedforward_on(void);
 void     evn_motion_trace_arm(uint8_t axis);   /* clear + start recording */
 void     evn_motion_trace_stop(void);          /* stop recording (keep data) */
 bool     evn_motion_trace_info(uint8_t *axis, uint32_t *count, bool *armed);
+const void *evn_motion_trace_data(uint32_t *rows);
 bool     evn_motion_trace_row(uint32_t i, int32_t *t_ms, int32_t *ref_mdeg,
                               int32_t *enc_mdeg, int32_t *hat_mdeg,
                               int32_t *vref_mdegs, int32_t *what_mdegs,

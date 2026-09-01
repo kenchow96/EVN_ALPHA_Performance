@@ -32,6 +32,7 @@ START_DUTY_RUN_ID = 0x2609020B
 SPLIT_RAMP_RUN_ID = 0x2609020C
 RAMP_FACTORIAL_RUN_ID = 0x2609020D
 STARTUP_PULSE_RUN_ID = 0x2609020E
+STARTUP_PULSE_RERUN_ID = 0x2609020F
 SCHEMA_VERSION = 1
 SUPER_MAGIC = 0x31535645
 RECORD_MAGIC = 0x31525645
@@ -188,6 +189,10 @@ def decode_header(page, case_index, run_id):
 
 
 def case_name(header):
+    if header["run_id"] == STARTUP_PULSE_RERUN_ID:
+        direction = "pos" if header["delta_mdeg"] >= 0 else "neg"
+        return (f"Z{header['startup_pulse_on_ticks']}_"
+                f"R{header['repeat_index']}_{direction}")
     if header["run_id"] == STARTUP_PULSE_RUN_ID:
         direction = "pos" if header["delta_mdeg"] >= 0 else "neg"
         return (f"P{header['startup_pulse_on_ticks']}_"

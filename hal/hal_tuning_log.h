@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define EVN_TUNING_RUN_ID             0x2609020Eu
+#define EVN_TUNING_RUN_ID             0x2609020Fu
 #define EVN_TUNING_SCHEMA_VERSION     1u
 #define EVN_TUNING_CASE_COUNT         16u
 #define EVN_TUNING_FLASH_BASE_OFFSET  0x00F00000u
@@ -96,8 +96,8 @@ bool hal_tuning_log_begin(uint32_t run_id);
 bool hal_tuning_log_case_header(uint32_t case_index, uint32_t run_id,
                                 evn_tuning_record_header_t *out);
 bool hal_tuning_log_erase_case(uint32_t case_index);
-bool hal_tuning_log_program_trace_page(uint32_t case_index, uint32_t page_index,
-                                       const uint8_t data[EVN_TUNING_PAGE_SIZE]);
+bool hal_tuning_log_program_trace(uint32_t case_index, const void *data,
+                                  uint32_t rows);
 bool hal_tuning_log_commit_case(uint32_t case_index,
                                 const evn_tuning_record_header_t *header);
 uint32_t hal_tuning_log_crc32(uint32_t crc, const void *data, size_t length);
