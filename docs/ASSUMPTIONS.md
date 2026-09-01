@@ -1,14 +1,14 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, startup ramp):** Commits through `919c67a` and
-> seven autonomous datasets are verified. Reject endpoint velocity gain above
-> the 5e-7 cruise value: 2e-6 gave no reliable gate gain, 4e-6 was
-> state-dependent, and 8e-6 saturated into ~15 deg oscillation. Keep the PIO
-> edge watchdog provisionally. Its best positive traces pass 11/12 and fail
-> only first-breakaway acceleration (typically 1.5-1.7k deg/s2 vs 1.08k gate).
-> Next sweep adaptive startup-ramp duration 200/400/600/800 ms, two repeats and
-> both directions. The trajectory remains paused, so this changes torque slope
-> without storing reference error. Keep W40/K5, 0.65/0.55 stiction, governor,
+> **RESUME POINT (2026-09-02, startup duty):** Commits through `655fe5b` and
+> nine autonomous datasets are verified. Reject startup ramps above 200 ms.
+> The 600 ms candidate was rerun independently with 16 cases and a 3.8 s trace;
+> both datasets had 16/16 complete profiles, battery >=7.277 V, cells >=3.622 V,
+> age <=490 us, and zero missed ticks. Across 32 traces it produced no 12/12
+> case; positive median max error was 4.489 deg. Keep the 200 ms ramp. Remaining
+> best-case failure is physical first breakaway acceleration (about 1.5k deg/s2
+> vs 1.08k gate), so next sweep startup duty 0.58/0.60/0.62/0.65, two repeats
+> and both directions, with a 3.8 s trace. Keep W40/K5, 0.55 hold, governor,
 > trapezoid, 0.5x friction, 10 deg/s release, base endpoint gain, and edge
 > watchdog. Each case erases its fixed
 > slot while coasted, requires a battery sample age <=250 ms (pack >=6.5 V,
