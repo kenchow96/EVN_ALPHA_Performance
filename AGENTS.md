@@ -12,6 +12,7 @@ Read these first. They are the ground truth for all hardware decisions:
 
 1. [docs/EVN ALPHA Hardware Reference.md](docs/EVN%20ALPHA%20Hardware%20Reference.md) — complete pinout, flash geometry, motion-control architecture (cascaded PID + Luenberger observer + trajectory profiler), PWM/PIO peripheral conflict analysis
 2. [docs/EVN Alpha I2C Architecture Specification.md](docs/EVN%20Alpha%20I2C%20Architecture%20Specification.md) — dual TCA9548A mux topology (16 ports), dual-core I2C/DMA engine design
+3. [docs/PLAN.md](docs/PLAN.md) — phased master plan, quantitative targets, efficiency protocol, Status Board. **Check the Status Board before starting any work and update it at every verified checkpoint.**
 
 Items tagged `[GROUND TRUTH]` are non-negotiable hardware facts. Items tagged `[RECOMMENDATION / DERIVED]` are the agreed architecture — deviate only with justification.
 
@@ -24,20 +25,24 @@ Items tagged `[GROUND TRUTH]` are non-negotiable hardware facts. Items tagged `[
 - Real-time paths (PID loop, PIO handlers, observers) must be marked `__not_in_flash_func()` and must perform **zero dynamic heap allocation**.
 
 ### Architecture
-- **HAL pattern**: All hardware-specific GPIO/peripheral access lives in `hal_*.c` modules; application logic must not touch hardware directly.
-- **Debouncing**: Button/switch interfaces must use stable state-machine debouncers (see [hal_button.c](hal_button.c) for the reference implementation — 1 kHz tick, 20-sample stability threshold).
+- **HAL pattern**: All hardware-specific GPIO/peripheral access lives in `hal/hal_*.c` modules; application logic must not touch hardware directly.
+- **Debouncing**: Button/switch interfaces must use stable state-machine debouncers (see [hal/hal_button.c](hal/hal_button.c) for the reference implementation — 1 kHz tick, 20-sample stability threshold).
 - **Dual-core plan**: Core 1 = deterministic 1 kHz real-time control loop; Core 0 = background tasks, I2C governor, stdio. Never call `flash_range_erase()`/`flash_range_program()` without the `multicore_lockout` pattern documented in the Hardware Reference §6.4.
 - **Peripheral conflicts**: PWM Slice 5 is shared between Motor 2 (GP26/27) and Servos 3/4 (GP10/11). Motors keep hardware PWM at 25 kHz; servos must be PIO-driven. See Hardware Reference §9.1.
+- **Efficiency**: Follow the Efficiency Protocol in [docs/PLAN.md](docs/PLAN.md) §2 — falsifying check first, batched reads, single focused validation, commit at each verified checkpoint.
 
 ## Repository Layout
 
 ```
-├── EVN_ALPHA_Performance.c   # Main application entry (currently LED/button hardware test)
-├── hal_led.c / hal_led.h     # User LED HAL — GP25 (EVN_LED_USER, active-high)
-├── hal_button.c / hal_button.h # User button HAL — GP24 (EVN_BTN_USER, active-low, debounced)
-├── docs/                     # Authoritative specs (read first!)
-├── build/                    # Ninja build output (UF2/ELF artifacts; do not commit)
-├── CMakeLists.txt            # Pico SDK 2.3.0 build config
+├── EVN_ALPHA_Performance.c     # Main application entry (currently LED/button hardware test)
+├── hal/                        # HAL modules — hal_led (GP25), hal_button (GP24, debounced); future: motor, encoder, i2c, battery, servo, nvm
+├── motion/                     # Core 1 real-time control engine (planned)
+├── pio/                        # PIO programs: quadrature.pio, servo.pio (planned)
+├── bench/                      # Cycle-count harness + results/*.csv (planned)
+├── tools/                      # Host-side scripts (planned)
+├── docs/                       # Authoritative specs + PLAN.md (read first!)
+├── build/                      # Ninja build output (UF2/ELF artifacts; do not commit)
+├── CMakeLists.txt              # Pico SDK 2.3.0 build config
 └── pico_sdk_import.cmake
 ```
 
@@ -62,12 +67,13 @@ Typical workflow: `Compile Project` → verify zero errors → `Run Project` (or
 
 ## Adding New Subsystems
 
-Follow the HAL naming convention (`hal_<peripheral>.c/h`) and the spec priorities:
+Follow the phase order in [docs/PLAN.md](docs/PLAN.md) and the HAL naming convention (`hal/hal_<peripheral>.c/h`):
 
-1. PIO quadrature encoders (M1–M4) — 100% PIO-offloaded
+1. Measurement & Core 1 infrastructure (DWT cycle counter, 1 kHz loop skeleton)
 2. DRV8833 motor PWM @ 25 kHz (WRAP = 7999 at 200 MHz)
-3. I2C mux layer (TCA9548A ×2, ports 1–16, BQ25887 battery on port 16)
-4. PIO-based 4-channel servo PWM
-5. Core 1 motion engine (1 kHz trajectory → cascaded PID → observer)
+3. PIO quadrature encoders (M1–M4) — 100% PIO-offloaded
+4. I2C mux layer (TCA9548A ×2, ports 1–16, BQ25887 battery on port 16)
+5. PIO-based 4-channel servo PWM
+6. Core 1 motion engine (1 kHz trajectory → cascaded PID → observer)
 
 Keep the pin table in the Hardware Reference §5 as the single source of truth — never hardcode pins outside the HAL headers.

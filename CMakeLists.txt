@@ -37,8 +37,8 @@ pico_sdk_init()
 
 add_executable(EVN_ALPHA_Performance 
     EVN_ALPHA_Performance.c 
-    hal_led.c
-    hal_button.c
+    hal/hal_led.c
+    hal/hal_button.c
 )
 
 pico_set_program_name(EVN_ALPHA_Performance "EVN_ALPHA_Performance")

@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
-#include "hal_led.h"
-#include "hal_button.h"
+#include "hal/hal_led.h"
+#include "hal/hal_button.h"
 
 // 1 kHz debouncer poll interval (non-blocking; project rule: never sleep)
 #define BUTTON_POLL_INTERVAL_US 1000ULL
