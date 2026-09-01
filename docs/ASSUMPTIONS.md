@@ -1,16 +1,16 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, endpoint damping):** Commits through `89a8c0e`
-> and six autonomous datasets are verified. Keep the PIO edge watchdog
-> provisionally: enabled tracking passed 7/8 cases and three of four positive
-> runs reached 11/12, with best score 2.5095; one mechanical-state pair still
-> regressed. Remaining negative failure is exact: at 1 deg endpoint error the
-> 0.55 approach floor breaks static friction, then base kv=5e-7 provides too
-> little braking and inertia carries 1.5 deg past target. Next sweep an
-> endpoint-only velocity gain 0.5e-6/2e-6/4e-6/8e-6 (two repeats, both
-> directions), active only when |vref|<5 deg/s and |position error|<5 deg.
-> Keep W40/K5, 0.65/0.55 stiction, governor, trapezoid, 0.5x friction, 10 deg/s
-> release, and edge watchdog. Each case erases its fixed
+> **RESUME POINT (2026-09-02, startup ramp):** Commits through `919c67a` and
+> seven autonomous datasets are verified. Reject endpoint velocity gain above
+> the 5e-7 cruise value: 2e-6 gave no reliable gate gain, 4e-6 was
+> state-dependent, and 8e-6 saturated into ~15 deg oscillation. Keep the PIO
+> edge watchdog provisionally. Its best positive traces pass 11/12 and fail
+> only first-breakaway acceleration (typically 1.5-1.7k deg/s2 vs 1.08k gate).
+> Next sweep adaptive startup-ramp duration 200/400/600/800 ms, two repeats and
+> both directions. The trajectory remains paused, so this changes torque slope
+> without storing reference error. Keep W40/K5, 0.65/0.55 stiction, governor,
+> trapezoid, 0.5x friction, 10 deg/s release, base endpoint gain, and edge
+> watchdog. Each case erases its fixed
 > slot while coasted, requires a battery sample age <=250 ms (pack >=6.5 V,
 > cells >=3.0 V), runs with the 4 s
 > Core 1 auto-coast, logs ~530 trace rows, aborts on any missed RT tick, writes
