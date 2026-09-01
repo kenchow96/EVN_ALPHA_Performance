@@ -29,6 +29,7 @@ typedef struct {
     float kp_pos;       /* position P (duty per unit error) */
     float ki_pos;       /* position I (anti-windup clamped) */
     float kp_vel;       /* velocity P */
+    float endpoint_kp_vel;
     float kd_vel;       /* velocity D (on measurement, to avoid kick) */
     float kff_accel;    /* acceleration feedforward */
 

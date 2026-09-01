@@ -129,6 +129,7 @@ void evn_motion_set_startup_reference_governor(uint8_t axis, bool enabled);
 void evn_motion_set_friction_feedforward(uint8_t axis, uint16_t permille);
 void evn_motion_set_startup_release_speed(uint8_t axis, float speed_degs);
 void evn_motion_set_edge_watchdog(uint8_t axis, bool enabled);
+void evn_motion_set_endpoint_velocity_gain(uint8_t axis, float kp_vel);
 /* Read an axis' current PID block (Core 0 debug/console use only). */
 const evn_pid_t *evn_motion_axis_pid(uint8_t axis);
 void evn_motion_set_observer(int32_t stall_speed_limit, int32_t stall_time_ms,

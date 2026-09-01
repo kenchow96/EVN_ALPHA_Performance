@@ -7,6 +7,7 @@ void evn_pid_init(evn_pid_t *p) {
     p->kp_pos = 8.0e-5f;     /* duty per mdeg (10 deg err -> 0.8 duty) */
     p->ki_pos = 1.0e-6f;     /* duty per (mdeg·s) integral */
     p->kp_vel = 1.0e-6f;     /* duty per mdeg/s error (180 deg/s -> 0.18 duty) */
+    p->endpoint_kp_vel = 0.0f;
     p->kd_vel = 0.0f;
     p->kff_accel = 0.0f;
     p->out_min = -1.0f;
@@ -71,9 +72,13 @@ float evn_pid_update(evn_pid_t *p,
     float vel_err_smooth = vel_ref - vel_meas;
     if (in_deadzone) vel_err_smooth = 0.0f;
     p->last_vel_smooth = vel_meas;
+    float abs_vel_ref = vel_ref < 0.0f ? -vel_ref : vel_ref;
 
+    float kp_vel = p->kp_vel;
+    if (p->endpoint_kp_vel > kp_vel && abs_vel_ref < 5000.0f && ae < 5000.0f)
+        kp_vel = p->endpoint_kp_vel;
     float feedback_no_i = p->kp_pos * pos_err
-                        + p->kp_vel * vel_err_smooth
+                        + kp_vel * vel_err_smooth
                         + p->kd_vel * d_vel
                         + p->kff_accel * accel_ref;
 
@@ -104,7 +109,6 @@ float evn_pid_update(evn_pid_t *p,
      * the floor just breaks static friction on a real stick, then fades. This
      * avoids a duty kick at the deadzone boundary (which caused a limit cycle). */
     float abs_speed = vel_meas < 0.0f ? -vel_meas : vel_meas;
-    float abs_vel_ref = vel_ref < 0.0f ? -vel_ref : vel_ref;
     float displacement = pos_meas - p->motion_start_position;
     if (displacement < 0.0f) displacement = -displacement;
     bool starting = abs_vel_ref > 5000.0f &&

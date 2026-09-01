@@ -334,6 +334,12 @@ void evn_motion_set_edge_watchdog(uint8_t axis, bool enabled) {
     s_axis[axis].edge_watchdog_enabled = enabled;
 }
 
+void evn_motion_set_endpoint_velocity_gain(uint8_t axis, float kp_vel) {
+    if (axis > 3 || !(s_mask & (1u << axis)) ||
+        kp_vel < 0.0f || kp_vel > 1.0e-4f) return;
+    s_axis[axis].pid.endpoint_kp_vel = kp_vel;
+}
+
 const evn_pid_t *evn_motion_axis_pid(uint8_t axis) {
     if (axis > 3) return NULL;
     return &s_axis[axis].pid;
