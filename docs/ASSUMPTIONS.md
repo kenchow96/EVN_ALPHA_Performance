@@ -1,16 +1,16 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, startup release):** Commits through `af6e383`
-> and four autonomous datasets are verified. The friction sweep produced the
-> first 11/12 traces in both directions but falsified extra friction as the
-> fix: Pybricks's default 0.5x model friction was best; 1.0x-2.0x increased
-> acceleration, overshoot, and variance. Keep W40/K5, 0.65/0.55 stiction,
-> startup governor, trapezoid, and 0.5x friction. Remaining launch variance is
-> measured: a clean first edge reports >=35 deg/s and continues; a weak 6.4
-> deg/s first edge immediately releases the startup floor and re-sticks for
-> 125 ms. Next sweep a speed-qualified startup-floor release at 0/10/20/40
-> deg/s (two repeats, both directions), retaining the floor only within the
-> first 5 deg and below the selected speed. Each case erases its fixed
+> **RESUME POINT (2026-09-02, edge watchdog):** Commits through `0a4159f` and
+> five autonomous datasets are verified. Keep startup-floor release at 10
+> deg/s: versus zero it reduced mean acceleration 13%, jerk 31%, max error 23%,
+> ripple 44%, and peak current 19%; 40 deg/s overdrives. It eliminated the
+> 130 ms weak-first-edge gap but later static captures remain. Next use the PIO
+> transition timestamp as an edge watchdog: while |vref|>5 deg/s, if no edge
+> arrives within two expected 0.5-deg edge intervals plus margin, pause (never
+> rewind) trajectory time and invoke the existing slow stiction ramp until an
+> edge returns. A/B four repeats each direction; falsify unless max error falls
+> without acceleration/overshoot regression. Keep W40/K5, 0.65/0.55 stiction,
+> governor, trapezoid, 0.5x friction, 10 deg/s release. Each case erases its fixed
 > slot while coasted, requires a battery sample age <=250 ms (pack >=6.5 V,
 > cells >=3.0 V), runs with the 4 s
 > Core 1 auto-coast, logs ~530 trace rows, aborts on any missed RT tick, writes
