@@ -121,6 +121,12 @@ Typical workflow: `Compile Project` → verify zero errors → `Run Project` (or
 
 ## Adding New Subsystems
 
+**Standard peripherals** (EVN-validated motors with characterised observer models)
+live in [motion/motor_models.c](motion/motor_models.c): EV3 Large, EV3 Medium,
+NXT. The motion engine's observer and feedforward use these for guaranteed
+performance. Adding a new motor = characterise it (or port its Pybricks model)
+and append a row to the table.
+
 Follow the phase order in [docs/PLAN.md](docs/PLAN.md) and the HAL naming convention (`hal/hal_<peripheral>.c/h`):
 
 1. Measurement & Core 1 infrastructure (DWT cycle counter, 1 kHz loop skeleton)

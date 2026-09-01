@@ -46,6 +46,8 @@ add_executable(EVN_ALPHA_Performance
     hal/hal_motor.c
     hal/hal_encoder.c
     motion/core1.c
+    motion/observer.c
+    motion/motor_models.c
     bench/bench_cycles.c
 )
 

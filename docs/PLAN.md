@@ -109,7 +109,9 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 - **HITL:** one sweep observation.
 
 ### Phase 7 — Motion Engine (Core 1, the core deliverable)
-- `motion/trajectory`: trapezoidal profiler (S-curve optional phase 2); `motion/pid`: cascaded position/velocity PID + acceleration feedforward + friction + battery-voltage compensation (feeds from Phase 5 cache); `motion/observer`: Luenberger (θ̂, ω̂, τ̂L); `motion/motion_engine`: per-motor command API (`move_to`, `move_at_speed`, `stop`, hold).
+- `motion/motor_models`: **EVN standard peripherals** — characterised motor model table (EV3 Large/Medium, NXT) ported from Pybricks pbio observer models. These are the motors we guarantee max performance for; the observer + feedforward use them.
+- `motion/observer`: Luenberger state observer (θ̂ angle, ω̂ speed, current) + sensorless stall detection + feedforward torque — faithful integer port of Pybricks `observer.c`.
+- `motion/trajectory`: trapezoidal profiler (S-curve optional phase 2); `motion/pid`: cascaded position/velocity PID + acceleration feedforward + friction + battery-voltage compensation (feeds from Phase 5 cache); `motion/motion_engine`: per-motor command API (`move_to`, `move_at_speed`, `stop`, hold).
 - **Acceptance (all logged to `bench/results/`):** 1 kHz loop with jitter < 1 µs **under full 4-motor load**; step-response CSV (rise time, overshoot, settling); N-rev move accuracy ±counts; sensorless stall flag < 100 ms under gentle obstruction.
 - **HITL:** marker rev-count validation; gentle obstruction test (one batched session).
 
