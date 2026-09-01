@@ -89,13 +89,12 @@ large, that jitter slams duty. **Sweep result (live `v` command):**
 
 ## C. USB-CDC / tooling (cost the most wall-clock time)
 
-**C1. TinyUSB must have exactly one execution owner.** The original direct CDC
-writer called `tud_task()` while the Pico SDK background worker could preempt it
-and call `tud_task()` again. The private SDK mutex does not protect direct calls,
-so this was a non-reentrant endpoint-state race, not a simple mutex deadlock.
-The repaired architecture disables `PICO_STDIO_USB_ENABLE_IRQ_BACKGROUND_TASK`;
-Core 0 alone polls TinyUSB and drains a bounded record queue. If the SDK worker
-is re-enabled later, all direct `tud_*` calls must be removed.
+**C1. TinyUSB must have exactly one API owner, not merely one `tud_task()` owner.**
+Both earlier designs failed: direct `tud_task()` was re-entrant with the SDK
+worker, and later direct `tud_cdc_*` bulk calls still bypassed the SDK's private
+stdio mutex. The repaired architecture leaves the SDK worker enabled and removes
+all direct TinyUSB calls; Core 0 drains its record queue through `stdio_put_string()`.
+Hardware proof: ten 2,500-row frames on one handle plus clean close/reopen.
 
 **C2. The encoder HAL's edge-timed speed drops to 0 mid-move.** `hal_encoder_
 get_speed_substep` latches `stopped` (speed→0) after only `idle_stop_samples=3`

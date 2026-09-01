@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "pico/stdio.h"
 #include "hardware/clocks.h"
-#include "tusb.h"
 #include "hal/hal_led.h"
 #include "hal/hal_button.h"
 #include "hal/hal_i2c.h"
@@ -46,9 +46,8 @@ static void print_battery(void) {
                    b.vbatt_mv/1000.0f, b.vcell1_mv/1000.0f, b.vcell2_mv/1000.0f);
 }
 
-/* Core 0 is the sole tud_task() owner (the SDK background worker is disabled).
- * Producers enqueue complete records; cdc_service drains only what TinyUSB can
- * accept, so a slow or closing host cannot block the scheduler or split rows. */
+/* Producers enqueue complete records; Core 0 drains bounded chunks through the
+ * SDK stdio driver, which serializes TinyUSB access with its background worker. */
 #define CDC_TX_QUEUE_SIZE 8192u
 #define CDC_TX_QUEUE_MASK (CDC_TX_QUEUE_SIZE - 1u)
 _Static_assert((CDC_TX_QUEUE_SIZE & CDC_TX_QUEUE_MASK) == 0, "CDC queue must be a power of two");
@@ -80,11 +79,9 @@ static bool cdc_write_paced(const char *buf, size_t len) {
 static bool cdc_puts(const char *s) { return cdc_write_paced(s, strlen(s)); }
 
 static void cdc_service(void) {
-    tud_task();
-    bool connected = tud_cdc_connected();
+    bool connected = stdio_usb_connected();
     if (!connected) {
         if (s_cdc_was_connected) {
-            tud_cdc_write_clear();
             s_cdc_tx_tail = s_cdc_tx_head;
             s_dump_active = false;
         }
@@ -93,19 +90,15 @@ static void cdc_service(void) {
     }
     s_cdc_was_connected = true;
 
-    uint32_t available = tud_cdc_write_available();
-    while (s_cdc_tx_tail != s_cdc_tx_head && available > 0) {
-        uint32_t queued = s_cdc_tx_head - s_cdc_tx_tail;
-        uint32_t contiguous = CDC_TX_QUEUE_SIZE - (s_cdc_tx_tail & CDC_TX_QUEUE_MASK);
-        if (contiguous > queued) contiguous = queued;
-        if (contiguous > available) contiguous = available;
+    uint32_t queued = s_cdc_tx_head - s_cdc_tx_tail;
+    if (queued == 0) return;
+    uint32_t contiguous = CDC_TX_QUEUE_SIZE - (s_cdc_tx_tail & CDC_TX_QUEUE_MASK);
+    if (contiguous > queued) contiguous = queued;
+    if (contiguous > 512u) contiguous = 512u;
 
-        uint32_t written = tud_cdc_write(&s_cdc_tx[s_cdc_tx_tail & CDC_TX_QUEUE_MASK], contiguous);
-        if (written == 0) break;
-        s_cdc_tx_tail += written;
-        available -= written;
-    }
-    tud_cdc_write_flush();
+    stdio_put_string(&s_cdc_tx[s_cdc_tx_tail & CDC_TX_QUEUE_MASK],
+                     (int)contiguous, false, false);
+    s_cdc_tx_tail += contiguous;
 }
 
 /* Non-blocking console printf for command/status responses. Uses the FIFO-paced
@@ -387,10 +380,7 @@ int main(void) {
 
     /* bounded console wait so the banner always lands */
     uint64_t deadline = time_us_64() + 3000000ULL;
-    while (!stdio_usb_connected() && time_us_64() < deadline) {
-        tud_task();
-        tight_loop_contents();
-    }
+    while (!stdio_usb_connected() && time_us_64() < deadline) tight_loop_contents();
 
     hal_led_init();
     hal_button_init();

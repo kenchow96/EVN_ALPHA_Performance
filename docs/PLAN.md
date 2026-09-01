@@ -144,7 +144,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | :--- | :--- | :--- |
 | PIO instruction budget: quadrature (4 SM) + servo (4 SM) across 2 PIO blocks × 32 instr | Blocks Phases 3 & 6 | Budget table before coding; quadrature on pio0, servo on pio1; servo SM time-multiplexing fallback |
 | 1 kHz budget: 4× (trajectory + PID + observer) per tick | Phase 7 timing failure | 200k cycles available; profile with DWT per stage; fixed-point math if float falls short |
-| USB stdio stalls or TinyUSB re-entry | CDC corruption / jitter | Core 0 sole `tud_task()` owner; bounded TX queue; host waits for framed `TRACE END` |
+| USB stdio stalls or TinyUSB re-entry | CDC corruption / jitter | SDK worker exclusively owns `tud_task()`; bounded app queue drains via mutex-protected `stdio_put_string`; host waits for framed `TRACE END` |
 | Timer callback installed through default Core 0 alarm pool | USB conflict / false RT isolation | Dedicated hardware alarm claimed and installed on Core 1 |
 | I2C shared across cores | Deadlock/corruption | Only Core 0 ever touches I2C hardware |
 | Flash writes while Core 1 runs from XIP | Bus stall / crash | `multicore_lockout` pattern only (§6.4 of Hardware Reference) |

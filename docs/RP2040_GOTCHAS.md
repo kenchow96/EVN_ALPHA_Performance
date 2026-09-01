@@ -16,11 +16,11 @@ up and the Windows `usbser` driver can enter a state where the COM port
 enumerates but **won't open** (`PermissionError 31, "A device attached to the
 system is not functioning"`). We hit this repeatedly during trace dumps.
 
-**Mitigation (now in firmware):** the Pico SDK background USB worker is disabled,
-so Core 0 is the sole `tud_task()` owner. Dump paths enqueue complete records in
-an 8 KiB buffer; the Core 0 service drains only `tud_cdc_write_available()` bytes.
+**Mitigation (now in firmware):** the Pico SDK background worker exclusively
+owns `tud_task()`. Dump paths enqueue complete records in an 8 KiB application
+buffer; Core 0 drains bounded chunks through mutex-protected `stdio_put_string()`.
 The host holds one COM handle and must receive `TRACE END` before another command
-or close. Never combine direct TinyUSB calls with the SDK background worker.
+or close. Never call any direct `tud_*` API while `pico_stdio_usb` is enabled.
 **Rule: never let a bulk `printf` loop run unthrottled against a closed/slow host.**
 
 ### 2. No DWT `CYCCNT` on Cortex-M0+ (already cost us a flash cycle)
