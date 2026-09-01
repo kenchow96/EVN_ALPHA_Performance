@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* ========================================================================== 
+/* ===========================================================================
  * EVN ALPHA — deterministic point-to-point trajectory profiler.
  *
  * Generates a reference state [ position, velocity, acceleration ] each tick
