@@ -1,13 +1,15 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, ramp factorial):** Commits through `97810b0` and
-> eleven autonomous datasets are verified. Splitting initial and watchdog
-> restart ramps worked: 800 ms initial gave mean max error 1.752 deg, mean
-> overshoot 0.496 deg, and three 11/12 cases. All still failed acceleration.
-> Peak timing shows two mechanisms: negative peaks occur at initial breakaway;
-> one positive peak occurs during a later 200 ms watchdog restart. Next run a
-> 2x2 factorial: initial ramp 800/1200 ms crossed with restart ramp 200/400 ms,
-> two repeats and both directions. Keep 0.65 start, W40/K5, 0.55 hold,
+> **RESUME POINT (2026-09-02, launch pulse density):** Commits through
+> `e17f707` and twelve autonomous datasets are verified. The 2x2 ramp factorial
+> found no reliable gain from 1200 ms launch or 400 ms restart. Across
+> independent exact settings, 800/200 and 200/200 tie at mean 10/12, while
+> 800/200 lowers mean acceleration (1384 vs 1431 deg/s2) and improves duty
+> smoothness (0.849 vs 0.805); keep 800/200 provisionally. Remaining failure is
+> static-friction release. Next test a 4-tick, 1 kHz-native startup floor pulse
+> density of 4/4, 3/4, 2/4, 1/4 ticks, active only during initial breakaway
+> inside 5 deg; watchdog restarts remain continuous. Two repeats, both
+> directions. Keep 0.65 start, W40/K5, 0.55 hold,
 > governor, trapezoid, 0.5x friction, 10 deg/s release, base endpoint gain, and
 > edge watchdog. Each case erases its fixed
 > slot while coasted, requires a battery sample age <=250 ms (pack >=6.5 V,
