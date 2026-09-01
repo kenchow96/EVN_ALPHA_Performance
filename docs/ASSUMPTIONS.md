@@ -1,18 +1,16 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, friction feedforward):** Commits through
-> `c2a4cb4` add the startup reference governor; its autonomous A/B verified
-> 16/16 trace CRCs at 7.341-7.363 V, age <=447 us, Core 1 999-1001 us, zero
-> misses. Keep the governor: versus matched baseline it reduced positive mean
-> acceleration 34%, jerk 52%, max error 21%, duty ripple 75%, peak current 40%,
-> and made overshoot <=0.5 deg in all four positive repeats. Negative max error
-> improved 23%. Remaining failure is low-speed model mismatch: the shaft gets
-> slightly ahead during deceleration, duty drops below moving friction, then
-> static capture creates the final correction. Raw/filtered edge-speed history
-> is worse, so retain the 40 ms window. Current build/run ID `0x26090204` sweeps
-> friction feedforward at 0.5x/1.0x/1.5x/2.0x model torque (0.073/0.146/0.219/
-> 0.292 duty at 7.35 V), two repeats and both directions, with every other
-> W40/K5/governor setting fixed. Each case erases its fixed
+> **RESUME POINT (2026-09-02, startup release):** Commits through `af6e383`
+> and four autonomous datasets are verified. The friction sweep produced the
+> first 11/12 traces in both directions but falsified extra friction as the
+> fix: Pybricks's default 0.5x model friction was best; 1.0x-2.0x increased
+> acceleration, overshoot, and variance. Keep W40/K5, 0.65/0.55 stiction,
+> startup governor, trapezoid, and 0.5x friction. Remaining launch variance is
+> measured: a clean first edge reports >=35 deg/s and continues; a weak 6.4
+> deg/s first edge immediately releases the startup floor and re-sticks for
+> 125 ms. Next sweep a speed-qualified startup-floor release at 0/10/20/40
+> deg/s (two repeats, both directions), retaining the floor only within the
+> first 5 deg and below the selected speed. Each case erases its fixed
 > slot while coasted, requires a battery sample age <=250 ms (pack >=6.5 V,
 > cells >=3.0 V), runs with the 4 s
 > Core 1 auto-coast, logs ~530 trace rows, aborts on any missed RT tick, writes
