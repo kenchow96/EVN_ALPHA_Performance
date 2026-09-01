@@ -36,21 +36,24 @@ def find_port():
             return p.device
     return None
 
-def wait_for_port(timeout_s=10.0, settle_s=0.8):
-    """Wait for the board's COM port to appear AND be openable. Returns port."""
+def wait_for_port(timeout_s=20.0, settle_s=1.0):
+    """Wait for the board's COM port to appear AND be reliably openable.
+
+    Retries through transient Windows USB-serial faults (PermissionError 31 /
+    'device not functioning') that occur right after re-enumeration or when a
+    previous handle was not released. Returns the port name or None."""
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         port = find_port()
         if port:
-            # try opening to confirm it's ready, not mid-enumeration
             try:
                 s = serial.Serial(port, 115200, timeout=0.1)
                 s.close()
                 time.sleep(settle_s)  # let it stabilise
                 return port
             except (serial.SerialException, OSError):
-                pass
-        time.sleep(0.2)
+                pass  # not ready / wedged — keep waiting
+        time.sleep(0.3)
     return None
 
 def flash(uf2):
@@ -68,10 +71,17 @@ def flash(uf2):
 
 def capture(port, baud, seconds, send, expect, logpath):
     print(f"[capture] {port} @ {baud} for {seconds}s", file=sys.stderr)
-    try:
-        ser = serial.Serial(port, baud, timeout=0.2)
-    except (serial.SerialException, OSError) as e:
-        print(f"ERROR opening {port}: {e}", file=sys.stderr)
+    # retry the open a few times — re-enumeration can briefly wedge the handle
+    ser = None
+    for attempt in range(5):
+        try:
+            ser = serial.Serial(port, baud, timeout=0.2)
+            break
+        except (serial.SerialException, OSError) as e:
+            print(f"[capture] open attempt {attempt+1} failed: {e}", file=sys.stderr)
+            time.sleep(0.7)
+    if ser is None:
+        print(f"ERROR opening {port} after retries", file=sys.stderr)
         return 1
 
     buf = []

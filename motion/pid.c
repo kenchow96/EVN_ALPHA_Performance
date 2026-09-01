@@ -1,17 +1,17 @@
 #include "pid.h"
 
 void evn_pid_init(evn_pid_t *p) {
-    /* Conservative defaults; tuned per-motor later. Units are encoder substeps
-     * (256 = 1 encoder cycle) for position/velocity, duty [-1,1] output. */
-    p->kp_pos = 0.0008f;
+    /* Starting gains for EV3 motors, references in mdeg / mdeg/s, duty [-1,1].
+     * Tuned so ~10 deg position error -> ~0.5 duty. */
+    p->kp_pos = 5.0e-5f;     /* duty per mdeg error */
     p->ki_pos = 0.0f;
-    p->kp_vel = 0.00002f;
+    p->kp_vel = 3.0e-6f;     /* duty per mdeg/s error */
     p->kd_vel = 0.0f;
     p->kff_accel = 0.0f;
     p->out_min = -1.0f;
     p->out_max =  1.0f;
-    p->i_limit = 100000.0f;
-    p->vbus_comp = 0.0f;   /* 0 = disabled until we have a nominal voltage */
+    p->i_limit = 1.0e7f;
+    p->vbus_comp = 0.0f;   /* disabled until calibrated */
     evn_pid_reset(p);
 }
 

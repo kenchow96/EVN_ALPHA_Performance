@@ -117,6 +117,7 @@ Typical workflow: `Compile Project` → verify zero errors → `Run Project` (or
 - Always rebuild after code changes before deploying.
 - **Before any flash/deploy**, explicitly ask the user to confirm the EVN board is powered on. Do not flash unprompted.
 - **HITL rule**: Before any hardware-in-the-loop test requiring the user's visual or physical feedback (LED state, button press, motor movement, marker placement), explicitly prompt the user to prepare and confirm readiness before and after the test.
+- **Motor safety**: At the end of EVERY motor test, leave all motors in COAST state (`hal_motor_coast_all()` / `evn_motion_coast(i)`). Never leave a motor driven or braked when a test ends.
 - The current firmware toggles the user LED (GP25) on each debounced press of the user button (GP24) — this is the canonical "board is alive" smoke test.
 
 ## Adding New Subsystems

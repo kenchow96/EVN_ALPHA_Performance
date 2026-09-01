@@ -128,10 +128,12 @@ int main(void) {
                 for (int i = 0; i < 4; i++) evn_motion_move_to(i, 0.0f, 180.0f, 900.0f);
                 printf("All reached +360. Commanding return to 0.\n");
             } else if (all_done && returned) {
-                /* finished both legs — final report */
+                /* finished both legs — coast ALL motors for safety, then report */
+                for (int i = 0; i < 4; i++) evn_motion_coast(i);
+                hal_motor_coast_all();
                 evn_core1_status_t cs;
                 if (evn_core1_get_status(&cs)) {
-                    printf("=== MOTION TEST COMPLETE ===\n");
+                    printf("=== MOTION TEST COMPLETE (all coasted) ===\n");
                     printf("Core1: %u ticks, period %u-%u us, exec max %u us\n",
                            (unsigned)cs.tick_count, (unsigned)cs.period_min_us,
                            (unsigned)cs.period_max_us, (unsigned)cs.exec_max_us);

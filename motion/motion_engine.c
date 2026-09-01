@@ -52,6 +52,7 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         a->traj.active = false;
         a->traj.done = true;
         a->cmd_seq = 0;
+        a->cmd_consumed_seq = 0;
         a->cmd_active = false;
         a->stat_seq = 0;
         a->stat_stalled = false;
@@ -122,28 +123,30 @@ void __not_in_flash_func(evn_motion_tick)(void) {
         if (!(s_mask & (1u << i))) continue;
         evn_axis_t *a = &s_axis[i];
 
-        /* --- consume any pending command (seqlock read) --- */
+        /* --- consume a NEW command exactly once (seqlock read) --- */
         uint32_t c0 = a->cmd_seq;
-        if (!(c0 & 1u)) {
+        if (!(c0 & 1u) && c0 != a->cmd_consumed_seq) {
             __dmb();
-            bool active = a->cmd_active;
-            float tdeg = a->cmd_target_deg;
-            float mvel = a->cmd_max_vel_degs;
-            float macc = a->cmd_max_accel;
+            bool  active = a->cmd_active;
+            float tdeg   = a->cmd_target_deg;
+            float mvel   = a->cmd_max_vel_degs;
+            float macc   = a->cmd_max_accel;
             __dmb();
-            if (a->cmd_seq == c0 && active) {
-                /* start a new trajectory from the current measured position */
-                int32_t sub = hal_encoder_get_position_substep(a->encoder);
-                float cur_mdeg = (float)sub * (360000.0f / axis_substeps_per_rev(i));
-                evn_trajectory_start(&a->traj, cur_mdeg, tdeg * 1000.0f,
-                                     mvel * 1000.0f, macc * 1000.0f);
-                evn_pid_reset(&a->pid);
-                a->stat_done = false;
-            } else if (a->cmd_seq == c0 && !active) {
-                hal_motor_coast(a->motor);
-                a->traj.active = false;
-                a->traj.done = true;
-                a->stat_done = true;
+            if (a->cmd_seq == c0) {          /* stable read */
+                a->cmd_consumed_seq = c0;    /* mark consumed */
+                if (active) {
+                    int32_t sub = hal_encoder_get_position_substep(a->encoder);
+                    float cur_mdeg = (float)sub * (360000.0f / axis_substeps_per_rev(i));
+                    evn_trajectory_start(&a->traj, cur_mdeg, tdeg * 1000.0f,
+                                         mvel * 1000.0f, macc * 1000.0f);
+                    evn_pid_reset(&a->pid);
+                    a->stat_done = false;
+                } else {
+                    hal_motor_coast(a->motor);
+                    a->traj.active = false;
+                    a->traj.done = true;
+                    a->stat_done = true;
+                }
             }
         }
 

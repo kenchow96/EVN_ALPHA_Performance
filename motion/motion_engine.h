@@ -44,6 +44,7 @@ typedef struct {
     volatile float    cmd_target_deg;
     volatile float    cmd_max_vel_degs;
     volatile float    cmd_max_accel;
+    uint32_t          cmd_consumed_seq;   /* Core 1: last cmd_seq acted upon */
 
     /* live status (Core 1 → Core 0) */
     volatile uint32_t stat_seq;
