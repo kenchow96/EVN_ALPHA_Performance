@@ -1,10 +1,12 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-01, end of tuning session):** Phase 7 motion-engine bring-up.
-> Board has console firmware flashed (listening for serial commands). Motors coasted.
-> **Hardware change: port 2 motor swapped to a NEW EV3 Large.** Next session: re-test M2
-> (should track like M1/M3/M4 now), confirm M1 EV3-Large per-model gains, then close Phase 7.
-> Tune live over `tools/tune_session.py` (holds port open) — see AGENTS.md.
+> **RESUME POINT (2026-09-01, end of tuning session):** Phase 7 motion-engine **TUNED**.
+> Board has console firmware flashed (listening for serial commands, non-blocking CDC).
+> **All 4 motors validated and tuned.** EV3 Large (M1/M2) converge to 0.12–0.04°,
+> EV3 Medium (M3/M4) to 0.000°. Full 4-axis +360/0 test: Core 1 1 kHz, period
+> 999–1005 µs, exec max 292 µs. Cruise duty has a benign ~90-tick quantization
+> limit-cycle ripple (position unaffected). Tune live over `tools/tune_session.py`
+> — see AGENTS.md. Next: Phase 8 drive base.
 
 Every assumption made during development that is **not** marked `[GROUND TRUTH]` in the specs and has **not** been independently verified against hardware. **Review and confirm/refute each before we build dependent phases on top.** Each entry: the assumption, where it's baked in, why we made it, and how to falsify it.
 
@@ -39,8 +41,8 @@ Legend: ✅ confirmed · ❓ needs confirmation · ⚠️ known-deviation (accep
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | C1 | PIO partition: **pio0 = encoders (SM0–3), pio1 = servos (SM0–3)** is a stable, non-conflicting split | `hal_encoder.c`, `hal_servo.c` | PLAN §6 risk mitigation; 4+4 = 8 SMs across 2 blocks | PIO instr budget audit when motion engine lands | ✅ verified working |
 | C2 | **PWM Slice 5 stays with Motor 2** (GP26/27); servos never claim hardware PWM | `hal_servo.c` | Spec §9.1 conflict resolution | Confirm Motor 2 PWM unaffected while servos run (done — both verified) | ✅ |
-| C3 | Encoder sign conventions: M1/M3/M4 confirmed correct (M4=B-lower sign-flip works; tracked 360.4°). **M2 (port 2) ran away negative regardless of sign/dir flips → hardware suspect; user swapped in a NEW motor on port 2** — re-test to confirm | `hal_encoder.c` `s_hw`/`s_sign` | Tuning runs | Full test: M2 should track 360 like M1/M3/M4 | ❓ re-test after motor swap |
-| C4 | Per-motor direction defaults (+1) are correct for M1/M3/M4; M2 pending after hardware fix | `hal_motor.c` `s_dir` | M1/M3/M4 verified | Per-motor HITL on M2 after swap | ❓ M2 pending |
+| C3 | Encoder sign conventions: M1/M3/M4 confirmed correct (M4=B-lower sign-flip works; tracked 360.4°). **M2 (port 2) runaway was a faulty motor — swapped in a NEW EV3 Large; re-tested and it tracks like the others (converges 0.12°).** | `hal_encoder.c` `s_hw`/`s_sign` | Tuning runs | Full test: M2 tracks like M1/M3/M4 | ✅ (new motor verified) |
+| C4 | Per-motor direction defaults (+1) are correct for all 4 (M2 confirmed after motor swap) | `hal_motor.c` `s_dir` | All 4 verified | Per-motor HITL on M2 after swap | ✅ all 4 |
 | C5 | UART **115200 8N1** is the right default for both serial headers | `hal_uart.c` | Spec §10 `EVN_UART_DEFAULT_BAUD` | Peripherals that need other bauds use the init arg | ✅ by API |
 
 ## D. Tooling / Process

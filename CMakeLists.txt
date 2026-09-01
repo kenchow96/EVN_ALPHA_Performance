@@ -82,8 +82,12 @@ target_include_directories(EVN_ALPHA_Performance PRIVATE
 pico_add_extra_outputs(EVN_ALPHA_Performance)
 
 # Spec §4: 200 MHz performance profile
+# TUSB: enlarge the CDC TX FIFO (default 64 B) so trace dumps stream at full
+# USB speed instead of drip-feeding through a tiny buffer.
 target_compile_definitions(EVN_ALPHA_Performance PRIVATE
     PICO_USE_FASTEST_SUPPORTED_CLOCK=1
+    CFG_TUD_CDC_TX_BUFSIZE=4096
+    CFG_TUD_CDC_RX_BUFSIZE=512
 )
 
 # EVN ALPHA flash: Winbond W25Q128JV 16 MB (override generic pico 2 MB).

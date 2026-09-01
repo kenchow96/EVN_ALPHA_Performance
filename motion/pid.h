@@ -35,6 +35,19 @@ typedef struct {
     /* battery feedforward compensation scale (0 = disabled) */
     float vbus_comp;    /* nominal voltage (mV) for duty scaling */
 
+    /* speed source: 1 = differentiated encoder (true), 0 = observer speed */
+    int   use_enc_speed;
+
+    /* deadband (mdeg): inside this position error the integrator decays and the
+     * velocity P term is dropped, so holding doesn't limit-cycle on encoder
+     * quantization noise. 0 = disabled. */
+    float deadzone_mdeg;
+
+    /* stiction-break floor: when |pos_err| exceeds the deadzone, guarantee the
+     * output duty reaches at least this magnitude in the correcting direction,
+     * so the position loop can always overcome static friction. 0 = disabled. */
+    float min_duty;
+
     /* state */
     float integrator;
     float prev_vel_meas;

@@ -54,6 +54,9 @@ typedef struct {
     volatile bool     stat_done;
     volatile int32_t  stat_target_mdeg;   /* debug: commanded target */
     volatile float    stat_total_time;    /* debug: computed profile duration */
+
+    bool              holding;   /* Core 1: keep regulating at target until coasted */
+    int32_t           prev_enc_mdeg;   /* Core 1: last encoder angle (for speed) */
 } evn_axis_t;
 
 /* Initialise the engine: claim motor+encoder masks and attach a standard
@@ -78,8 +81,26 @@ bool evn_motion_get_debug(uint8_t axis, float *target_deg, float *total_time_s);
 
 /* Runtime tuning (Core 0, e.g. from a serial console). Apply to all axes. */
 void evn_motion_set_gains(float kp_pos, float ki_pos, float kp_vel, float kd_vel, float kff_accel);
+/* Per-axis variant (tune one motor at a time). */
+void evn_motion_set_gains_axis(uint8_t axis, float kp_pos, float ki_pos,
+                               float kp_vel, float kd_vel, float kff_accel);
+/* Read an axis' current PID block (Core 0 debug/console use only). */
+const evn_pid_t *evn_motion_axis_pid(uint8_t axis);
 void evn_motion_set_observer(int32_t stall_speed_limit, int32_t stall_time_ms,
                              int32_t fb_negligible, int32_t fb_stall_ratio);
+/* Model-based feedforward (friction + back-EMF + accel → voltage) toggle. */
+void evn_motion_set_feedforward(bool on);
+bool evn_motion_feedforward_on(void);
+
+/* --- 1 kHz per-axis trace (tuning): record ref/meas/duty every tick --- */
+#define EVN_TRACE_MAX 2500   /* rows × 28 B = 70 KB static */
+void     evn_motion_trace_arm(uint8_t axis);   /* clear + start recording */
+void     evn_motion_trace_stop(void);          /* stop recording (keep data) */
+bool     evn_motion_trace_info(uint8_t *axis, uint32_t *count, bool *armed);
+bool     evn_motion_trace_row(uint32_t i, int32_t *t_ms, int32_t *ref_mdeg,
+                              int32_t *enc_mdeg, int32_t *hat_mdeg,
+                              int32_t *vref_mdegs, int32_t *what_mdegs,
+                              int32_t *duty_milli);
 
 /* The Core 1 tick — call from evn_core1_tick() every 1 ms. */
 void __not_in_flash_func(evn_motion_tick)(void);

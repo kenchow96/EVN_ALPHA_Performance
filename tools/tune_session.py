@@ -45,7 +45,9 @@ def open_board(baud=115200, timeout_s=30):
         port = find_port()
         if port:
             try:
-                s = serial.Serial(port, baud, timeout=0.1)
+                # write_timeout=0 -> writes never block (drop if TX busy), so a
+                # saturated RX path can never wedge the host with a WriteTimeout
+                s = serial.Serial(port, baud, timeout=0.02, write_timeout=0)
                 time.sleep(1.0)
                 return s
             except (serial.SerialException, OSError):
@@ -55,10 +57,15 @@ def open_board(baud=115200, timeout_s=30):
     return None
 
 def drain(ser, out_f, seconds):
-    """Read for `seconds`, appending to transcript and echoing."""
+    """Read for `seconds`, appending to transcript and echoing. Small reads +
+    short timeout keep the device RX polled so the host never times out a write
+    mid-dump (which was the wedge source)."""
     t0 = time.time()
     while time.time() - t0 < seconds:
-        chunk = ser.read(4096)
+        try:
+            chunk = ser.read(1024)
+        except serial.SerialException:
+            raise   # propagate so the session can exit cleanly
         if chunk:
             txt = chunk.decode("utf-8", "replace")
             out_f.write(txt)
@@ -98,10 +105,24 @@ def main():
             processed += 1
             if cmd.upper() == "QUIT":
                 break
-            print(f"[session] >> {cmd}", file=sys.stderr)
-            ser.write(cmd.encode() + b"\n")
-            # capture the response for a bounded window (enough for a move + settle)
-            drain(ser, out_f, 3.0)
+            # optional drain-time prefix: "@12 d" -> capture for 12 s
+            drain_s = 3.0
+            if cmd.startswith("@"):
+                head, _, rest = cmd.partition(" ")
+                try:
+                    drain_s = float(head[1:])
+                    cmd = rest.strip()
+                except ValueError:
+                    pass
+            print(f"[session] >> {cmd} (drain {drain_s:g}s)", file=sys.stderr)
+            try:
+                ser.write(cmd.encode() + b"\n")
+                ser.flush()
+                # capture the response for a bounded window (enough for a move + settle)
+                drain(ser, out_f, drain_s)
+            except (serial.SerialException, serial.SerialTimeoutException, OSError) as e:
+                print(f"[session] serial error, ending session: {e}", file=sys.stderr)
+                break
             done_f.write(f"DONE {cmd}\n")
             done_f.flush()
         else:

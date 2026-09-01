@@ -160,7 +160,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | 5 — Battery telemetry | ✅ Done | 2026-09-01 | `f556bc8` |
 | 6 — PIO servos | ✅ Done | 2026-09-01 | `a16a5d3` |
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
-| 7 — Motion engine | 🔶 Bring-up (M3/M4 ✅ tracking; CPR ✅; M2 motor swapped — re-test; M1 EV3-L gains to confirm) | 2026-09-01 | `2622ae8` |
+| 7 — Motion engine | ✅ Done (all 4 tuned & validated; see RESULTS) | 2026-09-01 | see commit |
 | 8 — Drive base | ⬜ Not started | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 
