@@ -340,6 +340,12 @@ void evn_motion_set_endpoint_velocity_gain(uint8_t axis, float kp_vel) {
     s_axis[axis].pid.endpoint_kp_vel = kp_vel;
 }
 
+void evn_motion_set_startup_ramp_ms(uint8_t axis, uint16_t duration_ms) {
+    if (axis > 3 || !(s_mask & (1u << axis)) ||
+        duration_ms < 50u || duration_ms > 2000u) return;
+    s_axis[axis].pid.startup_ramp_ticks = duration_ms;
+}
+
 const evn_pid_t *evn_motion_axis_pid(uint8_t axis) {
     if (axis > 3) return NULL;
     return &s_axis[axis].pid;

@@ -55,6 +55,7 @@ typedef struct {
     float min_duty;
     float start_duty;
     float startup_release_speed_mdegs;
+    uint16_t startup_ramp_ticks;
     bool  motion_stuck;
 
     /* state */
