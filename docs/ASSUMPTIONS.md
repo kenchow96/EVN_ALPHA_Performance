@@ -1,24 +1,25 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, autonomous run):** Checkpoints `909ac01` and
-> `58c368c` retire CDC as the tuning data plane and add a multicore-safe flash
-> journal. The current build also contains the autonomous 16-case Motor 3
-> window sweep and `tools/decode_tuning_flash.py`; it builds cleanly and its
-> C/Python schema plus CRC path pass a synthetic 200 Hz end-to-end test. The
-> user placed the powered board in BOOTSEL with Motor 3 clear and authorized
-> unattended motion. First extraction verified the UF2 and three 530-row trace
-> CRCs; case 4 safely stopped with zero rows after Core 1 published only one
-> tick. Root cause: repeated flash lockouts quiesced XIP correctly but did not
-> explicitly quiesce/re-arm the Core 1 hardware alarm. The current build pauses
-> that alarm around whole flash transactions while keeping the SRAM lockout
-> victim responsive, then resumes from the failed case-4 slot. Each case
-> erases its fixed slot while coasted, requires a
+> **RESUME POINT (2026-09-02, trajectory A/B):** Commits through `6618d0f`
+> establish USB-independent tuning. The resumed autonomous run extracted and
+> verified **16/16 commit CRCs and 16/16 530-row traces**. Cases after the timer
+> repair held Core 1 at 1000-1000 us with zero misses; RT-04 is closed. Best
+> window setting was `W40/K5` (10/12 both directions), missing only physical
+> acceleration and max tracking error. Three later positive runs correctly
+> exposed intermittent non-breakaway at the regressed 0.55 start duty. The
+> current build restores the established 0.65 ramp and adds a per-command
+> quintic minimum-jerk profile. Offline gates pass: 1.201406 s duration, exact
+> endpoint velocity/acceleration zero, 140.46 deg/s peak, 360 deg/s2 peak,
+> clean build/diagnostics, and synthetic flash-schema decode. Next deploy run
+> ID `0x26090202`: four interleaved repeats of trapezoid vs minimum jerk, both
+> directions, with identical W40/K5 control settings. Each case erases its
+> fixed slot while coasted, requires a
 > battery sample age <=250 ms (pack >=6.5 V, cells >=3.0 V), runs with the 4 s
 > Core 1 auto-coast, logs ~530 trace rows, aborts on any missed RT tick, writes
 > trace pages under lockout, and commits the CRC header last. Completion enters
 > ROM BOOTSEL. Extract and decode exactly:
-> `picotool save -r 0x10F00000 0x10FF0000 bench/results/autonomous_window_20260902.uf2 -t uf2 -v`
-> then `python tools/decode_tuning_flash.py bench/results/autonomous_window_20260902.uf2 --output bench/results/autonomous_window_20260902`.
+> `picotool save -r 0x10F00000 0x10FF0000 bench/results/autonomous_trajectory_20260902.uf2 -t uf2 -v`
+> then `python tools/decode_tuning_flash.py bench/results/autonomous_trajectory_20260902.uf2 --output bench/results/autonomous_trajectory_20260902`.
 > Do not resume CDC sweeping. Phase 8 remains blocked until all four axes pass
 > `tools/motion_metrics.py` and beat the measured baseline.
 

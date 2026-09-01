@@ -25,8 +25,8 @@
 #define TUNING_CORE_PAUSE_TIMEOUT_US 10000u
 
 typedef struct {
-    uint8_t window;
-    float kv;
+    evn_trajectory_type_t trajectory_type;
+    uint8_t repeat_index;
     float delta;
 } tuning_case_t;
 
@@ -45,14 +45,22 @@ typedef enum {
 } auto_state_t;
 
 static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
-    {20, 5.0e-7f,  90.0f}, {20, 5.0e-7f, -90.0f},
-    {20, 1.0e-6f,  90.0f}, {20, 1.0e-6f, -90.0f},
-    {30, 5.0e-7f,  90.0f}, {30, 5.0e-7f, -90.0f},
-    {30, 1.0e-6f,  90.0f}, {30, 1.0e-6f, -90.0f},
-    {40, 5.0e-7f,  90.0f}, {40, 5.0e-7f, -90.0f},
-    {40, 1.0e-6f,  90.0f}, {40, 1.0e-6f, -90.0f},
-    {60, 5.0e-7f,  90.0f}, {60, 5.0e-7f, -90.0f},
-    {60, 1.0e-6f,  90.0f}, {60, 1.0e-6f, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID,   0,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID,   0, -90.0f},
+    {EVN_TRAJECTORY_MINIMUM_JERK, 0,  90.0f},
+    {EVN_TRAJECTORY_MINIMUM_JERK, 0, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID,   1,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID,   1, -90.0f},
+    {EVN_TRAJECTORY_MINIMUM_JERK, 1,  90.0f},
+    {EVN_TRAJECTORY_MINIMUM_JERK, 1, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID,   2,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID,   2, -90.0f},
+    {EVN_TRAJECTORY_MINIMUM_JERK, 2,  90.0f},
+    {EVN_TRAJECTORY_MINIMUM_JERK, 2, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID,   3,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID,   3, -90.0f},
+    {EVN_TRAJECTORY_MINIMUM_JERK, 3,  90.0f},
+    {EVN_TRAJECTORY_MINIMUM_JERK, 3, -90.0f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;
@@ -87,16 +95,18 @@ static void prepare_header(evn_tuning_status_t status) {
     s_header.accel_mdegs2 = 900000u;
     s_header.kp = 1.2e-4f;
     s_header.ki = 8.0e-7f;
-    s_header.kv = test->kv;
-    s_header.start_duty = 0.55f;
+    s_header.kv = 5.0e-7f;
+    s_header.start_duty = 0.65f;
     s_header.hold_duty = 0.55f;
     s_header.speed_source = 1u;
-    s_header.speed_window = test->window;
+    s_header.speed_window = 40u;
     s_header.speed_alpha = 0.05f;
     s_header.vel_scale = 0.85f;
     s_header.accel_scale = 0.40f;
     s_header.sample_div = EVN_TRACE_SAMPLE_DIV;
     s_header.pwm_hz = hal_motor_get_pwm_freq();
+    s_header.trajectory_type = test->trajectory_type;
+    s_header.repeat_index = test->repeat_index;
 }
 
 static void snapshot_battery(uint32_t age_us) {
@@ -254,12 +264,13 @@ void autonomous_tuning_service(void) {
     case AUTO_RUN_MOTION: {
         const tuning_case_t *test = &s_cases[s_case_index];
         evn_motion_set_velocity_source(TUNING_AXIS, 1);
-        evn_motion_set_speed_window(TUNING_AXIS, test->window);
+        evn_motion_set_speed_window(TUNING_AXIS, 40);
         evn_motion_set_edge_speed_alpha(TUNING_AXIS, 0.05f);
         evn_motion_set_profile_scale(TUNING_AXIS, 0.85f, 0.40f);
+        evn_motion_set_trajectory_type(TUNING_AXIS, test->trajectory_type);
         evn_motion_set_gains_axis(TUNING_AXIS, 1.2e-4f, 8.0e-7f,
-                                  test->kv, 0.0f, 0.0f);
-        evn_motion_set_stiction(TUNING_AXIS, 0.55f, 0.55f);
+                      5.0e-7f, 0.0f, 0.0f);
+        evn_motion_set_stiction(TUNING_AXIS, 0.65f, 0.55f);
         float angle, speed;
         bool stalled, done;
         evn_motion_get_state(TUNING_AXIS, &angle, &speed, &stalled, &done);

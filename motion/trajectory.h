@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* ==========================================================================
- * EVN ALPHA — Trapezoidal trajectory profiler.
+/* ========================================================================== 
+ * EVN ALPHA — deterministic point-to-point trajectory profiler.
  *
  * Generates a reference state [ position, velocity, acceleration ] each tick
  * for a point-to-point move with trapezoidal velocity profile (finite
@@ -18,6 +18,11 @@
  * Integer/float hybrid: positions & velocities as float for smoothness of the
  * profile; cheap enough at 1 kHz on Cortex-M0+ for 4 axes.
  * ========================================================================== */
+
+typedef enum {
+    EVN_TRAJECTORY_TRAPEZOID = 0,
+    EVN_TRAJECTORY_MINIMUM_JERK = 1,
+} evn_trajectory_type_t;
 
 typedef struct {
     /* constraints */
@@ -37,6 +42,7 @@ typedef struct {
 
     /* progress */
     float t;            /* elapsed seconds since move start */
+    evn_trajectory_type_t type;
     bool  active;
     bool  done;
 } evn_trajectory_t;
@@ -45,6 +51,9 @@ typedef struct {
  * max_vel / max_accel. Computes the profile timing up front. */
 void evn_trajectory_start(evn_trajectory_t *tr, float start, float target,
                           float max_vel, float max_accel);
+void evn_trajectory_start_type(evn_trajectory_t *tr, float start, float target,
+                               float max_vel, float max_accel,
+                               evn_trajectory_type_t type);
 
 /* Evaluate the reference at the current internal time and advance by dt.
  * Outputs position/velocity/acceleration references. */

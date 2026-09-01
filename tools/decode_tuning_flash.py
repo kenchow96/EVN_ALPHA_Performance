@@ -18,7 +18,8 @@ SUPERBLOCK_SIZE = 0x1000
 SLOT_SIZE = 0xE000
 PAGE_SIZE = 256
 CASE_COUNT = 16
-RUN_ID = 0x26090201
+WINDOW_RUN_ID = 0x26090201
+TRAJECTORY_RUN_ID = 0x26090202
 SCHEMA_VERSION = 1
 SUPER_MAGIC = 0x31535645
 RECORD_MAGIC = 0x31525645
@@ -100,15 +101,16 @@ def validate_superblock(image):
     expected = read_u32(page, 6)
     actual = crc_with_zeroed_word(page, 6)
     fields = tuple(read_u32(page, word) for word in range(6))
-    wanted = (SUPER_MAGIC, SCHEMA_VERSION, RUN_ID, CASE_COUNT,
-              0x00F00000, SLOT_SIZE)
-    if fields != wanted or expected != actual:
+    wanted = (SUPER_MAGIC, SCHEMA_VERSION, CASE_COUNT, 0x00F00000, SLOT_SIZE)
+    comparable = (fields[0], fields[1], fields[3], fields[4], fields[5])
+    if comparable != wanted or expected != actual:
         raise ValueError(
             f"invalid tuning superblock fields={fields!r} "
             f"crc=0x{expected:08x}/0x{actual:08x}")
+    return fields[2]
 
 
-def decode_header(page, case_index):
+def decode_header(page, case_index, run_id):
     expected = read_u32(page, 7)
     actual = crc_with_zeroed_word(page, 7)
     if read_u32(page, 0) != RECORD_MAGIC or expected != actual:
@@ -152,9 +154,11 @@ def decode_header(page, case_index):
         "sample_div": read_u32(page, 37),
         "pwm_hz": read_u32(page, 38),
         "duration_us": read_u32(page, 39),
+        "trajectory_type": read_u32(page, 40),
+        "repeat_index": read_u32(page, 41),
     }
     if (header["schema_version"] != SCHEMA_VERSION or
-            header["run_id"] != RUN_ID or
+            header["run_id"] != run_id or
             header["case_index"] != case_index):
         raise ValueError(f"case {case_index}: valid CRC but incompatible header")
     max_rows = (SLOT_SIZE - PAGE_SIZE) // 32
@@ -164,6 +168,10 @@ def decode_header(page, case_index):
 
 
 def case_name(header):
+    if header["run_id"] == TRAJECTORY_RUN_ID:
+        prefix = "J" if header["trajectory_type"] == 1 else "T"
+        direction = "pos" if header["delta_mdeg"] >= 0 else "neg"
+        return f"{prefix}{header['repeat_index']}_{direction}"
     gain = round(header["kv"] * 1e7)
     direction = "pos" if header["delta_mdeg"] >= 0 else "neg"
     return f"W{header['speed_window']}_K{gain}_{direction}"
@@ -236,13 +244,13 @@ def score_metrics(metrics):
 
 
 def decode(image, output_dir):
-    validate_superblock(image)
+    run_id = validate_superblock(image)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     results = []
     for index in range(CASE_COUNT):
         slot = SUPERBLOCK_SIZE + index * SLOT_SIZE
-        header = decode_header(image[slot:slot + PAGE_SIZE], index)
+        header = decode_header(image[slot:slot + PAGE_SIZE], index, run_id)
         if header is None:
             continue
         name = case_name(header)
@@ -270,6 +278,8 @@ def decode(image, output_dir):
                     "speed_alpha": header["speed_alpha"],
                     "vel_scale": header["vel_scale"],
                     "accel_scale": header["accel_scale"],
+                    "trajectory_type": header["trajectory_type"],
+                    "repeat_index": header["repeat_index"],
                 },
                 "battery_pre_run": {
                     "pack_mv": header["battery_pack_mv"],

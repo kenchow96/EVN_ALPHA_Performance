@@ -121,6 +121,7 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         a->edge_speed_alpha = 0.05f;
         a->profile_vel_scale = 1.0f;
         a->profile_accel_scale = 1.0f;
+        a->trajectory_type = EVN_TRAJECTORY_TRAPEZOID;
         a->traj.active = false;
         a->traj.done = true;
         a->cmd_seq = 0;
@@ -148,6 +149,7 @@ void evn_motion_move_to_test(uint8_t axis, float target_deg,
     a->cmd_max_accel   = max_accel_degs2;
     a->cmd_vel_scale   = a->profile_vel_scale;
     a->cmd_accel_scale = a->profile_accel_scale;
+    a->cmd_trajectory_type = a->trajectory_type;
     a->cmd_auto_coast_ms = auto_coast_ms;
     a->cmd_active      = true;
     __dmb();
@@ -295,6 +297,13 @@ void evn_motion_set_profile_scale(uint8_t axis, float vel_scale,
     s_axis[axis].profile_accel_scale = accel_scale;
 }
 
+void evn_motion_set_trajectory_type(uint8_t axis, evn_trajectory_type_t type) {
+    if (axis > 3 || !(s_mask & (1u << axis))) return;
+    if (type != EVN_TRAJECTORY_TRAPEZOID &&
+        type != EVN_TRAJECTORY_MINIMUM_JERK) return;
+    s_axis[axis].trajectory_type = type;
+}
+
 const evn_pid_t *evn_motion_axis_pid(uint8_t axis) {
     if (axis > 3) return NULL;
     return &s_axis[axis].pid;
@@ -336,6 +345,7 @@ void __not_in_flash_func(evn_motion_tick)(void) {
             float macc   = a->cmd_max_accel;
             float vel_scale = a->cmd_vel_scale;
             float accel_scale = a->cmd_accel_scale;
+            evn_trajectory_type_t trajectory_type = a->cmd_trajectory_type;
             uint32_t auto_coast_ms = a->cmd_auto_coast_ms;
             __dmb();
             if (a->cmd_seq == c0) {          /* stable read */
@@ -347,9 +357,10 @@ void __not_in_flash_func(evn_motion_tick)(void) {
                      * (clears drift accumulated while coasted) */
                     evn_observer_init(&a->observer, a->model, &a->observer.settings,
                                       (int32_t)cur_mdeg);
-                    evn_trajectory_start(&a->traj, cur_mdeg, tdeg * 1000.0f,
-                                         mvel * vel_scale * 1000.0f,
-                                         macc * accel_scale * 1000.0f);
+                    evn_trajectory_start_type(&a->traj, cur_mdeg, tdeg * 1000.0f,
+                                              mvel * vel_scale * 1000.0f,
+                                              macc * accel_scale * 1000.0f,
+                                              trajectory_type);
                     evn_pid_reset(&a->pid, cur_mdeg);
                     a->last_applied_mv = 0;
                     a->observer_voltage_sum_mv = 0;
