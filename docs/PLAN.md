@@ -143,7 +143,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | Phase | State | Verified On | Commit |
 | :--- | :--- | :--- | :--- |
 | 0 — Foundation | ✅ Done | 2026-09-01 | `ea1bddc` |
-| 1 — Measurement & Core 1 skeleton | ⬜ Next | — | — |
+| 1 — Measurement & Core 1 skeleton | ✅ Done | 2026-09-01 | see commit |
 | 2 — Motor PWM | ✅ Done | 2026-09-01 | `4b898f3` |
 | 3 — PIO encoders | ✅ Done | 2026-09-01 | `4b898f3` |
 | 4 — I2C mux | ✅ Done | 2026-09-01 | `a63422a` |

@@ -5,46 +5,42 @@
 #include <stdbool.h>
 
 /* ==========================================================================
- * bench_cycles — DWT CYCCNT cycle-count measurement harness.
+ * bench_cycles — high-resolution timing harness for RP2040.
  *
- * The RP2040's ARMv6-M DWT cycle counter runs at sysclk (200 MHz → 5 ns/count),
- * giving 5 ns resolution for jitter and execution-cost measurement. Zero heap,
- * safe from either core. Wraps every ~21 s; unsigned subtraction is wrap-safe.
+ * IMPORTANT (hardware fact): the RP2040's Cortex-M0+ does NOT implement the
+ * optional DWT CYCCNT register — there is no on-chip cycle counter. The
+ * highest-resolution timer available is the 64-bit microsecond TIMER
+ * (time_us_64(), 1 µs resolution), which the SDK exposes and which runs from
+ * a dedicated hardware timer (TIMER @ 0x40054000).
  *
- * The SDK doesn't ship a DWT struct header, so we use the fixed ARMv6-M
- * addresses directly (architecture-defined, not board-specific).
+ * Because the jitter target is < 1 µs, we measure loop period in microseconds
+ * with time_us_64() (and time_us_32() for short deltas). A period reading of
+ * exactly 1000 µs every tick = jitter < 1 µs (the resolution floor). This is
+ * the validated RP2040 approach.
  *
- *   bench_cycles_init();
- *   uint32_t t0 = bench_cycles_now();
- *   ... code under test ...
- *   uint32_t cycles = bench_cycles_now() - t0;
+ *   bench_init();
+ *   uint64_t t0 = bench_now_us();
+ *   ... work ...
+ *   uint32_t us = (uint32_t)(bench_now_us() - t0);
  * ========================================================================== */
 
-/* ARMv6-M DWT registers (fixed addresses). */
-#define EVN_DEMCR      (*(volatile uint32_t *)0xE000EDFCu)  /* Debug Exception & Monitor Ctrl */
-#define EVN_DWT_CTRL   (*(volatile uint32_t *)0xE0001000u)  /* DWT Control */
-#define EVN_DWT_CYCCNT (*(volatile uint32_t *)0xE0001004u)  /* Cycle counter */
-#define EVN_DEMCR_TRCENA      (1u << 24)
-#define EVN_DWT_CTRL_CYCCNTENA (1u << 0)
+#include "pico/stdlib.h"   /* time_us_64 / time_us_32 */
 
-/* Enable the cycle counter. Idempotent. */
-void bench_cycles_init(void);
+void bench_init(void);
 
-/* cycles -> microseconds (uses measured sysclk). */
-uint32_t bench_cycles_to_us(uint32_t cycles);
+static inline uint64_t bench_now_us(void)   { return time_us_64(); }
+static inline uint32_t bench_now_us32(void) { return time_us_32(); }
 
-/* Running statistics for a periodic task's period or execution cost. */
+/* Running statistics (units: microseconds). */
 typedef struct {
-    uint32_t min_cycles;
-    uint32_t max_cycles;
-    uint64_t total_cycles;
+    uint32_t min_us;
+    uint32_t max_us;
+    uint64_t total_us;
     uint32_t samples;
 } bench_stat_t;
 
 void     bench_stat_reset(bench_stat_t *s);
-void     bench_stat_add(bench_stat_t *s, uint32_t cycles);
+void     bench_stat_add(bench_stat_t *s, uint32_t us);
 uint32_t bench_stat_mean(const bench_stat_t *s);   /* 0 if no samples */
-
-static inline uint32_t bench_cycles_now(void) { return EVN_DWT_CYCCNT; }
 
 #endif /* BENCH_CYCLES_H */

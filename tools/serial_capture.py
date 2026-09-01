@@ -51,13 +51,24 @@ def main():
     t0 = time.time()
     if args.send:
         ser.write(args.send.encode() + b"\n")
+    # stdout may be a legacy-codepage console (cp1252) that can't encode UTF-8
+    # glyphs (e.g. '→'). Write bytes through the buffer, falling back to
+    # ASCII-safe replacement so a stray glyph never kills the capture.
+    out_stream = getattr(sys.stdout, "buffer", None)
     while time.time() - t0 < args.time:
         chunk = ser.read(4096)
         if chunk:
             txt = chunk.decode("utf-8", errors="replace")
             buf.append(txt)
-            sys.stdout.write(txt)
-            sys.stdout.flush()
+            try:
+                if out_stream is not None:
+                    out_stream.write(chunk)
+                    out_stream.flush()
+                else:
+                    sys.stdout.write(txt.encode("ascii", "replace").decode())
+                    sys.stdout.flush()
+            except (UnicodeEncodeError, OSError):
+                pass  # never let a console encoding issue abort capture
     ser.close()
 
     out = "".join(buf)

@@ -19,6 +19,7 @@
 
 static volatile bool     s_tick_flag = false;
 static evn_core1_status_t s_status;
+static volatile bool     s_reset_req = false;   /* Core 0 → Core 1 reset request */
 
 /* Alarm ISR (runs on Core 1, the core that armed it). Re-arm + flag only. */
 static int64_t __not_in_flash_func(core1_alarm_isr)(alarm_id_t id, void *ud) {
@@ -36,47 +37,62 @@ void __not_in_flash_func(evn_core1_tick)(void) {
 }
 
 static void __not_in_flash_func(core1_main)(void) {
-    bench_cycles_init();                 /* enable DWT on Core 1 */
+    /* NOTE: bench_cycles_init() is done ONCE on Core 0 (CYCCNT is a shared
+     * resource). Calling it again here would reset the counter mid-run and
+     * corrupt period measurement. */
 
-    /* stats init */
+    const uint32_t target_us = EVN_CORE1_PERIOD_US;   /* 1000 µs */
+
+    /* stats owned exclusively by Core 1; init here */
     s_status.seq = 0;
     s_status.tick_count = 0;
     s_status.period_min_us = 0xFFFFFFFFu;
     s_status.period_max_us = 0;
+    s_status.exec_max_us = 0;
+    s_status.period_jitter_us = 0;
+    s_status.tick_rate_milli_hz = 0;
 
-    /* prime: schedule first tick 1 ms out */
-    uint32_t last_cyc = bench_cycles_now();
+    /* prime: discard the first (arbitrary) period */
+    bool have_period = false;
+    uint64_t last_us = bench_now_us();
     add_alarm_in_us(EVN_CORE1_PERIOD_US, core1_alarm_isr, NULL, true);
-
-    const uint32_t target_cycles = 200000u;   /* 200 MHz / 1 kHz */
 
     while (true) {
         if (!s_tick_flag) { tight_loop_contents(); continue; }
         s_tick_flag = false;
 
-        uint32_t now_cyc = bench_cycles_now();
-        uint32_t period  = now_cyc - last_cyc;
-        last_cyc = now_cyc;
+        /* Core-1-owned stats reset (requested from Core 0) */
+        if (s_reset_req) {
+            s_reset_req = false;
+            s_status.period_min_us = 0xFFFFFFFFu;
+            s_status.period_max_us = 0;
+            s_status.exec_max_us = 0;
+            s_status.tick_count = 0;
+            have_period = false;
+        }
 
-        uint32_t t0 = bench_cycles_now();
+        uint64_t now_us = bench_now_us();
+        uint32_t period = (uint32_t)(now_us - last_us);
+        last_us = now_us;
+
+        uint32_t t0 = bench_now_us32();
         evn_core1_tick();
-        uint32_t exec = bench_cycles_now() - t0;
+        uint32_t exec = bench_now_us32() - t0;
 
         /* publish (seqlock: odd = writing) */
         s_status.seq++;
         __dmb();
         s_status.tick_count++;
-        int32_t jitter = (int32_t)period - (int32_t)target_cycles;
-        s_status.period_jitter_us = jitter / 200;         /* cycles → µs */
-        uint32_t per_us = period / 200u;
-        if (per_us < s_status.period_min_us) s_status.period_min_us = per_us;
-        if (per_us > s_status.period_max_us) s_status.period_max_us = per_us;
-        if (exec > s_status.exec_max_cycles) s_status.exec_max_cycles = exec;
+        if (have_period && period > 0) {
+            s_status.period_jitter_us = (int32_t)period - (int32_t)target_us;
+            if (period < s_status.period_min_us) s_status.period_min_us = period;
+            if (period > s_status.period_max_us) s_status.period_max_us = period;
+            if (exec > s_status.exec_max_us) s_status.exec_max_us = exec;
+            s_status.tick_rate_milli_hz = 1000000u / period;   /* mHz */
+        }
         __dmb();
         s_status.seq++;
-
-        /* recompute measured rate each tick: 1e9 / period_cycles milli-Hz */
-        if (period) s_status.tick_rate_milli_hz = 1000000000u / period;
+        have_period = true;
     }
 }
 
@@ -98,8 +114,5 @@ bool evn_core1_get_status(evn_core1_status_t *out) {
 }
 
 void evn_core1_reset_stats(void) {
-    s_status.period_min_us = 0xFFFFFFFFu;
-    s_status.period_max_us = 0;
-    s_status.exec_max_cycles = 0;
-    s_status.tick_count = 0;
+    s_reset_req = true;   /* consumed on the Core 1 loop (single owner) */
 }

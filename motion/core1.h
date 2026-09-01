@@ -25,9 +25,9 @@ typedef struct {
     volatile uint32_t seq;
     volatile uint32_t tick_count;        /* total 1 kHz ticks */
     volatile int32_t  period_jitter_us;  /* last tick: actual - target (µs) */
-    volatile uint32_t period_min_us;     /* min observed period */
-    volatile uint32_t period_max_us;     /* max observed period (jitter peak) */
-    volatile uint32_t exec_max_cycles;   /* worst-case loop-body cost */
+    volatile uint32_t period_min_us;     /* min observed period (µs) */
+    volatile uint32_t period_max_us;     /* max observed period (µs, jitter peak) */
+    volatile uint32_t exec_max_us;       /* worst-case loop-body cost (µs) */
     volatile uint32_t tick_rate_milli_hz;/* measured loop rate ×1000 */
 } evn_core1_status_t;
 

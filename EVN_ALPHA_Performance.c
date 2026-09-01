@@ -56,14 +56,13 @@ static void motor_test_finish(void) {
         printf("Battery: %.3f V | Cell1: %.3f V | Cell2: %.3f V\n",
                b.vbatt_mv / 1000.0f, b.vcell1_mv / 1000.0f, b.vcell2_mv / 1000.0f);
     }
-    // Core 1 loop timing report (proves the <1 µs jitter target)
+    // Core 1 loop timing report (proves the <1 µs jitter target at µs resolution)
     evn_core1_status_t cs;
     if (evn_core1_get_status(&cs)) {
         printf("Core1 loop: %u ticks, period min=%u us max=%u us (target 1000),\n",
                (unsigned)cs.tick_count, (unsigned)cs.period_min_us, (unsigned)cs.period_max_us);
-        printf("          last jitter=%ld us, exec max=%u cyc (%u us), rate=%u mHz\n",
-               (long)cs.period_jitter_us, (unsigned)cs.exec_max_cycles,
-               (unsigned)bench_cycles_to_us(cs.exec_max_cycles), (unsigned)cs.tick_rate_milli_hz);
+        printf("          last jitter=%ld us, exec max=%u us, rate=%u mHz\n",
+               (long)cs.period_jitter_us, (unsigned)cs.exec_max_us, (unsigned)cs.tick_rate_milli_hz);
     }
     printf("(motors coasted — take multimeter reading now)\n");
 }
@@ -159,6 +158,13 @@ int main()
 {
     stdio_init_all();
 
+    // Wait (bounded, 3 s) for the USB console to attach so the boot banner and
+    // diagnostics aren't lost before the host connects.
+    {
+        uint64_t deadline = time_us_64() + 3000000ULL;
+        while (!stdio_usb_connected() && time_us_64() < deadline) tight_loop_contents();
+    }
+
     hal_led_init();
     hal_button_init();
 
@@ -182,7 +188,14 @@ int main()
     bool enc = hal_encoder_init();
     printf("hal_encoder_init: %s (4ch PIO substep @ pio0)\n", enc ? "OK" : "FAIL");
 
-    bench_cycles_init();
+    bench_init();
+    // µs-timer sanity: confirm time_us_64 advances (RP2040 has no DWT CYCCNT).
+    uint64_t t0 = bench_now_us();
+    busy_wait_us(100);
+    uint64_t t1 = bench_now_us();
+    printf("bench: µs timer %s (delta over 100us = %llu)\n",
+           (t1 > t0) ? "RUNNING" : "FROZEN", (unsigned long long)(t1 - t0));
+
     evn_core1_start();   // Core 1 now owns the 1 kHz encoder service
     printf("core1_start: 1 kHz real-time loop launched (jitter stats on finish)\n");
 
