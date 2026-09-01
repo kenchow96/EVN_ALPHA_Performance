@@ -1,16 +1,16 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, edge watchdog):** Commits through `0a4159f` and
-> five autonomous datasets are verified. Keep startup-floor release at 10
-> deg/s: versus zero it reduced mean acceleration 13%, jerk 31%, max error 23%,
-> ripple 44%, and peak current 19%; 40 deg/s overdrives. It eliminated the
-> 130 ms weak-first-edge gap but later static captures remain. Next use the PIO
-> transition timestamp as an edge watchdog: while |vref|>5 deg/s, if no edge
-> arrives within two expected 0.5-deg edge intervals plus margin, pause (never
-> rewind) trajectory time and invoke the existing slow stiction ramp until an
-> edge returns. A/B four repeats each direction; falsify unless max error falls
-> without acceleration/overshoot regression. Keep W40/K5, 0.65/0.55 stiction,
-> governor, trapezoid, 0.5x friction, 10 deg/s release. Each case erases its fixed
+> **RESUME POINT (2026-09-02, endpoint damping):** Commits through `89a8c0e`
+> and six autonomous datasets are verified. Keep the PIO edge watchdog
+> provisionally: enabled tracking passed 7/8 cases and three of four positive
+> runs reached 11/12, with best score 2.5095; one mechanical-state pair still
+> regressed. Remaining negative failure is exact: at 1 deg endpoint error the
+> 0.55 approach floor breaks static friction, then base kv=5e-7 provides too
+> little braking and inertia carries 1.5 deg past target. Next sweep an
+> endpoint-only velocity gain 0.5e-6/2e-6/4e-6/8e-6 (two repeats, both
+> directions), active only when |vref|<5 deg/s and |position error|<5 deg.
+> Keep W40/K5, 0.65/0.55 stiction, governor, trapezoid, 0.5x friction, 10 deg/s
+> release, and edge watchdog. Each case erases its fixed
 > slot while coasted, requires a battery sample age <=250 ms (pack >=6.5 V,
 > cells >=3.0 V), runs with the 4 s
 > Core 1 auto-coast, logs ~530 trace rows, aborts on any missed RT tick, writes

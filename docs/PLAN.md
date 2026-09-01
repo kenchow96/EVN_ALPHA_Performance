@@ -166,7 +166,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | 5 — Battery telemetry | ✅ Done | 2026-09-01 | `f556bc8` |
 | 6 — PIO servos | ✅ Done | 2026-09-01 | `a16a5d3` |
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
-| 7 — Motion engine | 🟠 Audit repair HITL in progress — Core 1 timing, battery gates, 12 metrics, and autonomous flash extraction are verified. Keep the startup governor, Pybricks 0.5x friction, and 10 deg/s floor release; five autonomous datasets now include multiple 11/12 cases. Remaining error comes from later static captures while trajectory time advances. Next A/B uses PIO edge timestamps to pause the reference after two missing expected edges, then restarts through the bounded stiction ramp. Follow [ASSUMPTIONS.md](ASSUMPTIONS.md). **Phase 8 remains blocked** until all four motors pass the battery-gated profile suite and beat baseline. | 2026-09-02 | through `0a4159f` + release data |
+| 7 — Motion engine | 🟠 Audit repair HITL in progress — Core 1 timing, battery gates, 12 metrics, and autonomous flash extraction are verified. The PIO edge watchdog makes tracking pass in 7/8 enabled cases and yields three 11/12 positive runs, but endpoint correction still overshoots negative moves by 1.5 deg. Next sweep raises velocity damping only inside the final 5 deg/5 deg/s reference region, preserving the smooth `5e-7` cruise gain. Follow [ASSUMPTIONS.md](ASSUMPTIONS.md). **Phase 8 remains blocked** until all four motors pass the battery-gated profile suite and beat baseline. | 2026-09-02 | through `89a8c0e` + edge-watchdog data |
 | 8 — Drive base | ⬜ Not started — **BLOCKED by the Phase 7 smoothness gate above** | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 
