@@ -32,6 +32,7 @@ typedef struct {
     bool edge_watchdog_enabled;
     float endpoint_kp_vel;
     uint16_t startup_ramp_ms;
+    float start_duty;
     uint8_t repeat_index;
     float delta;
 } tuning_case_t;
@@ -51,22 +52,22 @@ typedef enum {
 } auto_state_t;
 
 static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 0,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 0, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 1,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 1, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 2,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 2, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 3,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 3, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 4,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 4, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 5,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 5, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 6,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 6, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 7,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 600, 7, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.58f, 0,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.58f, 0, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.60f, 0,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.60f, 0, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.62f, 0,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.62f, 0, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.65f, 0,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.65f, 0, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.58f, 1,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.58f, 1, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.60f, 1,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.60f, 1, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.62f, 1,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.62f, 1, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.65f, 1,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 200, 0.65f, 1, -90.0f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;
@@ -102,7 +103,7 @@ static void prepare_header(evn_tuning_status_t status) {
     s_header.kp = 1.2e-4f;
     s_header.ki = 8.0e-7f;
     s_header.kv = 5.0e-7f;
-    s_header.start_duty = 0.65f;
+    s_header.start_duty = test->start_duty;
     s_header.hold_duty = 0.55f;
     s_header.speed_source = 1u;
     s_header.speed_window = 40u;
@@ -293,7 +294,7 @@ void autonomous_tuning_service(void) {
         evn_motion_set_startup_ramp_ms(TUNING_AXIS, test->startup_ramp_ms);
         evn_motion_set_gains_axis(TUNING_AXIS, 1.2e-4f, 8.0e-7f,
                       5.0e-7f, 0.0f, 0.0f);
-        evn_motion_set_stiction(TUNING_AXIS, 0.65f, 0.55f);
+        evn_motion_set_stiction(TUNING_AXIS, test->start_duty, 0.55f);
         float angle, speed;
         bool stalled, done;
         evn_motion_get_state(TUNING_AXIS, &angle, &speed, &stalled, &done);
