@@ -43,6 +43,12 @@ bool evn_core1_get_status(evn_core1_status_t *out);
 /* Core 0: reset the min/max/rate statistics (e.g. after a settle period). */
 void evn_core1_reset_stats(void);
 
+/* Core 0: quiesce/re-arm the Core 1 hardware alarm around flash operations.
+ * Core 1 remains in its SRAM loop with the multicore lockout victim active. */
+bool evn_core1_pause(uint32_t timeout_us);
+bool evn_core1_resume(uint32_t timeout_us);
+bool evn_core1_is_paused(void);
+
 /* The Core 1 loop body. Phase 1: encoder service. Phase 7 will add the
  * trajectory→PID→observer pipeline here. Marked not-in-flash (0-wait SRAM)
  * per spec §4 execution-determinism requirement. */

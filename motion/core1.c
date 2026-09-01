@@ -25,6 +25,8 @@ static uint32_t          s_next_alarm_us = 0;
 static uint              s_alarm_num = 0;
 static evn_core1_status_t s_status;
 static volatile bool     s_reset_req = false;   /* Core 0 → Core 1 reset request */
+static volatile bool     s_pause_req = false;
+static volatile bool     s_paused = false;
 
 /* Hardware-alarm callback installed on Core 1. Advance an absolute deadline so
  * callback latency cannot accumulate into long-term control-loop drift. */
@@ -81,6 +83,32 @@ static void __not_in_flash_func(core1_main)(void) {
     timer_hw->alarm[s_alarm_num] = s_next_alarm_us;
 
     while (true) {
+        if (s_pause_req) {
+            if (!s_paused) {
+                irq_set_enabled(alarm_irq, false);
+                timer_hw->intr = alarm_mask;
+                __dmb();
+                s_paused = true;
+                __dmb();
+            }
+            tight_loop_contents();
+            continue;
+        }
+
+        if (s_paused) {
+            timer_hw->intr = alarm_mask;
+            processed_sequence = s_tick_sequence;
+            s_next_alarm_us = time_us_32() + EVN_CORE1_PERIOD_US;
+            timer_hw->alarm[s_alarm_num] = s_next_alarm_us;
+            last_us = bench_now_us();
+            have_period = false;
+            irq_set_enabled(alarm_irq, true);
+            __dmb();
+            s_paused = false;
+            __dmb();
+            continue;
+        }
+
         uint32_t pending_sequence = s_tick_sequence;
         if (processed_sequence == pending_sequence) { tight_loop_contents(); continue; }
         processed_sequence++;
@@ -141,4 +169,27 @@ bool evn_core1_get_status(evn_core1_status_t *out) {
 
 void evn_core1_reset_stats(void) {
     s_reset_req = true;   /* consumed on the Core 1 loop (single owner) */
+}
+
+bool evn_core1_pause(uint32_t timeout_us) {
+    s_pause_req = true;
+    __dmb();
+    uint64_t deadline = time_us_64() + timeout_us;
+    while (!s_paused && (int64_t)(time_us_64() - deadline) < 0)
+        tight_loop_contents();
+    return s_paused;
+}
+
+bool evn_core1_resume(uint32_t timeout_us) {
+    s_pause_req = false;
+    __dmb();
+    uint64_t deadline = time_us_64() + timeout_us;
+    while (s_paused && (int64_t)(time_us_64() - deadline) < 0)
+        tight_loop_contents();
+    return !s_paused;
+}
+
+bool evn_core1_is_paused(void) {
+    __dmb();
+    return s_paused;
 }

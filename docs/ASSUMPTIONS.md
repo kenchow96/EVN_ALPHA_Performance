@@ -6,7 +6,13 @@
 > window sweep and `tools/decode_tuning_flash.py`; it builds cleanly and its
 > C/Python schema plus CRC path pass a synthetic 200 Hz end-to-end test. The
 > user placed the powered board in BOOTSEL with Motor 3 clear and authorized
-> unattended motion. Each case erases its fixed slot while coasted, requires a
+> unattended motion. First extraction verified the UF2 and three 530-row trace
+> CRCs; case 4 safely stopped with zero rows after Core 1 published only one
+> tick. Root cause: repeated flash lockouts quiesced XIP correctly but did not
+> explicitly quiesce/re-arm the Core 1 hardware alarm. The current build pauses
+> that alarm around whole flash transactions while keeping the SRAM lockout
+> victim responsive, then resumes from the failed case-4 slot. Each case
+> erases its fixed slot while coasted, requires a
 > battery sample age <=250 ms (pack >=6.5 V, cells >=3.0 V), runs with the 4 s
 > Core 1 auto-coast, logs ~530 trace rows, aborts on any missed RT tick, writes
 > trace pages under lockout, and commits the CRC header last. Completion enters

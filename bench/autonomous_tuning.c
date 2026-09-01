@@ -22,6 +22,7 @@
 #define TUNING_BATTERY_MIN_PACK_MV  6500u
 #define TUNING_BATTERY_MIN_CELL_MV  3000u
 #define TUNING_FLASH_SETTLE_US      20000ULL
+#define TUNING_CORE_PAUSE_TIMEOUT_US 10000u
 
 typedef struct {
     uint8_t window;
@@ -187,8 +188,14 @@ void autonomous_tuning_service(void) {
     switch (s_state) {
     case AUTO_LOG_BEGIN:
         coast_all();
-        if (hal_tuning_log_begin(EVN_TUNING_RUN_ID)) s_state = AUTO_FIND_CASE;
-        else if ((int64_t)(now - s_deadline_us) >= 0) finish();
+        if (evn_core1_pause(TUNING_CORE_PAUSE_TIMEOUT_US)) {
+            bool logged = hal_tuning_log_begin(EVN_TUNING_RUN_ID);
+            bool resumed = evn_core1_resume(TUNING_CORE_PAUSE_TIMEOUT_US);
+            if (logged && resumed) s_state = AUTO_FIND_CASE;
+            else finish();
+        } else if ((int64_t)(now - s_deadline_us) >= 0) {
+            finish();
+        }
         break;
 
     case AUTO_FIND_CASE: {
@@ -204,7 +211,13 @@ void autonomous_tuning_service(void) {
 
     case AUTO_ERASE_CASE:
         coast_all();
-        if (!hal_tuning_log_erase_case(s_case_index)) {
+        if (!evn_core1_pause(TUNING_CORE_PAUSE_TIMEOUT_US)) {
+            finish();
+            break;
+        }
+        bool erased = hal_tuning_log_erase_case(s_case_index);
+        bool resumed = evn_core1_resume(TUNING_CORE_PAUSE_TIMEOUT_US);
+        if (!erased || !resumed) {
             finish();
             break;
         }
@@ -271,7 +284,10 @@ void autonomous_tuning_service(void) {
             } else {
                 s_trace_row = 0;
                 s_trace_crc = 0;
-                s_state = AUTO_WRITE_TRACE;
+                if (evn_core1_pause(TUNING_CORE_PAUSE_TIMEOUT_US))
+                    s_state = AUTO_WRITE_TRACE;
+                else
+                    finish();
             }
         }
         break;
@@ -297,7 +313,14 @@ void autonomous_tuning_service(void) {
 
     case AUTO_COMMIT:
         coast_all();
-        if (!hal_tuning_log_commit_case(s_case_index, &s_header)) {
+        if (!evn_core1_is_paused() &&
+            !evn_core1_pause(TUNING_CORE_PAUSE_TIMEOUT_US)) {
+            finish();
+            break;
+        }
+        bool committed = hal_tuning_log_commit_case(s_case_index, &s_header);
+        bool core_resumed = evn_core1_resume(TUNING_CORE_PAUSE_TIMEOUT_US);
+        if (!committed || !core_resumed) {
             finish();
             break;
         }
