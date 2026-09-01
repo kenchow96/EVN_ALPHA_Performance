@@ -1,12 +1,26 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-01, end of tuning session):** Phase 7 motion-engine **TUNED**.
-> Board has console firmware flashed (listening for serial commands, non-blocking CDC).
-> **All 4 motors validated and tuned.** EV3 Large (M1/M2) converge to 0.12–0.04°,
-> EV3 Medium (M3/M4) to 0.000°. Full 4-axis +360/0 test: Core 1 1 kHz, period
-> 999–1005 µs, exec max 292 µs. Cruise duty has a benign ~90-tick quantization
-> limit-cycle ripple (position unaffected). Tune live over `tools/tune_session.py`
-> — see AGENTS.md. Next: Phase 8 drive base.
+> **RESUME POINT (2026-09-01, end of smoothness session):** Phase 7 motors
+> endpoint-TUNED and committed; **smoothness fix IN PROGRESS (uncommitted).**
+> The working tree has an **uncommitted** improvement over `5a1425e`:
+>   - velocity loop = windowed differentiation of the **substep** position
+>     (`evn_pid_speed_of`, now public); runtime-tunable window `pid.vel_window`
+>     (≤ `PID_SPEED_WINDOW`=60); **trace dump made NON-BLOCKING** (streams from
+>     the main loop in `dump_service`) so the host COM port survives dumps.
+>   - **FINDING (per-type, both units traced):** the cruise "banging" is
+>     systemic, NOT one bad motor. Fix = lower kp_vel. **EV3 Medium (M3/M4) is
+>     SMOOTH at kp_vel≤2e-6** (cruise sd 0.10–0.15, 0% sat). **EV3 Large (M1/M2)
+>     still bangs at 2e-6** — next: widen velocity window + shift cruise onto
+>     feedforward for Large. Tune live: `v <kp_vel> 0` then `t <m>` `M <m> 360` `d`.
+>   - **Do NOT start Phase 8 drivebase** until single-motor motion passes
+>     `tools/motion_metrics.py` acceptance on all 4 AND visually beats the
+>     Arduino baseline. See `docs/SESSION_LESSONS.md` §B3 and `docs/PLAN.md`.
+>   - **USB wedge gotcha:** if a host script dies mid-write the COM port wedges
+>     (PermissionError 31). Recover = replug cable or BOOTSEL reflash. The
+>     non-blocking dump prevents the common case; `tools/tune_session.py` is the
+>     most robust driver.
+> Next: finish EV3 Large smoothness → full metrics acceptance → Arduino baseline
+> A/B → Phase 8 drivebase.
 
 Every assumption made during development that is **not** marked `[GROUND TRUTH]` in the specs and has **not** been independently verified against hardware. **Review and confirm/refute each before we build dependent phases on top.** Each entry: the assumption, where it's baked in, why we made it, and how to falsify it.
 

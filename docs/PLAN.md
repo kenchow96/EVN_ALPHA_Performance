@@ -160,8 +160,8 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | 5 — Battery telemetry | ✅ Done | 2026-09-01 | `f556bc8` |
 | 6 — PIO servos | ✅ Done | 2026-09-01 | `a16a5d3` |
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
-| 7 — Motion engine | ✅ Done (all 4 tuned & validated; see RESULTS) | 2026-09-01 | see commit |
-| 8 — Drive base | ⬜ Not started | — | — |
+| 7 — Motion engine | 🟡 Mostly done — endpoint accuracy PASS (committed `5a1425e`); **smoothness fix IN PROGRESS (uncommitted)**: EV3 Medium smooth at kp_vel≤2e-6, EV3 Large still bangs — see [ASSUMPTIONS.md resume point](ASSUMPTIONS.md) + [SESSION_LESSONS.md](SESSION_LESSONS.md) §B3. **Gate before Phase 8:** single-motor motion must pass `tools/motion_metrics.py` acceptance on all 4 + beat Arduino baseline | 2026-09-01 | uncommitted |
+| 8 — Drive base | ⬜ Not started — **BLOCKED by the Phase 7 smoothness gate above** | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 
 ## 8. Agent Session Protocol

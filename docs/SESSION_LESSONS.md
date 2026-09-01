@@ -72,27 +72,48 @@ made cruise position track beautifully (0.99°) but the hold oscillated ±2.5°
 because there was no velocity damping. There is a **minimum** velocity gain for
 stability even when the velocity signal is noisy. M3 sweet spot: `kv≈4e-5`.
 
+**B3. (2026-09-01, per-type sweep) The cruise "banging" was a velocity-gain
+problem, NOT one bad motor.** Tracing all 4 units of BOTH types at kv=4e-5
+showed identical bang-bang (duty rail-flips ±1.0 each tick, cruise sd≈0.85).
+Root cause: at the slow test cruise (180°/s) the encoder only advances ~9
+counts/s, so a 60 ms differentiation window spans ~0.5° ≈ ONE edge — the
+velocity estimate quantizes to a few steps and jitters ±400°/s. With kp_vel
+large, that jitter slams duty. **Sweep result (live `v` command):**
+- EV3 **Medium** (M3/M4): smooth at kv≤2e-6 → cruise sd 0.10–0.15, 0% sat.
+- EV3 **Large** (M1/M2): still bangs at kv=2e-6 (sd≈0.77) — needs a different
+  fix (wider velocity window AND/OR feedforward carrying more of the cruise so
+  the velocity loop only trims). Conclusion must be drawn per-TYPE across both
+  units, never from one motor.
+
 ---
 
 ## C. USB-CDC / tooling (cost the most wall-clock time)
 
-**C1. Blocking `printf` over stdio-USB wedges the Windows port.** When the host
-is slow/closed, blocking CDC writes back up the TinyUSB FIFO and the Windows
-`usbser.sys` driver enters a state where COM7 enumerates but **won't open**
-(`PermissionError 31`). Only a cold physical re-enumeration clears it.
-**Fix (permanent): all console output goes through a non-blocking, FIFO-paced
-writer** (`tud_cdc_write_available()` → `tud_cdc_write()` → `tud_cdc_write_flush()`,
-servicing `tud_task()`), with a hard wall-clock cap so a dump can never hang.
-Host side: small reads + short timeouts + `write_timeout=0`.
+**C1. Blocking `printf` over stdio-USB wedges the Windows port — and the fix is
+NOT to call `tud_task()` yourself.** When the host is slow/closed, blocking CDC
+writes back up the TinyUSB FIFO and the Windows `usbser.sys` driver enters a
+state where COM7 enumerates but **won't open** (`PermissionError 31`). Only a
+cold physical re-enumeration clears it. The correct firmware fix: route console
+output through a **FIFO-paced writer** that checks `tud_cdc_write_available()`
+and waits for space **without calling `tud_task()`** — the Pico SDK's stdio-USB
+driver already owns `tud_task()` under `stdio_usb_mutex` (a timer-driven task),
+so calling `tud_task()` from a command handler is a **mutex deadlock** that
+kills the CDC mid-dump (this was the recurring hang). Host side: small reads,
+short timeouts, `write_timeout=0`.
 
-**C2. A `printf` in a cross-core command path is a deadlock.** `evn_motion_move_to`
+**C2. The encoder HAL's edge-timed speed drops to 0 mid-move.** `hal_encoder_
+get_speed_substep` latches `stopped` (speed→0) after only `idle_stop_samples=3`
+ticks without a new edge; at 1 kHz, a cruising motor legitimately has multi-tick
+gaps between edges, so the velocity loop read "stopped" and railed duty to ±1.0
+(the bang-bang we chased for hours). **Fix: the PID differentiates position over
+a 20 ms window** (`pid_speed`), immune to per-tick edge timing. Lesson: never
+trust a latching "stopped" flag as a control-loop velocity source.
+
+**C3. A `printf` in a cross-core command path is a deadlock.** `evn_motion_move_to`
 had a debug `printf` in the Core-0→Core-1 handover; under load it deadlocked the
 console mid-session (commands consumed, zero response). **Rule: no printf inside
 any command-handover or RT-adjacent path.** RT core never prints (already true);
 command functions that run under the console must not print either.
-
-**C3. Don't `import` the session module from a test probe.** Importing
-`tune_session` runs `main()` (no `if __name__ == "__main__"` guard was relied
 on) and double-opens the port → wedge. Test ports with a bare
 `serial.Serial(...)` open/close, never by importing the session.
 
@@ -100,6 +121,17 @@ on) and double-opens the port → wedge. Test ports with a bare
 defaults as soon as they're validated (per-model in `evn_motion_init`), so a
 reflash doesn't silently revert a motor to untuned gains mid-analysis. We lost
 a run to exactly this (analyzed a trace with defaults, not the tuned gains).
+
+**C5. A host script dying mid-write wedges the port as reliably as a firmware
+bug.** A `serial.Serial` write that hits a full TinyUSB TX FIFO and times out
+(`SerialTimeoutException`) leaves the Windows handle in a state where the next
+open fails (`PermissionError 31`) until a replug. **The durable firmware fix is
+the non-blocking dump:** `dump_trace()` no longer loops in the command handler —
+it sets `s_dump_*` state and `dump_service()` streams a few rows **per main-loop
+iteration**, so the SDK USB task keeps being serviced and the TX FIFO never
+fills. Verified: `alive=YES` after every dump across all 4 motors. Host scripts
+must also be robust (single persistent connection, generous read window, never
+re-open mid-session). `tools/tune_session.py` is the hardened reference.
 
 ---
 
@@ -123,9 +155,31 @@ control overshoot — check whether the loop was *engaged* at that moment.
 ---
 
 ## E. Open items carried into the smoothness push
-- Cruise duty ripple (B1) — needs observer-speed or a filtered-velocity term
-  that damps without amplifying quantization noise. **This is the top priority
-  before drivebase.**
+
+**RESUME HERE (next session).** The endpoint tuning is DONE and committed
+(`5a1425e`). What remains is making the motion *smooth* (visually + by metrics)
+before drivebase. Concretely:
+
+1. **EV3 Large smoothness (the one open control problem).** Medium is solved
+   (kp_vel≤2e-6 → cruise sd 0.10). Large (M1/M2) still bangs at 2e-6. Try, in
+   order: (a) widen the velocity differentiator window for Large (`pid.vel_window`
+   up to 60) since its encoder advances even slower per tick; (b) shift more of
+   the cruise onto model feedforward (raise Large `kff_accel` toward the value
+   that makes `enc` track `ref` without the velocity P-term fighting it); (c)
+   confirm the Large feedforward isn't over-driving (trace shows `enc` climbing
+   *faster* than `ref` → duty rail-flips). Tune live: `v <kv> 0`, `t <m>`,
+   `M <m> 360`, `d`. **Validate on BOTH M1 and M2 — never conclude from one.**
+2. **Full metrics acceptance.** Run `tools/motion_metrics.py` on all 4 motors
+   against the thresholds in `docs/MOTION_METRICS.md`. All must pass.
+3. **Arduino baseline A/B.** Capture `bench/results/arduino_baseline_*.json`
+   (the old firmware) and prove ours beats it on the smoothness metrics. This is
+   the user's explicit gate before drivebase.
+4. **Pybricks porting-guide nuances still to apply** (from
+   `docs/MOTOR_DRIVEBASE_PORTING_GUIDE.md`, not yet done): anti-windup
+   trajectory-clock pause on saturation; feed the observer the **applied**
+   (clamped) voltage; brake = set_voltage(0); smart stops (100 ms active hold);
+   reset order (stop → reset tacho → reset observer).
+
 - Observer θ̂/ω̂ diverge up to ~60° during moves — by design, but confirms the
   model constants (ported from Pybricks EV3) are only approximate for our
   7.4 V / DRV8833 / 25 kHz drive. If we ever want the observer *accurate*

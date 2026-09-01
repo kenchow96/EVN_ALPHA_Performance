@@ -4,8 +4,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* Speed window length (samples at 1 kHz). Defined before the struct. */
-#define PID_SPEED_WINDOW 20
+/* Speed window length (samples at 1 kHz). 60 ms boxcar — wide enough that the
+ * 0.5°/edge encoder quantization doesn't step the velocity estimate, narrow
+ * enough to track the trapezoid accel. (Pybricks uses ~100 ms at 5 ms loop.) */
+#define PID_SPEED_WINDOW 60
 
 /* ==========================================================================
  * EVN ALPHA - Cascaded motor controller (position outer, velocity inner).
@@ -61,11 +63,17 @@ typedef struct {
     float pos_hist[PID_SPEED_WINDOW];   /* ring buffer of pos_meas (mdeg) */
     int   pos_hist_idx;
     bool  pos_hist_full;
+    int   vel_window;                   /* active differentiator window (<= PID_SPEED_WINDOW) */
     float last_vel_smooth;              /* last windowed speed used (debug) */
+    int   stick_ticks;                  /* consecutive ticks stuck in the approach band */
 } evn_pid_t;
 
 void evn_pid_init(evn_pid_t *p);
 void evn_pid_reset(evn_pid_t *p);
+
+/* Windowed (low-noise) speed estimate from position. Advances the ring buffer;
+ * call once per tick before evn_pid_update so both see the same value. */
+float evn_pid_speed_of(evn_pid_t *p, float pos_meas, float dt);
 
 /* One control step.
  *   pos_ref, vel_ref, accel_ref : trajectory references

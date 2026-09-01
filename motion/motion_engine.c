@@ -296,17 +296,20 @@ void __not_in_flash_func(evn_motion_tick)(void) {
         int32_t th_hat, w_hat, i_hat;
         evn_observer_get_state(&a->observer, &th_hat, &w_hat, &i_hat);
 
-        /* measured speed: the PID's own windowed differentiator on encoder
-         * position (robust to the HAL edge-timed speed's stop-latch dropouts).
-         * use_enc_speed==0 falls back to the observer speed for comparison. */
-        float enc_speed = (float)hal_encoder_get_speed_substep(a->encoder) * scale;
-        a->prev_enc_mdeg = angle_mdeg;
+        /* velocity feedback: differentiate the HIGH-RES substep position over a
+         * window (the substep PIO gives 1/256-count resolution — far finer than
+         * the 360 counts/rev Pybricks assumes). Robust to the HAL edge-timed
+         * speed's stop-latch dropouts. use_enc_speed==0 -> observer speed. */
         float pos_meas = (float)angle_mdeg;   /* position loop on true encoder */
-        float vel_meas = a->pid.use_enc_speed ? enc_speed : (float)w_hat;
+        float vel_meas = (float)w_hat;         /* only used if use_enc_speed==0 */
+        float vel_for_pid = a->pid.use_enc_speed
+                            ? evn_pid_speed_of(&a->pid, pos_meas, MOTION_DT)
+                            : vel_meas;
+        a->prev_enc_mdeg = angle_mdeg;
 
         /* --- cascaded PID + feedforward --- */
         float duty = evn_pid_update(&a->pid, pos_ref, vel_ref, accel_ref,
-                              pos_meas, vel_meas, MOTION_DT, vbus_mv);
+                              pos_meas, vel_for_pid, MOTION_DT, vbus_mv);
 
         /* model-based feedforward (friction + back-EMF + accel → voltage),
          * additive with the PID duty and clamped to [-1, 1] */

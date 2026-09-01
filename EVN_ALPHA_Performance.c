@@ -44,30 +44,14 @@ static void print_battery(void) {
                b.vbatt_mv/1000.0f, b.vcell1_mv/1000.0f, b.vcell2_mv/1000.0f);
 }
 
-/* Non-blocking, FIFO-aware CDC writer. Writes `buf` only as fast as the USB
- * transmit FIFO can take it, servicing tud_task() while waiting so the device
- * never stalls or wedges the host driver. Drops nothing; bounded by a
- * worst-case byte budget so a dump can't hang forever if the host goes away. */
+/* Console writer: uses the Pico SDK stdio-USB path (putchar_raw), which is
+ * thread-safe with the SDK's own timer-driven USB task (it takes stdio_usb_mutex
+ * internally). We must NOT call tud_task/tud_cdc_write* from the command
+ * handler — that deadlocks against the SDK task and wedges the host COM port
+ * (PermissionError 31). putchar routes through the SDK safely. */
 static void cdc_write_paced(const char *buf, size_t len) {
-    size_t off = 0;
-    uint32_t idle_ms = 0;
-    uint64_t deadline = time_us_64() + 20000000ULL;   /* hard 20 s cap per dump */
-    while (off < len) {
-        if ((int64_t)(time_us_64() - deadline) >= 0) return;   /* never hang */
-        tud_task();   /* keep the USB stack alive */
-        if (!tud_cdc_connected()) {
-            if (++idle_ms > 500) return;   /* host gone: bail out */
-            busy_wait_us(1000);
-            continue;
-        }
-        idle_ms = 0;
-        uint32_t space = tud_cdc_write_available();
-        if (space == 0) { busy_wait_us(500); continue; }
-        uint32_t chunk = (uint32_t)(len - off);
-        if (chunk > space) chunk = space;
-        uint32_t wrote = tud_cdc_write(buf + off, chunk);
-        tud_cdc_write_flush();
-        off += wrote;
+    for (size_t i = 0; i < len; i++) {
+        putchar_raw(buf[i]);   /* SDK-managed; never blocks forever */
     }
 }
 
@@ -119,6 +103,14 @@ static void move_relative_tune(float delta_deg, int only_axis /* -1 = all */) {
 }
 
 /* Dump the armed axis' 1 kHz trace as CSV (host parses TRACE BEGIN/END). */
+/* Non-blocking trace dumper: streams rows a few per main-loop iteration so the
+ * SDK USB task keeps being serviced between writes (blocking in the command
+ * handler starves the SDK task and wedges the host port). s_dump_* holds state. */
+static uint32_t s_dump_idx = 0;
+static uint32_t s_dump_n = 0;
+static int32_t  s_dump_t0 = 0;
+static bool     s_dump_active = false;
+
 static void dump_trace(void) {
     evn_motion_trace_stop();
     uint8_t ax; uint32_t n; bool armed;
@@ -130,19 +122,24 @@ static void dump_trace(void) {
            (double)p->kd_vel, (double)p->kff_accel,
            evn_motion_feedforward_on() ? 1 : 0);
     cdc_puts("t_ms,ref_mdeg,enc_mdeg,hat_mdeg,vref_mdegs,what_mdegs,duty_milli,cur_01ma\n");
-    int32_t t0 = 0;
-    for (uint32_t i = 0; i < n; i++) {
+    s_dump_idx = 0; s_dump_n = n; s_dump_t0 = 0; s_dump_active = true;
+}
+
+/* Called every main-loop iteration; emits up to a few rows then returns so the
+ * SDK USB task runs. */
+static void dump_service(void) {
+    if (!s_dump_active) return;
+    for (int k = 0; k < 4 && s_dump_idx < s_dump_n; k++, s_dump_idx++) {
         int32_t t, ref, enc, hat, vref, what, duty, cur;
-        if (!evn_motion_trace_row(i, &t, &ref, &enc, &hat, &vref, &what, &duty, &cur)) break;
-        if (i == 0) t0 = t;
+        if (!evn_motion_trace_row(s_dump_idx, &t, &ref, &enc, &hat, &vref, &what, &duty, &cur)) { s_dump_idx = s_dump_n; break; }
+        if (s_dump_idx == 0) s_dump_t0 = t;
         char line[96];
         int L = snprintf(line, sizeof line, "%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\n",
-               (long)(t - t0), (long)ref, (long)enc, (long)hat,
+               (long)(t - s_dump_t0), (long)ref, (long)enc, (long)hat,
                (long)vref, (long)what, (long)duty, (long)cur);
-        /* FIFO-paced, non-blocking write: never saturates/wedges the port */
         cdc_write_paced(line, (size_t)L);
     }
-    cdc_puts("TRACE END\n");
+    if (s_dump_idx >= s_dump_n) { cdc_puts("TRACE END\n"); s_dump_active = false; }
 }
 
 /* Serial command loop (tuning without reflash). Commands (line-based):
@@ -282,9 +279,9 @@ static void poll_serial(void) {
 int main(void) {
     stdio_init_all();
 
-    /* bounded console wait so the banner always lands */
+    /* bounded console wait so the banner always lands (SDK owns tud_task) */
     uint64_t deadline = time_us_64() + 3000000ULL;
-    while (!stdio_usb_connected() && time_us_64() < deadline) { tud_task(); tight_loop_contents(); }
+    while (!stdio_usb_connected() && time_us_64() < deadline) tight_loop_contents();
 
     hal_led_init();
     hal_button_init();
@@ -323,8 +320,9 @@ int main(void) {
     while (true) {
         uint64_t now = time_us_64();
 
-        tud_task();      /* keep USB CDC stack responsive */
-        poll_serial();   // host-driven commands (run/tune/coast)
+        poll_serial();   // host-driven commands (run/tune/coast)  [SDK owns tud_task]
+
+        dump_service();  // non-blocking trace dump (streams a few rows per loop)
 
         if ((int64_t)(now - next_button) >= 0) {
             next_button = now + BUTTON_POLL_US;
