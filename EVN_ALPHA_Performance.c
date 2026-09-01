@@ -129,6 +129,21 @@ static void task_motor(void)   { motor_test_step(); }
 
 typedef struct { uint64_t next; uint64_t period_us; void (*fn)(void); } task_t;
 
+/* Block (with LED heartbeat) until the host sends any character over USB-CDC.
+ * Prevents tests from auto-starting and truncating the boot banner / early
+ * output before the operator is ready. Returns once a byte arrives. */
+static void wait_for_start(void) {
+    printf("\n*** Send any character to start the motor test ***\n");
+    bool led = false;
+    while (getchar_timeout_us(0) == PICO_ERROR_TIMEOUT) {
+        // slow heartbeat so we can see it's armed and waiting
+        hal_led_set(led = !led);
+        busy_wait_ms(250);
+    }
+    hal_led_set(false);
+    printf("Start received. Running...\n");
+}
+
 int main()
 {
     stdio_init_all();
@@ -159,8 +174,10 @@ int main()
     // Initial battery report
     hal_battery_service();
     print_battery();
-    printf("Motor test: %d cycles/motor, auto-advance M1→M4, then coast + clean battery reading. Button = restart.\n",
+    printf("Motor test: %d cycles/motor, auto-advance M1→M4, then coast + clean battery reading.\n",
            TEST_CYCLES_PER_MOTOR);
+
+    wait_for_start();
 
     /* --- Non-blocking task-table scheduler -------------------------------
      * One elapsed-time check per task; a single now timestamp per pass.
