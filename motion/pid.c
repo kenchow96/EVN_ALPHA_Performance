@@ -112,12 +112,13 @@ float evn_pid_update(evn_pid_t *p,
     float abs_speed = vel_meas < 0.0f ? -vel_meas : vel_meas;
     float displacement = pos_meas - p->motion_start_position;
     if (displacement < 0.0f) displacement = -displacement;
-    bool starting = abs_vel_ref > 5000.0f &&
-                    (displacement < 100.0f ||
-                     (p->startup_release_speed_mdegs > 0.0f &&
-                      displacement < 5000.0f &&
-                      abs_speed < p->startup_release_speed_mdegs) ||
-                     p->motion_stuck);
+    bool initial_starting = abs_vel_ref > 5000.0f &&
+                            (displacement < 100.0f ||
+                             (p->startup_release_speed_mdegs > 0.0f &&
+                              displacement < 5000.0f &&
+                              abs_speed < p->startup_release_speed_mdegs));
+    bool restarting = abs_vel_ref > 5000.0f && p->motion_stuck;
+    bool starting = initial_starting || restarting;
     bool approaching = ae > p->deadzone_mdeg &&
                        abs_vel_ref < 5000.0f && abs_speed < 5000.0f;
     if (starting || approaching) {
@@ -128,7 +129,8 @@ float evn_pid_update(evn_pid_t *p,
     int threshold = starting ? 5 : 30;
     if (p->stick_ticks >= threshold) {
         int ramp_ticks = p->stick_ticks - threshold + 1;
-        int ramp_duration = starting ? p->startup_ramp_ticks : 100;
+        int ramp_duration = initial_starting ? p->startup_ramp_ticks :
+                    (restarting ? 200 : 100);
         float ramp = (float)ramp_ticks / (float)ramp_duration;
         if (ramp > 1.0f) ramp = 1.0f;
         float floor_d = (starting ? p->start_duty : p->min_duty) * ramp;
