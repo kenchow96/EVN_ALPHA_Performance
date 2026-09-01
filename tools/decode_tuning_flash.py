@@ -27,6 +27,7 @@ EDGE_WATCHDOG_RUN_ID = 0x26090206
 ENDPOINT_DAMPING_RUN_ID = 0x26090207
 STARTUP_RAMP_RUN_ID = 0x26090208
 RAMP_VALIDATION_RUN_ID = 0x26090209
+RAMP_VALIDATION_RERUN_ID = 0x2609020A
 SCHEMA_VERSION = 1
 SUPER_MAGIC = 0x31535645
 RECORD_MAGIC = 0x31525645
@@ -181,6 +182,9 @@ def decode_header(page, case_index, run_id):
 
 
 def case_name(header):
+    if header["run_id"] == RAMP_VALIDATION_RERUN_ID:
+        direction = "pos" if header["delta_mdeg"] >= 0 else "neg"
+        return f"Q{header['repeat_index']}_{direction}"
     if header["run_id"] == RAMP_VALIDATION_RUN_ID:
         direction = "pos" if header["delta_mdeg"] >= 0 else "neg"
         return f"V{header['repeat_index']}_{direction}"
