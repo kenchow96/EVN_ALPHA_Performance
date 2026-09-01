@@ -1,0 +1,28 @@
+; EVN ALPHA servo PWM — 1 channel per PIO state machine, 50 Hz, µs pulses.
+;
+; The CPU pushes TWO 32-bit words per frame into the TX FIFO:
+;   word 0 = HIGH time in microseconds
+;   word 1 = LOW  time in microseconds   (frame period = high + low, e.g. 20000 µs)
+; The program pulls high, drives the pin HIGH for that many µs, then pulls low
+; and drives the pin LOW, then loops for the next frame.
+;
+; Timing: the SM is clocked at 1 MHz (1 instruction = 1 µs) via clkdiv = 200
+; (200 MHz sys / 200). Each `jmp x--` / `jmp y--` loop iteration = 1 µs.
+;
+; Registers: X = high count (µs), Y = low count (µs).
+
+.program evn_servo
+
+    pull block              ; OSR <- HIGH time (µs)
+    mov x, osr
+    set pins, 1
+high_loop:
+    jmp x-- high_loop       ; 1 µs per iteration; falls through when X underflows
+
+    pull block              ; OSR <- LOW time (µs)
+    mov y, osr
+    set pins, 0
+low_loop:
+    jmp y-- low_loop        ; 1 µs per iteration
+
+    ; wrap to top for the next frame

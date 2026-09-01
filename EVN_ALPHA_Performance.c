@@ -7,11 +7,13 @@
 #include "hal/hal_i2c.h"
 #include "hal/hal_battery.h"
 #include "hal/hal_uart.h"
+#include "hal/hal_servo.h"
 
 // Non-blocking scheduler intervals (project rule: never sleep in main loop)
 #define BUTTON_POLL_INTERVAL_US   1000ULL    // 1 kHz debounce
 #define BATTERY_SERVICE_INTERVAL_US 20000ULL // 50 Hz telemetry
 #define UART_LOOPBACK_INTERVAL_US 500000ULL  // 2 Hz loopback self-test
+#define SERVO_SWEEP_INTERVAL_US   20000ULL   // 50 Hz sweep update
 
 static void print_battery(void) {
     evn_battery_state_t b;
@@ -56,6 +58,19 @@ static void uart_loopback_test(void) {
     }
 }
 
+/* Servo sweep self-test: triangle-wave all 4 channels 0↔180°, 50 Hz update.
+ * Prints a status line each time the sweep reverses. */
+static void servo_sweep_test(void) {
+    static float angle = 0.0f;
+    static float step = 1.0f;      // degrees per 20 ms tick → 90°/s sweep
+    angle += step;
+    if (angle >= 180.0f) { angle = 180.0f; step = -1.0f; printf("Servo sweep: at 180°\n"); }
+    if (angle <= 0.0f)   { angle = 0.0f;   step =  1.0f; printf("Servo sweep: at 0°\n"); }
+    for (int i = 0; i < EVN_SERVO_COUNT; i++) {
+        hal_servo_write_angle((evn_servo_id_t)i, angle, false);
+    }
+}
+
 int main()
 {
     stdio_init_all();
@@ -81,6 +96,9 @@ int main()
     hal_uart_init(EVN_UART_2, 115200);
     printf("hal_uart_init: Serial1 (uart0 GP0/GP1) + Serial2 (uart1 GP8/GP9) @115200\n");
 
+    bool srv = hal_servo_init();
+    printf("hal_servo_init: %s (4ch PIO @ 50 Hz, centred 1500us)\n", srv ? "OK" : "SM CLAIM FAIL");
+
     // Initial sample + report
     hal_battery_service();
     print_battery();
@@ -88,6 +106,7 @@ int main()
     uint64_t next_poll = time_us_64();
     uint64_t next_battery = time_us_64();
     uint64_t next_loopback = time_us_64();
+    uint64_t next_servo = time_us_64();
 
     while (true) {
         uint64_t now = time_us_64();
@@ -112,6 +131,12 @@ int main()
         if ((int64_t)(now - next_loopback) >= 0) {
             next_loopback = now + UART_LOOPBACK_INTERVAL_US;
             uart_loopback_test();
+        }
+
+        // 50 Hz: servo sweep self-test
+        if ((int64_t)(now - next_servo) >= 0) {
+            next_servo = now + SERVO_SWEEP_INTERVAL_US;
+            servo_sweep_test();
         }
 
         tight_loop_contents();

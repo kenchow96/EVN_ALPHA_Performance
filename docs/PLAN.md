@@ -147,8 +147,8 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | 2 — Motor PWM | ⬜ Not started | — | — |
 | 3 — PIO encoders | ⬜ Not started | — | — |
 | 4 — I2C mux | ✅ Done | 2026-09-01 | `a63422a` |
-| 5 — Battery telemetry | ✅ Done | 2026-09-01 | see below |
-| 6 — PIO servos | ⬜ Not started | — | — |
+| 5 — Battery telemetry | ✅ Done | 2026-09-01 | `f556bc8` |
+| 6 — PIO servos | ✅ Done (timing) | 2026-09-01 | see below |
 | 7 — Motion engine | ⬜ Not started | — | — |
 | 8 — Drive base | ⬜ Not started | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
