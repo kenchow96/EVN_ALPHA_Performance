@@ -33,6 +33,7 @@ typedef struct {
     float endpoint_kp_vel;
     uint16_t startup_ramp_ms;
     uint16_t restart_ramp_ms;
+    uint8_t startup_pulse_on_ticks;
     float start_duty;
     uint8_t repeat_index;
     float delta;
@@ -53,22 +54,22 @@ typedef enum {
 } auto_state_t;
 
 static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f,  800, 200, 0.65f, 0,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f,  800, 200, 0.65f, 0, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 1200, 200, 0.65f, 0,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 1200, 200, 0.65f, 0, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f,  800, 400, 0.65f, 0,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f,  800, 400, 0.65f, 0, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 1200, 400, 0.65f, 0,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 1200, 400, 0.65f, 0, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f,  800, 200, 0.65f, 1,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f,  800, 200, 0.65f, 1, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 1200, 200, 0.65f, 1,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 1200, 200, 0.65f, 1, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f,  800, 400, 0.65f, 1,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f,  800, 400, 0.65f, 1, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 1200, 400, 0.65f, 1,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 1200, 400, 0.65f, 1, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 0,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 0, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 3, 0.65f, 0,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 3, 0.65f, 0, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 2, 0.65f, 0,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 2, 0.65f, 0, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 1, 0.65f, 0,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 1, 0.65f, 0, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 1,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 1, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 3, 0.65f, 1,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 3, 0.65f, 1, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 2, 0.65f, 1,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 2, 0.65f, 1, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 1, 0.65f, 1,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 1, 0.65f, 1, -90.0f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;
@@ -124,6 +125,7 @@ static void prepare_header(evn_tuning_status_t status) {
     s_header.endpoint_kp_vel = test->endpoint_kp_vel;
     s_header.startup_ramp_ms = test->startup_ramp_ms;
     s_header.restart_ramp_ms = test->restart_ramp_ms;
+    s_header.startup_pulse_on_ticks = test->startup_pulse_on_ticks;
 }
 
 static void snapshot_battery(uint32_t age_us) {
@@ -295,6 +297,8 @@ void autonomous_tuning_service(void) {
         evn_motion_set_endpoint_velocity_gain(TUNING_AXIS, test->endpoint_kp_vel);
         evn_motion_set_startup_ramp_ms(TUNING_AXIS, test->startup_ramp_ms);
         evn_motion_set_restart_ramp_ms(TUNING_AXIS, test->restart_ramp_ms);
+        evn_motion_set_startup_pulse_on_ticks(
+            TUNING_AXIS, test->startup_pulse_on_ticks);
         evn_motion_set_gains_axis(TUNING_AXIS, 1.2e-4f, 8.0e-7f,
                       5.0e-7f, 0.0f, 0.0f);
         evn_motion_set_stiction(TUNING_AXIS, test->start_duty, 0.55f);

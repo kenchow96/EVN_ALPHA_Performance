@@ -352,6 +352,12 @@ void evn_motion_set_restart_ramp_ms(uint8_t axis, uint16_t duration_ms) {
     s_axis[axis].pid.restart_ramp_ticks = duration_ms;
 }
 
+void evn_motion_set_startup_pulse_on_ticks(uint8_t axis, uint8_t on_ticks) {
+    if (axis > 3 || !(s_mask & (1u << axis)) ||
+        on_ticks < 1u || on_ticks > 4u) return;
+    s_axis[axis].pid.startup_pulse_on_ticks = on_ticks;
+}
+
 const evn_pid_t *evn_motion_axis_pid(uint8_t axis) {
     if (axis > 3) return NULL;
     return &s_axis[axis].pid;

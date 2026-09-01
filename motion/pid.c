@@ -21,6 +21,7 @@ void evn_pid_init(evn_pid_t *p) {
     p->startup_release_speed_mdegs = 0.0f;
     p->startup_ramp_ticks = 200u;
     p->restart_ramp_ticks = 200u;
+    p->startup_pulse_on_ticks = 4u;
     p->motion_stuck = false;
     p->vel_window = PID_SPEED_WINDOW;
     evn_pid_reset(p, 0.0f);
@@ -137,7 +138,10 @@ float evn_pid_update(evn_pid_t *p,
         float floor_d = (starting ? p->start_duty : p->min_duty) * ramp;
         float abs_duty = duty < 0.0f ? -duty : duty;
         float direction = starting ? vel_ref : pos_err;
-        if (floor_d > 0.0f && abs_duty < floor_d)
+        bool apply_floor = true;
+        if (initial_starting && p->startup_pulse_on_ticks < 4u)
+            apply_floor = ((ramp_ticks - 1) & 3) < p->startup_pulse_on_ticks;
+        if (apply_floor && floor_d > 0.0f && abs_duty < floor_d)
             duty = direction < 0.0f ? -floor_d : floor_d;
     }
 

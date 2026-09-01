@@ -31,6 +31,7 @@ RAMP_VALIDATION_RERUN_ID = 0x2609020A
 START_DUTY_RUN_ID = 0x2609020B
 SPLIT_RAMP_RUN_ID = 0x2609020C
 RAMP_FACTORIAL_RUN_ID = 0x2609020D
+STARTUP_PULSE_RUN_ID = 0x2609020E
 SCHEMA_VERSION = 1
 SUPER_MAGIC = 0x31535645
 RECORD_MAGIC = 0x31525645
@@ -174,6 +175,7 @@ def decode_header(page, case_index, run_id):
         "endpoint_kp_vel": read_f32(page, 46),
         "startup_ramp_ms": read_u32(page, 47),
         "restart_ramp_ms": read_u32(page, 48),
+        "startup_pulse_on_ticks": read_u32(page, 49),
     }
     if (header["schema_version"] != SCHEMA_VERSION or
             header["run_id"] != run_id or
@@ -186,6 +188,10 @@ def decode_header(page, case_index, run_id):
 
 
 def case_name(header):
+    if header["run_id"] == STARTUP_PULSE_RUN_ID:
+        direction = "pos" if header["delta_mdeg"] >= 0 else "neg"
+        return (f"P{header['startup_pulse_on_ticks']}_"
+                f"R{header['repeat_index']}_{direction}")
     if header["run_id"] == RAMP_FACTORIAL_RUN_ID:
         direction = "pos" if header["delta_mdeg"] >= 0 else "neg"
         return (f"A{header['startup_ramp_ms']}_"
@@ -351,6 +357,7 @@ def decode(image, output_dir):
                     "endpoint_kp_vel": header["endpoint_kp_vel"],
                     "startup_ramp_ms": header["startup_ramp_ms"],
                     "restart_ramp_ms": header["restart_ramp_ms"],
+                    "startup_pulse_on_ticks": header["startup_pulse_on_ticks"],
                 },
                 "battery_pre_run": {
                     "pack_mv": header["battery_pack_mv"],

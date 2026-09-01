@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define EVN_TUNING_RUN_ID             0x2609020Du
+#define EVN_TUNING_RUN_ID             0x2609020Eu
 #define EVN_TUNING_SCHEMA_VERSION     1u
 #define EVN_TUNING_CASE_COUNT         16u
 #define EVN_TUNING_FLASH_BASE_OFFSET  0x00F00000u
@@ -88,7 +88,8 @@ typedef struct {
     float endpoint_kp_vel;
     uint32_t startup_ramp_ms;
     uint32_t restart_ramp_ms;
-    uint32_t reserved[15];
+    uint32_t startup_pulse_on_ticks;
+    uint32_t reserved[14];
 } evn_tuning_record_header_t;
 
 bool hal_tuning_log_begin(uint32_t run_id);
