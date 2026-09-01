@@ -1,19 +1,19 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, startup duty):** Commits through `655fe5b` and
-> nine autonomous datasets are verified. Reject startup ramps above 200 ms.
-> The 600 ms candidate was rerun independently with 16 cases and a 3.8 s trace;
-> both datasets had 16/16 complete profiles, battery >=7.277 V, cells >=3.622 V,
-> age <=490 us, and zero missed ticks. Across 32 traces it produced no 12/12
-> case; positive median max error was 4.489 deg. Keep the 200 ms ramp. Remaining
-> best-case failure is physical first breakaway acceleration (about 1.5k deg/s2
-> vs 1.08k gate), so next sweep startup duty 0.58/0.60/0.62/0.65, two repeats
-> and both directions, with a 3.8 s trace. Keep W40/K5, 0.55 hold, governor,
-> trapezoid, 0.5x friction, 10 deg/s release, base endpoint gain, and edge
-> watchdog. Each case erases its fixed
+> **RESUME POINT (2026-09-02, split startup/restart ramp):** Commits through
+> `02913b8` and ten autonomous datasets are verified. Startup-duty sweep
+> 0.58/0.60/0.62/0.65 produced no 12/12 case; every trace still failed physical
+> acceleration. Keep 0.65 provisionally: it was the only value with both
+> positive repeats at 11/12; 0.58 helped negative mean but was not repeatable.
+> Reinterpret the prior 600 ms rejection: code reused the startup ramp for every
+> edge-watchdog recovery, so slower launch torque was confounded with slow
+> mid-move restarts. Split them, then sweep initial ramp 200/400/600/800 ms
+> while fixing watchdog restart ramp at 200 ms. Keep W40/K5, 0.55 hold,
+> governor, trapezoid, 0.5x friction, 10 deg/s release, base endpoint gain, and
+> edge watchdog. Each case erases its fixed
 > slot while coasted, requires a battery sample age <=250 ms (pack >=6.5 V,
 > cells >=3.0 V), runs with the 4 s
-> Core 1 auto-coast, logs ~530 trace rows, aborts on any missed RT tick, writes
+> Core 1 auto-coast, logs 760 trace rows, aborts on any missed RT tick, writes
 > trace pages under lockout, and commits the CRC header last. Completion enters
 > ROM BOOTSEL. Preserve all prior UF2s. Phase 8 remains blocked until
 > all four axes pass `tools/motion_metrics.py` and beat the measured baseline.
