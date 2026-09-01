@@ -62,6 +62,7 @@ static void print_battery_status(void) {
  * SDK stdio driver, which serializes TinyUSB access with its background worker. */
 #define CDC_TX_QUEUE_SIZE 8192u
 #define CDC_TX_QUEUE_MASK (CDC_TX_QUEUE_SIZE - 1u)
+#define CDC_TX_PACKET_SIZE 64u
 _Static_assert((CDC_TX_QUEUE_SIZE & CDC_TX_QUEUE_MASK) == 0, "CDC queue must be a power of two");
 
 static char s_cdc_tx[CDC_TX_QUEUE_SIZE];
@@ -107,7 +108,7 @@ static void cdc_service(void) {
     if (queued == 0) return;
     uint32_t contiguous = CDC_TX_QUEUE_SIZE - (s_cdc_tx_tail & CDC_TX_QUEUE_MASK);
     if (contiguous > queued) contiguous = queued;
-    if (contiguous > 512u) contiguous = 512u;
+    if (contiguous > CDC_TX_PACKET_SIZE) contiguous = CDC_TX_PACKET_SIZE;
 
     stdio_put_string(&s_cdc_tx[s_cdc_tx_tail & CDC_TX_QUEUE_MASK],
                      (int)contiguous, false, false);
@@ -256,7 +257,8 @@ static void dump_trace_block(uint32_t start, uint32_t count) {
     if (end >= n && !trace_block_append(&used, "TRACE END\n")) return;
     if (!trace_block_append(&used, "TRACE BLOCK END next=%lu total=%lu\n",
                             (unsigned long)end, (unsigned long)n)) return;
-    stdio_put_string(s_trace_block_tx, (int)used, false, false);
+    if (!cdc_write_paced(s_trace_block_tx, used))
+        con_printf("?? USB TX busy; retry block\n");
 }
 
 /* Called every main-loop iteration; emits up to a few rows then returns so the

@@ -166,7 +166,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | 5 — Battery telemetry | ✅ Done | 2026-09-01 | `f556bc8` |
 | 6 — PIO servos | ✅ Done | 2026-09-01 | `a16a5d3` |
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
-| 7 — Motion engine | 🟠 Audit repair HITL in progress — Core 1 direct SRAM timer, anti-windup, 5 ms observer cadence, 25 kHz PWM, canonical packet-sized CDC, retryable trace blocks, 12-gate metrics, and fresh battery preflight are verified. Large has a provisional compliant profile margin. Medium window sweep has 6/16 cases checkpointed; remaining cases resume from JSON after one normal USB replug. Follow [ASSUMPTIONS.md](ASSUMPTIONS.md) resume point. **Phase 8 remains blocked** until all four motors pass the battery-gated profile suite and beat Arduino. | 2026-09-02 | `ef34dbb` + handoff |
+| 7 — Motion engine | 🟠 Audit repair HITL in progress — Core 1 direct SRAM timer, anti-windup, 5 ms observer cadence, 25 kHz PWM, 12-gate metrics, and fresh battery preflight are verified. Large has a provisional compliant profile margin. Packet-sized CDC can complete isolated 577-row traces but still wedges after three persistent-session cases; CDC sweeping is retired. A consistent 200 Hz Medium run has 3/16 JSON cases. The board is coasted in BOOTSEL for an authorized autonomous flash-backed sweep; follow [ASSUMPTIONS.md](ASSUMPTIONS.md). **Phase 8 remains blocked** until all four motors pass the battery-gated profile suite and beat baseline. | 2026-09-02 | `ef34dbb` + latest handoff |
 | 8 — Drive base | ⬜ Not started — **BLOCKED by the Phase 7 smoothness gate above** | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 

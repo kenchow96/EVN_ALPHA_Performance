@@ -23,6 +23,22 @@ RESULTS = os.path.join("bench", "results")
 TRACE_SECONDS = 2.65
 
 
+def trace_block_rows_valid(start, next_start, rows):
+    if len(rows) != next_start - start:
+        return False
+    timestamps = [row[0] for row in rows]
+    if len(timestamps) >= 2:
+        sample_ms = timestamps[1] - timestamps[0]
+    elif start > 0:
+        sample_ms, remainder = divmod(timestamps[0], start)
+        if remainder:
+            return False
+    else:
+        sample_ms = 1
+    return sample_ms > 0 and timestamps == [index * sample_ms
+                                             for index in range(start, next_start)]
+
+
 def find_port(requested=None):
     if requested:
         return requested
@@ -168,8 +184,6 @@ class BoardSession:
                                     csv_rows.append([int(part) for part in parts])
                                 except ValueError:
                                     continue
-                            expected_indices = list(range(start, next_start))
-                            actual_indices = [row[0] for row in csv_rows]
                             first_block_valid = start != 0 or (
                                 all(field in decoded for field in (
                                     "TRACE BEGIN ", " target=", " vmax=", " accel=",
@@ -177,7 +191,8 @@ class BoardSession:
                                 and "t_ms,ref_mdeg,enc_mdeg,hat_mdeg,vref_mdegs," in decoded
                             )
                             final_block_valid = next_start < total or "TRACE END\n" in decoded
-                            if (actual_indices == expected_indices and first_block_valid
+                            if (trace_block_rows_valid(start, next_start, csv_rows)
+                                    and first_block_valid
                                     and final_block_valid):
                                 return decoded, next_start, total
                             last_data = response

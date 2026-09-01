@@ -1,18 +1,21 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, context handoff):** Start a fresh agent session.
-> Verified commits: `b92b648` (USB/RT/control foundation), `4e27bb6`
-> (SDK-serialized USB), `66c5d6a` (battery-gated telemetry), `ef34dbb`
-> (velocity-window tuning + 200 Hz diagnostic traces). Motors are confirmed
-> coasted. Windows COM7 is locked after an in-flight trace, so first unplug/replug
-> USB in normal mode (no UF2, no flash). Then run exactly:
-> `python tools/motion_sweep.py --suite window-speed --output bench/results/sweep_window_speed_20260902 --resume`
-> Completed JSON cases (skip automatically): `W20_K5_{pos,neg}`,
-> `W20_K10_{pos,neg}`, `W30_K5_{pos,neg}`. Ten cases remain. The failed next
-> case `W30_K10_pos` passed battery preflight at 7.388 V (cells 3.680/3.684 V,
-> age 26.641 ms) but produced no JSON. Each resumed run must keep the fresh
-> battery gate and 4 s Core 1 auto-coast. Do not start Phase 8 until all four
-> axes pass `tools/motion_metrics.py` and beat the Arduino baseline.
+> **RESUME POINT (2026-09-02, unattended handoff):** Base HEAD is `4d2898b`;
+> this checkpoint adds packet-bounded CDC writes and a cadence-aware 1/5 ms
+> trace validator. A fresh 200 Hz run completed `W20_K5_{pos,neg}` and
+> `W20_K10_pos` in `bench/results/sweep_window_speed_200hz_20260902`; case 4
+> wedged CDC during its first trace-block write after a valid 7.411 V battery
+> gate. The 4 s Core 1 deadline coasted the motor, and the user then placed the
+> powered board in BOOTSEL with Motor 3 clear and authorized an unattended run.
+> Do not resume CDC sweeping: one persistent handle still fails after roughly
+> three cases, picotool cannot force BOOTSEL once wedged, no CMSIS-DAP probe is
+> attached, and Windows device restart is denied without elevation. Implement
+> the USB-independent flash-backed 16-case Motor 3 sweep next: fixed binary
+> records below the reserved `0x10FF0000` calibration region, mandatory
+> multicore lockout, fresh battery gate per move, coast before every flash
+> operation, commit header last, then `reset_usb_boot()` for extraction.
+> Picotool 2.3.0 supports `save -r <from> <to> <file> -t uf2`. Phase 8 remains
+> blocked until all four axes pass `tools/motion_metrics.py` and beat baseline.
 
 Every assumption made during development that is **not** marked `[GROUND TRUTH]` in the specs and has **not** been independently verified against hardware. **Review and confirm/refute each before we build dependent phases on top.** Each entry: the assumption, where it's baked in, why we made it, and how to falsify it.
 
