@@ -146,10 +146,42 @@ class BoardSession:
                         newline = data.find(b"\n", end)
                         if newline >= 0:
                             response = bytes(data[begin:newline + 1])
-                            end_line = response[response.rfind(end_marker):].decode("ascii")
+                            decoded = response.decode("utf-8", "replace")
+                            end_line = decoded[decoded.rfind("TRACE BLOCK END "):]
                             fields = dict(token.split("=", 1) for token in end_line.split()
                                           if "=" in token)
-                            return response.decode("utf-8", "replace"), int(fields["next"]), int(fields["total"])
+                            next_start = int(fields["next"])
+                            total = int(fields["total"])
+                            block_line = f"TRACE BLOCK start={start} count={next_start - start}\n"
+                            block_at = decoded.find(block_line)
+                            end_at = decoded.rfind("TRACE BLOCK END ")
+                            if block_at < 0 or end_at < block_at:
+                                last_data = response
+                                break
+
+                            csv_rows = []
+                            for line in decoded[block_at + len(block_line):end_at].splitlines():
+                                parts = line.split(",")
+                                if len(parts) != 8:
+                                    continue
+                                try:
+                                    csv_rows.append([int(part) for part in parts])
+                                except ValueError:
+                                    continue
+                            expected_indices = list(range(start, next_start))
+                            actual_indices = [row[0] for row in csv_rows]
+                            first_block_valid = start != 0 or (
+                                all(field in decoded for field in (
+                                    "TRACE BEGIN ", " target=", " vmax=", " accel=",
+                                    " vscale=", " ascale=", " vsrc=", " vwin="))
+                                and "t_ms,ref_mdeg,enc_mdeg,hat_mdeg,vref_mdegs," in decoded
+                            )
+                            final_block_valid = next_start < total or "TRACE END\n" in decoded
+                            if (actual_indices == expected_indices and first_block_valid
+                                    and final_block_valid):
+                                return decoded, next_start, total
+                            last_data = response
+                            break
             last_data = bytes(data)
             self.read_for(0.1)
         self.last_trace_data = last_data
@@ -361,6 +393,23 @@ def startup_pause_cases():
     return cases
 
 
+def window_speed_cases():
+    cases = []
+    for window in (20, 30, 40, 60):
+        for kv in (5.0e-7, 1.0e-6):
+            for direction, delta in (("pos", 90.0), ("neg", -90.0)):
+                cases.append({
+                    "name": f"W{window}_K{int(kv * 1e7)}_{direction}", "axis": 3,
+                    "delta": delta, "vmax": 180.0, "accel": 900.0,
+                    "kp": 1.2e-4, "ki": 8.0e-7, "kv": kv,
+                    "start_duty": 0.55, "hold_duty": 0.55,
+                    "speed_source": 1, "speed_window": window,
+                    "speed_alpha": 0.05,
+                    "vel_scale": 0.85, "accel_scale": 0.40,
+                })
+    return cases
+
+
 def profile_cases(args):
     profiles = [
         ("short", 10.0, 180.0, 900.0),
@@ -383,6 +432,7 @@ def profile_cases(args):
                     "start_duty": args.large_start if axis <= 2 else args.medium_start,
                     "hold_duty": args.large_floor if axis <= 2 else args.medium_floor,
                     "speed_source": args.speed_source,
+                    "speed_window": args.speed_window,
                     "vel_scale": args.vel_scale, "accel_scale": args.accel_scale,
                 })
     return cases
@@ -409,6 +459,7 @@ def run_case(board, case, output_dir):
     axis = case["axis"]
     board.send("c", expect="coast all")
     board.send(f"u {case.get('speed_source', 1)}", expect="velocity source")
+    board.send(f"j {axis} {case.get('speed_window', 60)}", expect="velocity window")
     board.send(f"l {axis} {case.get('speed_alpha', 0.05):.6g}", expect="edge speed alpha")
     board.send(f"h {axis} {case.get('vel_scale', 1.0):.6g} {case.get('accel_scale', 1.0):.6g}",
                expect=f"M{axis} profile scale")
@@ -433,8 +484,10 @@ def run_case(board, case, output_dir):
         trace_file.write(frame)
 
     meta, rows = load_last_trace(trace_path)
-    if meta is None or len(rows) != 2500:
-        raise RuntimeError(f"{case['name']}: expected 2500 framed rows, got {len(rows) if rows else 0}")
+    expected_rows = int(meta.get("rows", 0)) if meta else 0
+    if meta is None or expected_rows < 100 or len(rows) != expected_rows:
+        raise RuntimeError(
+            f"{case['name']}: expected {expected_rows} framed rows, got {len(rows) if rows else 0}")
     metrics = compute(meta, rows)
     if metrics is None:
         raise RuntimeError(f"{case['name']}: metrics rejected trace")
@@ -458,7 +511,7 @@ def write_summary(output_dir, results):
     summary_path = os.path.join(output_dir, "summary.csv")
     fields = [
         "name", "axis", "delta", "vmax", "accel", "kp", "ki", "kv",
-        "start_duty", "hold_duty", "speed_source", "speed_alpha",
+        "start_duty", "hold_duty", "speed_source", "speed_window", "speed_alpha",
         "vel_scale", "accel_scale", "peak_vel_degs", "peak_accel_degs2",
         "passed", "total", "failures", "score", "max_track_err_deg",
         "rms_track_err_deg", "overshoot_deg", "final_err_deg",
@@ -479,6 +532,7 @@ def write_summary(output_dir, results):
                 "ki": case["ki"], "kv": case["kv"],
                 "start_duty": case["start_duty"], "hold_duty": case["hold_duty"],
                 "speed_source": case.get("speed_source", 1),
+                "speed_window": case.get("speed_window", 60),
                 "speed_alpha": case.get("speed_alpha", 0.05),
                 "vel_scale": case.get("vel_scale", 1.0),
                 "accel_scale": case.get("accel_scale", 1.0),
@@ -513,7 +567,8 @@ def main():
                                              "dynamics", "edge-speed",
                                              "filtered-edge", "observer-speed",
                                              "profile-margin", "margin-refine",
-                                             "startup-pause", "profiles"),
+                                             "startup-pause", "window-speed",
+                                             "profiles"),
                         default="gain-search")
     parser.add_argument("--output")
     parser.add_argument("--case", action="append", default=[],
@@ -533,6 +588,7 @@ def main():
     parser.add_argument("--medium-start", type=float, default=0.65)
     parser.add_argument("--medium-floor", type=float, default=0.25)
     parser.add_argument("--speed-source", type=int, choices=(0, 1, 2, 3), default=1)
+    parser.add_argument("--speed-window", type=int, default=60)
     parser.add_argument("--vel-scale", type=float, default=0.9)
     parser.add_argument("--accel-scale", type=float, default=0.65)
     parser.add_argument("--min-battery-mv", type=int, default=6500)
@@ -558,6 +614,8 @@ def main():
         cases = margin_refine_cases()
     elif args.suite == "startup-pause":
         cases = startup_pause_cases()
+    elif args.suite == "window-speed":
+        cases = window_speed_cases()
     else:
         cases = profile_cases(args)
     if args.case:

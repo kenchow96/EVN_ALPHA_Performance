@@ -33,6 +33,7 @@ static evn_trace_row_t s_trace[EVN_TRACE_MAX];
 static volatile uint8_t  s_trace_axis = 0;
 static volatile uint32_t s_trace_count = 0;
 static volatile bool     s_trace_armed = false;
+static uint8_t           s_trace_divider = 0;
 
 void evn_motion_trace_arm(uint8_t axis) {
     if (axis > 3) return;
@@ -40,6 +41,7 @@ void evn_motion_trace_arm(uint8_t axis) {
     __dmb();
     s_trace_axis = axis;
     s_trace_count = 0;
+    s_trace_divider = 0;
     __dmb();
     s_trace_armed = true;
 }
@@ -258,6 +260,18 @@ void evn_motion_set_velocity_source(uint8_t axis, int source) {
     s_axis[axis].pid.use_enc_speed = source;
 }
 
+void evn_motion_set_speed_window(uint8_t axis, int samples) {
+    if (axis > 3 || !(s_mask & (1u << axis))) return;
+    if (samples < 2) samples = 2;
+    if (samples > PID_SPEED_WINDOW) samples = PID_SPEED_WINDOW;
+    s_axis[axis].pid.vel_window = samples;
+}
+
+int evn_motion_speed_window(uint8_t axis) {
+    if (axis > 3 || !(s_mask & (1u << axis))) return 0;
+    return s_axis[axis].pid.vel_window;
+}
+
 void evn_motion_set_edge_speed_alpha(uint8_t axis, float alpha) {
     if (axis > 3 || !(s_mask & (1u << axis))) return;
     if (alpha < 0.001f) alpha = 0.001f;
@@ -461,19 +475,23 @@ void __not_in_flash_func(evn_motion_tick)(void) {
         a->last_applied_mv = (int32_t)(duty * (float)vbus_mv);
 
         /* --- trace capture (armed axis only) --- */
-        if (s_trace_armed && s_trace_axis == i && s_trace_count < EVN_TRACE_MAX) {
-            evn_trace_row_t *r = &s_trace[s_trace_count];
-            r->t_ms = (int32_t)s_time_ms;
-            r->ref_mdeg = (int32_t)pos_ref;
-            r->enc_mdeg = angle_mdeg;
-            r->hat_mdeg = th_hat;
-            r->vref_mdegs = (int32_t)vel_ref;
-            r->what_mdegs = (int32_t)a->pid.last_vel_smooth;   /* actual vel-loop feedback */
-            r->duty_milli = (int32_t)(duty * 1000.0f);
-            r->cur_01ma = i_hat;                 /* observer current (0.1 mA) */
-            __dmb();
-            s_trace_count++;
-            if (s_trace_count >= EVN_TRACE_MAX) s_trace_armed = false;
+        if (s_trace_armed && s_trace_axis == i) {
+            bool capture = s_trace_divider == 0;
+            if (++s_trace_divider >= EVN_TRACE_SAMPLE_DIV) s_trace_divider = 0;
+            if (capture && s_trace_count < EVN_TRACE_MAX) {
+                evn_trace_row_t *r = &s_trace[s_trace_count];
+                r->t_ms = (int32_t)s_time_ms;
+                r->ref_mdeg = (int32_t)pos_ref;
+                r->enc_mdeg = angle_mdeg;
+                r->hat_mdeg = th_hat;
+                r->vref_mdegs = (int32_t)vel_ref;
+                r->what_mdegs = (int32_t)a->pid.last_vel_smooth;
+                r->duty_milli = (int32_t)(duty * 1000.0f);
+                r->cur_01ma = i_hat;
+                __dmb();
+                s_trace_count++;
+                if (s_trace_count >= EVN_TRACE_MAX) s_trace_armed = false;
+            }
         }
 
         /* --- stall + status publish --- */

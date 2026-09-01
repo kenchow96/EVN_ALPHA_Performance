@@ -159,7 +159,7 @@ static void move_relative_tune(float delta_deg, int only_axis /* -1 = all */) {
            only_axis >= 0 ? "(single axis)" : "(all axes)");
 }
 
-/* Dump the armed axis' 1 kHz trace as CSV (host parses TRACE BEGIN/END). */
+/* Dump the armed axis' 200 Hz diagnostic trace (control remains at 1 kHz). */
 static const char s_trace_columns[] =
     "t_ms,ref_mdeg,enc_mdeg,hat_mdeg,vref_mdegs,what_mdegs,duty_milli,cur_01ma\n";
 
@@ -172,7 +172,7 @@ static int format_trace_header(char *header, size_t size, uint8_t ax, uint32_t n
     float target_deg, duration_s;
     evn_motion_get_debug(ax, &target_deg, &duration_s);
     return snprintf(header, size,
-        "TRACE BEGIN axis=%u rows=%lu kp=%g ki=%g kv=%g kd=%g kff=%g ff=%d pwm=%lu target=%g duration=%g vmax=%g accel=%g vscale=%g ascale=%g vsrc=%d valpha=%g\n",
+        "TRACE BEGIN axis=%u rows=%lu kp=%g ki=%g kv=%g kd=%g kff=%g ff=%d pwm=%lu target=%g duration=%g vmax=%g accel=%g vscale=%g ascale=%g vsrc=%d vwin=%d valpha=%g\n",
         ax + 1, (unsigned long)n,
         (double)p->kp_pos, (double)p->ki_pos, (double)p->kp_vel,
         (double)p->kd_vel, (double)p->kff_accel,
@@ -181,6 +181,7 @@ static int format_trace_header(char *header, size_t size, uint8_t ax, uint32_t n
         (double)target_deg, (double)duration_s,
         (double)max_vel, (double)max_accel,
         (double)vel_scale, (double)accel_scale, p->use_enc_speed,
+        evn_motion_speed_window(ax),
         (double)evn_motion_edge_speed_alpha(ax));
 }
 
@@ -445,6 +446,15 @@ static void handle_command(void) {
             evn_motion_set_edge_speed_alpha((uint8_t)(ax - 1), alpha);
             con_printf(">> M%d edge speed alpha=%g\n", ax, (double)alpha);
         } else con_printf("?? usage: l motor alpha_0.001_to_1\n");
+        break;
+    }
+    case 'j': {
+        int ax, samples;
+        if (sscanf(p + 1, "%d %d", &ax, &samples) == 2 &&
+            ax >= 1 && ax <= 4 && samples >= 2 && samples <= PID_SPEED_WINDOW) {
+            evn_motion_set_speed_window((uint8_t)(ax - 1), samples);
+            con_printf(">> M%d velocity window=%d samples\n", ax, samples);
+        } else con_printf("?? usage: j motor samples_2_to_%d\n", PID_SPEED_WINDOW);
         break;
     }
     case 'h': {

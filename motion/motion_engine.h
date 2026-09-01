@@ -107,7 +107,9 @@ void evn_motion_set_gains_axis(uint8_t axis, float kp_pos, float ki_pos,
                                float kp_vel, float kd_vel, float kff_accel);
 void evn_motion_set_stiction(uint8_t axis, float start_duty, float hold_duty);
 void evn_motion_set_velocity_source(uint8_t axis, int source);
+void evn_motion_set_speed_window(uint8_t axis, int samples);
 void evn_motion_set_edge_speed_alpha(uint8_t axis, float alpha);
+int evn_motion_speed_window(uint8_t axis);
 float evn_motion_edge_speed_alpha(uint8_t axis);
 void evn_motion_set_profile_scale(uint8_t axis, float vel_scale,
                                   float accel_scale);
@@ -119,8 +121,9 @@ void evn_motion_set_observer(int32_t stall_speed_limit, int32_t stall_time_ms,
 void evn_motion_set_feedforward(bool on);
 bool evn_motion_feedforward_on(void);
 
-/* --- 1 kHz per-axis trace (tuning): record ref/meas/duty every tick --- */
-#define EVN_TRACE_MAX 2500   /* rows × 32 B = 80 KB static */
+/* --- 200 Hz per-axis diagnostic trace; control remains at 1 kHz --- */
+#define EVN_TRACE_MAX 2500
+#define EVN_TRACE_SAMPLE_DIV 5
 void     evn_motion_trace_arm(uint8_t axis);   /* clear + start recording */
 void     evn_motion_trace_stop(void);          /* stop recording (keep data) */
 bool     evn_motion_trace_info(uint8_t *axis, uint32_t *count, bool *armed);

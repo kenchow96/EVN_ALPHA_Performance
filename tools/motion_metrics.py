@@ -146,8 +146,18 @@ def compute(meta, rows):
     profile_end_error = target - ref[-1]
 
     # --- smooth kinematics from encoder ---
-    vel, acc = quadratic_kinematics(enc, t)
-    jerk = boxcar(derivative(acc, t), 21)
+    intervals = sorted(t[i] - t[i - 1] for i in range(1, n) if t[i] > t[i - 1])
+    sample_ms = intervals[len(intervals) // 2] if intervals else 1
+    kinematic_window = max(5, round(151 / sample_ms))
+    if kinematic_window % 2 == 0:
+        kinematic_window += 1
+    if kinematic_window > n:
+        kinematic_window = n if n % 2 == 1 else n - 1
+    vel, acc = quadratic_kinematics(enc, t, kinematic_window)
+    jerk_window = max(3, round(21 / sample_ms))
+    if jerk_window % 2 == 0:
+        jerk_window += 1
+    jerk = boxcar(derivative(acc, t), jerk_window)
 
     # --- tracking windows ---
     # cruise: |vref| >= 90% of peak
@@ -205,6 +215,7 @@ def compute(meta, rows):
         "gains": {k: meta.get(k) for k in ("kp", "ki", "kv", "kd", "kff")},
         "feedforward": meta.get("ff"),
         "velocity_source": int(meta["vsrc"]) if "vsrc" in meta else None,
+        "velocity_window": int(meta["vwin"]) if "vwin" in meta else None,
         "velocity_alpha": float(meta["valpha"]) if "valpha" in meta else None,
         "commanded_vmax_degs": float(meta["vmax"]) if "vmax" in meta else None,
         "commanded_accel_degs2": float(meta["accel"]) if "accel" in meta else None,
@@ -215,6 +226,7 @@ def compute(meta, rows):
         "move_deg": [round(start, 2), round(target, 2)],
         "rows": n,
         "span_ms": t[-1] - t[0],
+        "sample_period_ms": sample_ms,
 
         # limits
         "peak_vel_degs": round(max((abs(v) for v in vel), default=0.0), 1),

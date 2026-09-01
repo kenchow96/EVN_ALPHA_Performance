@@ -1,7 +1,9 @@
 # Motion Performance Metrics — EVN ALPHA
 
-Quantitative acceptance for **single-motor** control, measured from the 1 kHz
-per-axis trace (`t <n>` / `d` console commands → `tools/motion_metrics.py`).
+Quantitative acceptance for **single-motor** control, measured from a 200 Hz
+diagnostic trace of the 1 kHz controller (`t <n>` / block-pull console commands
+→ `tools/motion_metrics.py`). Kinematic fits retain a fixed ~151 ms time window
+independent of trace sample rate.
 This is the bar a motor must clear before we build the drivebase on top.
 Every metric names the **signal it is computed from** (per Lesson D1).
 
