@@ -33,22 +33,84 @@
  * calibration via the motion engine's counts_per_rev. */
 static const float CPR[4] = { 720.0f, 720.0f, 720.0f, 720.0f };
 
-static void wait_for_start(void) {
-    printf("\n*** Send any character to start the motion test ***\n");
-    bool led = false;
-    while (getchar_timeout_us(0) == PICO_ERROR_TIMEOUT) {
-        hal_led_set(led = !led);
-        busy_wait_ms(250);
-    }
-    hal_led_set(false);
-    printf("Start received.\n");
-}
-
 static void print_battery(void) {
     evn_battery_state_t b;
     if (hal_battery_get(&b))
         printf("Battery: %.3f V (cells %.3f / %.3f)\n",
                b.vbatt_mv/1000.0f, b.vcell1_mv/1000.0f, b.vcell2_mv/1000.0f);
+}
+
+/* test state machine shared with the command handler */
+static int s_state = 3;   /* 0=OUT 1=RETURN 3=DONE (start idle) */
+
+/* Run the full +360 -> 0 trapezoidal test on all axes. */
+static void start_full_test(void) {
+    for (int i = 0; i < 4; i++)
+        evn_motion_move_to(i, 360.0f, 180.0f, 900.0f);
+    s_state = 0;   /* OUT */
+    printf(">> full test: +360 deg on all axes\n");
+}
+
+/* Move every axis by a small relative delta (for CPR validation). */
+static void move_relative_all(float delta_deg) {
+    for (int i = 0; i < 4; i++) {
+        float ang, spd; bool stall, done;
+        evn_motion_get_state(i, &ang, &spd, &stall, &done);
+        evn_motion_move_to(i, ang + delta_deg, 90.0f, 450.0f);   // slow, gentle
+    }
+    printf(">> relative move %+.1f deg on all axes (CPR check)\n", (double)delta_deg);
+}
+
+/* Serial command loop (tuning without reflash). Commands (line-based):
+ *   r            -> run full +360/0 test
+ *   q            -> +90 deg relative move (CPR check)
+ *   c            -> coast all (safety)
+ *   g kp ki kv kd kff   -> set gains (floats)
+ *   o ssl st neg ratio  -> set observer stall params (ints)
+ */
+static char s_cmd[96];
+static int  s_cmd_len = 0;
+
+static void handle_command(void) {
+    s_cmd[s_cmd_len] = '\0';
+    char *p = s_cmd;
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p == 0) return;
+
+    switch (p[0]) {
+    case 'r': start_full_test(); break;
+    case 'q': move_relative_all(90.0f); break;
+    case 'Q': move_relative_all(-90.0f); break;
+    case 'c': for (int i = 0; i < 4; i++) evn_motion_coast(i); hal_motor_coast_all(); printf(">> coast all\n"); break;
+    case 'g': {
+        float kp, ki, kv, kd, kff;
+        if (sscanf(p + 1, "%f %f %f %f %f", &kp, &ki, &kv, &kd, &kff) == 5) {
+            evn_motion_set_gains(kp, ki, kv, kd, kff);
+            printf(">> gains kp=%g ki=%g kv=%g kd=%g kff=%g\n", (double)kp,(double)ki,(double)kv,(double)kd,(double)kff);
+        } else printf("?? usage: g kp ki kv kd kff\n");
+        break;
+    }
+    case 'o': {
+        int ssl, st, neg, ratio;
+        if (sscanf(p + 1, "%d %d %d %d", &ssl, &st, &neg, &ratio) == 4) {
+            evn_motion_set_observer(ssl, st, neg, ratio);
+            printf(">> observer ssl=%d st=%d neg=%d ratio=%d\n", ssl, st, neg, ratio);
+        } else printf("?? usage: o ssl st neg ratio\n");
+        break;
+    }
+    default: printf("?? unknown cmd '%c'\n", p[0]); break;
+    }
+}
+
+static void poll_serial(void) {
+    int ch;
+    while ((ch = getchar_timeout_us(0)) != PICO_ERROR_TIMEOUT) {
+        if (ch == '\r' || ch == '\n') {
+            if (s_cmd_len > 0) { handle_command(); s_cmd_len = 0; }
+        } else if (s_cmd_len < (int)sizeof(s_cmd) - 1) {
+            s_cmd[s_cmd_len++] = (char)ch;
+        }
+    }
 }
 
 int main(void) {
@@ -82,29 +144,28 @@ int main(void) {
     printf("core1: 1 kHz loop + motion engine running\n");
     print_battery();
 
-    wait_for_start();
-
-    /* command: +360° then back to 0°, 180 deg/s, 900 deg/s^2 */
-    for (int i = 0; i < 4; i++)
-        evn_motion_move_to(i, 360.0f, 180.0f, 900.0f);
-    printf("Commanded +360deg on all 4 axes.\n");
+    printf("\nEVN motion console. cmds: r=run +360/0  q=+90deg  Q=-90deg  c=coast  g=set gains  o=set observer\n");
 
     uint64_t next_button = time_us_64();
     uint64_t next_batt = time_us_64();
     uint64_t next_report = time_us_64();
 
-    /* test state machine: OUT (to +360) -> RETURN (to 0) -> DONE (latched) */
-    enum { ST_OUT, ST_RETURN, ST_DONE } st = ST_OUT;
+    /* test state machine: OUT (to +360) -> RETURN (to 0) -> DONE (latched).
+     * Driven by the 'r' command via s_state. */
+    enum { ST_OUT = 0, ST_RETURN = 1, ST_DONE = 3 };
 
     while (true) {
         uint64_t now = time_us_64();
+
+        poll_serial();   // host-driven commands (run/tune/coast)
 
         if ((int64_t)(now - next_button) >= 0) {
             next_button = now + BUTTON_POLL_US;
             hal_button_update();
             if (hal_button_get_event()) {  // emergency coast all
                 for (int i = 0; i < 4; i++) evn_motion_coast(i);
-                st = ST_DONE;
+                hal_motor_coast_all();
+                s_state = 3;   // DONE
                 printf(">> BUTTON: coast all\n");
             }
         }
@@ -129,11 +190,11 @@ int main(void) {
                 if (!done) all_done = false;
             }
 
-            if (st == ST_OUT && all_done) {
+            if (s_state == ST_OUT && all_done) {
                 for (int i = 0; i < 4; i++) evn_motion_move_to(i, 0.0f, 180.0f, 900.0f);
                 printf(">>> all at +360. Commanding return to 0.\n");
-                st = ST_RETURN;
-            } else if (st == ST_RETURN && all_done) {
+                s_state = ST_RETURN;
+            } else if (s_state == ST_RETURN && all_done) {
                 for (int i = 0; i < 4; i++) evn_motion_coast(i);   // safety: coast all
                 hal_motor_coast_all();
                 evn_core1_status_t cs;
@@ -144,7 +205,7 @@ int main(void) {
                            (unsigned)cs.period_max_us, (unsigned)cs.exec_max_us);
                 }
                 print_battery();
-                st = ST_DONE;   // latched — never re-fires
+                s_state = ST_DONE;   // latched — never re-fires
             }
             /* ST_DONE: idle forever, motors coasted */
         }

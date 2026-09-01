@@ -76,6 +76,11 @@ bool evn_motion_get_state(uint8_t axis, float *angle_deg, float *speed_degs,
 /* Debug: commanded target (deg) and computed profile duration (s). */
 bool evn_motion_get_debug(uint8_t axis, float *target_deg, float *total_time_s);
 
+/* Runtime tuning (Core 0, e.g. from a serial console). Apply to all axes. */
+void evn_motion_set_gains(float kp_pos, float ki_pos, float kp_vel, float kd_vel, float kff_accel);
+void evn_motion_set_observer(int32_t stall_speed_limit, int32_t stall_time_ms,
+                             int32_t fb_negligible, int32_t fb_stall_ratio);
+
 /* The Core 1 tick — call from evn_core1_tick() every 1 ms. */
 void __not_in_flash_func(evn_motion_tick)(void);
 

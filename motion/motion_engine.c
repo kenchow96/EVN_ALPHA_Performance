@@ -124,6 +124,29 @@ bool evn_motion_get_debug(uint8_t axis, float *target_deg, float *total_time_s) 
     return true;
 }
 
+void evn_motion_set_gains(float kp_pos, float ki_pos, float kp_vel, float kd_vel, float kff_accel) {
+    for (int i = 0; i < 4; i++) {
+        if (!(s_mask & (1u << i))) continue;
+        s_axis[i].pid.kp_pos = kp_pos;
+        s_axis[i].pid.ki_pos = ki_pos;
+        s_axis[i].pid.kp_vel = kp_vel;
+        s_axis[i].pid.kd_vel = kd_vel;
+        s_axis[i].pid.kff_accel = kff_accel;
+    }
+}
+
+void evn_motion_set_observer(int32_t stall_speed_limit, int32_t stall_time_ms,
+                             int32_t fb_negligible, int32_t fb_stall_ratio) {
+    for (int i = 0; i < 4; i++) {
+        if (!(s_mask & (1u << i))) continue;
+        evn_observer_settings_t *s = &s_axis[i].observer.settings;
+        s->stall_speed_limit = stall_speed_limit;
+        s->stall_time_ms = stall_time_ms;
+        s->feedback_voltage_negligible = fb_negligible;
+        s->feedback_voltage_stall_ratio = fb_stall_ratio;
+    }
+}
+
 void __not_in_flash_func(evn_motion_tick)(void) {
     s_time_ms++;
 
