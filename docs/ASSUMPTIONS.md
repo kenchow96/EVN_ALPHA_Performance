@@ -1,24 +1,23 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, startup reference):** Commits through `fc7aa91`
-> and two autonomous extractions establish USB-independent tuning and a
-> repeated trajectory A/B. Both runs verified 16/16 commit CRCs and 16/16
-> traces; batteries were 7.352-7.374 V with age <=441 us, and Core 1 remained
-> 999-1001 us with zero misses. `W40/K5`, 0.65 start, 0.55 hold is the Medium
-> baseline. Quintic minimum-jerk is retained as optional but rejected as the
-> default: versus trapezoid it reduced mean measured acceleration by 166-246
-> deg/s2 and jerk by 3.7k-6.9k deg/s3, but cleared no additional gate and
-> worsened positive settling/ripple. Root cause is now measured: adaptive
-> breakaway at 0.59-0.64 duty moves 1.0-2.0 deg in the first trace sample and
-> reaches 38-85 deg/s while the paused reference is near 0.5 deg; control then
-> reverses duty, waits, and rebuilds a ~4 deg error. Next test a trapezoidal
-> startup reference governor that may only advance (never rewind) profile time
-> to the measured position during the first 5 deg. Each case erases its fixed
+> **RESUME POINT (2026-09-02, friction feedforward):** Commits through
+> `c2a4cb4` add the startup reference governor; its autonomous A/B verified
+> 16/16 trace CRCs at 7.341-7.363 V, age <=447 us, Core 1 999-1001 us, zero
+> misses. Keep the governor: versus matched baseline it reduced positive mean
+> acceleration 34%, jerk 52%, max error 21%, duty ripple 75%, peak current 40%,
+> and made overshoot <=0.5 deg in all four positive repeats. Negative max error
+> improved 23%. Remaining failure is low-speed model mismatch: the shaft gets
+> slightly ahead during deceleration, duty drops below moving friction, then
+> static capture creates the final correction. Raw/filtered edge-speed history
+> is worse, so retain the 40 ms window. Current build/run ID `0x26090204` sweeps
+> friction feedforward at 0.5x/1.0x/1.5x/2.0x model torque (0.073/0.146/0.219/
+> 0.292 duty at 7.35 V), two repeats and both directions, with every other
+> W40/K5/governor setting fixed. Each case erases its fixed
 > slot while coasted, requires a battery sample age <=250 ms (pack >=6.5 V,
 > cells >=3.0 V), runs with the 4 s
 > Core 1 auto-coast, logs ~530 trace rows, aborts on any missed RT tick, writes
 > trace pages under lockout, and commits the CRC header last. Completion enters
-> ROM BOOTSEL. Use a new run ID and preserve the prior UF2s. Phase 8 remains blocked until
+> ROM BOOTSEL. Preserve all prior UF2s. Phase 8 remains blocked until
 > all four axes pass `tools/motion_metrics.py` and beat the measured baseline.
 
 Every assumption made during development that is **not** marked `[GROUND TRUTH]` in the specs and has **not** been independently verified against hardware. **Review and confirm/refute each before we build dependent phases on top.** Each entry: the assumption, where it's baked in, why we made it, and how to falsify it.

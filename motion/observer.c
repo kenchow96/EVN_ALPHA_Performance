@@ -131,7 +131,17 @@ int32_t evn_observer_voltage_to_torque(const evn_motor_model_t *m, int32_t volta
 
 int32_t evn_observer_feedforward_torque(const evn_motor_model_t *m,
                                         int32_t rate_ref_mdegs, int32_t accel_ref) {
-    int32_t friction = m->torque_friction / 2 * isign32(rate_ref_mdegs);
+    return evn_observer_feedforward_torque_scaled(m, rate_ref_mdegs,
+                                                  accel_ref, 500u);
+}
+
+int32_t evn_observer_feedforward_torque_scaled(const evn_motor_model_t *m,
+                                               int32_t rate_ref_mdegs,
+                                               int32_t accel_ref,
+                                               uint16_t friction_permille) {
+    int32_t friction = (int32_t)((int64_t)m->torque_friction *
+                                 friction_permille / 1000) *
+                       isign32(rate_ref_mdegs);
     int32_t backemf  = EVN_OBS_PRESCALE_SPEED * iclamp(rate_ref_mdegs, EVN_OBS_MAX_SPEED_MDEPS) / m->d_torque_d_speed;
     int32_t accel    = EVN_OBS_PRESCALE_ACCEL * iclamp(accel_ref, EVN_OBS_MAX_ACCEL) / m->d_torque_d_acceleration;
     return iclamp(friction + backemf + accel, EVN_OBS_MAX_TORQUE_UNM);

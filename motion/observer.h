@@ -88,5 +88,9 @@ int32_t evn_observer_voltage_to_torque(const evn_motor_model_t *m, int32_t volta
 /* Feedforward torque for a reference speed+acceleration (µN·m). */
 int32_t evn_observer_feedforward_torque(const evn_motor_model_t *m,
                                         int32_t rate_ref_mdegs, int32_t accel_ref);
+int32_t evn_observer_feedforward_torque_scaled(const evn_motor_model_t *m,
+                                               int32_t rate_ref_mdegs,
+                                               int32_t accel_ref,
+                                               uint16_t friction_permille);
 
 #endif /* MOTION_OBSERVER_H */

@@ -124,6 +124,8 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         a->trajectory_type = EVN_TRAJECTORY_TRAPEZOID;
         a->startup_reference_governor = false;
         a->active_startup_reference_governor = false;
+        a->friction_feedforward_permille = 500u;
+        a->active_friction_feedforward_permille = 500u;
         a->traj.active = false;
         a->traj.done = true;
         a->cmd_seq = 0;
@@ -153,6 +155,7 @@ void evn_motion_move_to_test(uint8_t axis, float target_deg,
     a->cmd_accel_scale = a->profile_accel_scale;
     a->cmd_trajectory_type = a->trajectory_type;
     a->cmd_startup_reference_governor = a->startup_reference_governor;
+    a->cmd_friction_feedforward_permille = a->friction_feedforward_permille;
     a->cmd_auto_coast_ms = auto_coast_ms;
     a->cmd_active      = true;
     __dmb();
@@ -312,6 +315,11 @@ void evn_motion_set_startup_reference_governor(uint8_t axis, bool enabled) {
     s_axis[axis].startup_reference_governor = enabled;
 }
 
+void evn_motion_set_friction_feedforward(uint8_t axis, uint16_t permille) {
+    if (axis > 3 || !(s_mask & (1u << axis)) || permille > 2000u) return;
+    s_axis[axis].friction_feedforward_permille = permille;
+}
+
 const evn_pid_t *evn_motion_axis_pid(uint8_t axis) {
     if (axis > 3) return NULL;
     return &s_axis[axis].pid;
@@ -355,6 +363,8 @@ void __not_in_flash_func(evn_motion_tick)(void) {
             float accel_scale = a->cmd_accel_scale;
             evn_trajectory_type_t trajectory_type = a->cmd_trajectory_type;
             bool startup_reference_governor = a->cmd_startup_reference_governor;
+            uint16_t friction_feedforward_permille =
+                a->cmd_friction_feedforward_permille;
             uint32_t auto_coast_ms = a->cmd_auto_coast_ms;
             __dmb();
             if (a->cmd_seq == c0) {          /* stable read */
@@ -378,6 +388,8 @@ void __not_in_flash_func(evn_motion_tick)(void) {
                         (float)hal_encoder_get_speed_substep(a->encoder) *
                         (360000.0f / axis_substeps_per_rev(i));
                     a->active_startup_reference_governor = startup_reference_governor;
+                    a->active_friction_feedforward_permille =
+                        friction_feedforward_permille;
                     a->holding = true;
                     a->auto_coast_deadline_ms = auto_coast_ms ? s_time_ms + auto_coast_ms : 0;
                     a->stat_done = false;
@@ -485,8 +497,9 @@ void __not_in_flash_func(evn_motion_tick)(void) {
          * single saturation/anti-windup decision. */
         float feedforward_duty = 0.0f;
         if (s_ff_on && vbus_mv > 0) {
-            int32_t t_ff = evn_observer_feedforward_torque(a->model,
-                               (int32_t)vel_ref, (int32_t)accel_ref);
+            int32_t t_ff = evn_observer_feedforward_torque_scaled(
+                a->model, (int32_t)vel_ref, (int32_t)accel_ref,
+                a->active_friction_feedforward_permille);
             int32_t v_ff = evn_observer_torque_to_voltage(a->model, t_ff);
             feedforward_duty = (float)v_ff / (float)vbus_mv;
         }
