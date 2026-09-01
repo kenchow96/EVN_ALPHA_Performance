@@ -24,12 +24,15 @@ typedef enum {
     EVN_ENC_4 = 3
 } evn_encoder_id_t;
 
-/* Initialise all 4 encoders on pio0 (one SM each). Returns true if all SMs
- * claimed and started. Call from Core 0. */
-bool hal_encoder_init(void);
+/* Initialise encoders on pio0 (one SM each). `mask` selects which motors are
+ * populated (bit0=M1..bit3=M4); unpopulated encoders are not claimed and are
+ * skipped by hal_encoder_service(). Pass 0xF for all four. */
+bool hal_encoder_init_mask(uint8_t mask);
+bool hal_encoder_init(void);   /* convenience: all four */
 
-/* Drain each SM's RX FIFO and fold deltas into the 32-bit accumulators.
- * Call at ~1 kHz (Core 0 scheduler now; moves to Core 1 in Phase 1). */
+/* Drain/refresh encoders. Runs the full substep estimator for moving motors;
+ * a motor that has been stopped (no transitions) is serviced at a decimated
+ * rate to save CPU — it returns to full rate automatically on motion. */
 void hal_encoder_service(void);
 
 /* Total accumulated counts since init (signed; sign = direction). */

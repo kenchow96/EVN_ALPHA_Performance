@@ -23,8 +23,13 @@
 #define MASK_PART_INFO         0b01111000u
 
 #define BQ_TIMEOUT_US        5000U
-/* ADC conversion settle time after one-shot trigger (Arduino uses 3 ms). */
+/* ADC conversion settle time after one-shot trigger (empirical: 3 ms returned
+ * zeros at 200 MHz). Collected non-blockingly via the state machine below. */
 #define BQ_ADC_SETTLE_US     5000U
+
+/* Non-blocking service state. */
+static bool     s_adc_pending = false;
+static uint32_t s_adc_due_us  = 0;
 
 /* Lock-free double-buffered cache (I2C Spec §5.1). Written by Core 0 only,
  * read by any core. seq odd = write in progress. */
@@ -73,10 +78,19 @@ bool hal_battery_init(void) {
 bool hal_battery_service(void) {
     if (!s_cache.present) return false;
 
-    /* Trigger one-shot ADC and let it settle. busy_wait here is acceptable on
-     * Core 0 (never on the Core 1 RT path); 3 ms matches the Arduino lib. */
-    write_reg(REG_ADC_CONTROL, CMD_ADC_CONTROL_ENABLE);
-    busy_wait_us(BQ_ADC_SETTLE_US);
+    uint32_t now = time_us_32();
+
+    if (!s_adc_pending) {
+        /* Phase 1: trigger one-shot ADC, schedule the collect. Non-blocking. */
+        write_reg(REG_ADC_CONTROL, CMD_ADC_CONTROL_ENABLE);
+        s_adc_due_us  = now + BQ_ADC_SETTLE_US;
+        s_adc_pending = true;
+        return false;   /* nothing published this call */
+    }
+
+    /* Phase 2: collect only once the settle time has elapsed. */
+    if ((int32_t)(now - s_adc_due_us) < 0) return false;   /* not ready yet */
+    s_adc_pending = false;
 
     uint16_t vbatt, vcell1, vcellbot;
     if (!read_adc16(REG_VBAT_ADC1, &vbatt))        return false;
@@ -90,7 +104,7 @@ bool hal_battery_service(void) {
     s_cache.vbatt_mv     = vbatt;
     s_cache.vcell1_mv    = vcell1;
     s_cache.vcell2_mv    = vcellbot;     /* bottom cell direct from chip */
-    s_cache.timestamp_us = time_us_32();
+    s_cache.timestamp_us = now;
     __dmb();
     s_cache.seq = s + 2;                 /* make even = stable */
     return true;

@@ -91,6 +91,7 @@ Typical workflow: `Compile Project` → verify zero errors → `Run Project` (or
 ## Verification & HITL Testing
 
 - Always rebuild after code changes before deploying.
+- **Before any flash/deploy**, explicitly ask the user to confirm the EVN board is powered on. Do not flash unprompted.
 - **HITL rule**: Before any hardware-in-the-loop test requiring the user's visual or physical feedback (LED state, button press, motor movement, marker placement), explicitly prompt the user to prepare and confirm readiness before and after the test.
 - The current firmware toggles the user LED (GP25) on each debounced press of the user button (GP24) — this is the canonical "board is alive" smoke test.
 

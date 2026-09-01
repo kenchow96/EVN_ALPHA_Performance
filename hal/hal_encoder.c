@@ -50,7 +50,13 @@ typedef struct {
 
 static substep_t s_enc[4];
 static int8_t    s_sign[4] = { +1, -1, +1, -1 };   /* runtime overrides */
+static uint8_t   s_populated = 0;
 static bool      s_loaded = false;
+
+/* Idle decimation: a stopped encoder is fully re-estimated only every Nth
+ * service call; between those we just peek whether raw_step changed. */
+#define ENC_IDLE_DECIMATION 20u   /* 1 kHz service → 50 Hz when stopped */
+static uint8_t s_idle_div[4];
 
 /* --- low-level PIO helpers (ported) --- */
 
@@ -178,7 +184,7 @@ static void substep_update(substep_t *s) {
 
 /* --- public API --- */
 
-bool hal_encoder_init(void) {
+bool hal_encoder_init_mask(uint8_t mask) {
     if (!s_loaded) {
         uint off = pio_add_program_at_offset(ENC_PIO, &evn_quad_substep_program, 0);
         if (off != 0) return false;   /* must load at origin 0 */
@@ -186,6 +192,7 @@ bool hal_encoder_init(void) {
     }
 
     for (int i = 0; i < 4; i++) {
+        if (!(mask & (1u << i))) continue;
         int sm = pio_claim_unused_sm(ENC_PIO, false);
         if (sm < 0) return false;
 
@@ -206,13 +213,37 @@ bool hal_encoder_init(void) {
         int fwd;
         read_pio(s, &s->raw_step, &s->prev_step_us, &s->prev_trans_us, &fwd);
         s->position = step_start_pos(s, s->raw_step) + 32u;
+
+        s_populated |= (uint8_t)(1u << i);
+        s_idle_div[i] = 0;
     }
     return true;
 }
 
+bool hal_encoder_init(void) {
+    return hal_encoder_init_mask(0xFu);
+}
+
 void hal_encoder_service(void) {
     for (int i = 0; i < 4; i++) {
-        substep_update(&s_enc[i]);
+        if (!(s_populated & (1u << i))) continue;
+        substep_t *s = &s_enc[i];
+
+        /* Idle decimation: when stopped, run the full estimator only every
+         * ENC_IDLE_DECIMATIONth call; otherwise just detect motion cheaply. */
+        if (s->stopped) {
+            if (++s_idle_div[i] < ENC_IDLE_DECIMATION) {
+                /* cheap motion check: did the raw step move? if so, un-idle. */
+                uint step; int cyc; uint us;
+                substep_get_counts(s->sm, &step, &cyc, &us);
+                if (step == s->raw_step) continue;   /* still stopped, skip */
+                /* motion detected: fall through to a full update now */
+                s_idle_div[i] = 0;
+            } else {
+                s_idle_div[i] = 0;
+            }
+        }
+        substep_update(s);
     }
 }
 

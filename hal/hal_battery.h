@@ -38,10 +38,11 @@ typedef struct {
  * hal_i2c_init(). Safe to call when absent (returns false, present=false). */
 bool hal_battery_init(void);
 
-/* Core 0 dispatcher: performs one full ADC read cycle (trigger one-shot,
- * wait conversion, read VBAT/VCELLTOP/VCELLBOT, publish to cache).
- * Call at ~50 Hz from the Core 0 scheduler. No-op if not present.
- * Returns true on a successful fresh sample. */
+/* Core 0 dispatcher — NON-BLOCKING two-phase state machine.
+ * Call at ~50 Hz. Phase 1 triggers the one-shot ADC and records a timestamp;
+ * phase 2 (on a later call, once the settle time has elapsed) reads the ADC
+ * registers and publishes to the cache. No busy-waiting (project rule).
+ * Returns true when a fresh sample is published. */
 bool hal_battery_service(void);
 
 /* Lock-free snapshot read (< 1 µs, no I2C). Copies the latest published

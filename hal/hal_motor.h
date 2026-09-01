@@ -22,6 +22,13 @@
  * hot path). Duty is signed −1.0..+1.0 (sign = direction).
  * ========================================================================== */
 
+#define EVN_MOTOR_COUNT 4
+
+/* PWM frequency. 40 kHz default: still ultrasonic (no whine) but ~60% faster
+ * DRV8833 current-loop response than 25 kHz → tighter torque control. The
+ * WRAP is derived at init from the actual sysclk, so resolution scales. */
+#define EVN_MOTOR_PWM_FREQ_HZ  40000UL
+
 typedef enum {
     EVN_MOTOR_1 = 0,
     EVN_MOTOR_2 = 1,
@@ -29,9 +36,17 @@ typedef enum {
     EVN_MOTOR_4 = 3
 } evn_motor_id_t;
 
-/* Initialise all 4 motor PWM pairs at 25 kHz, both outputs low (coast).
- * Returns true always (PWM slices are dedicated). Call from Core 0. */
+/* Initialise motor PWM pairs at EVN_MOTOR_PWM_FREQ_HZ (clkdiv=1, WRAP derived
+ * from sysclk). Only the motors set in `mask` (bit0=M1..bit3=M4) are set up;
+ * others are left untouched for partial-population builds. Pass 0xF for all. */
+bool hal_motor_init_mask(uint8_t mask);
+
+/* Init all 4 (convenience). */
 bool hal_motor_init(void);
+
+/* Runtime PWM frequency change (Hz). Recomputes WRAP; call before enabling
+ * outputs. Rarely needed — the default is tuned. */
+void hal_motor_set_pwm_freq(uint32_t freq_hz);
 
 /* Drive a motor. duty in [-1.0, +1.0]; magnitude → PWM duty, sign → direction
  * per the DRV8833 truth table. 0 = coast (both low). Clamped internally. */
