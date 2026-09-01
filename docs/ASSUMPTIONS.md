@@ -1,14 +1,13 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, split startup/restart ramp):** Commits through
-> `02913b8` and ten autonomous datasets are verified. Startup-duty sweep
-> 0.58/0.60/0.62/0.65 produced no 12/12 case; every trace still failed physical
-> acceleration. Keep 0.65 provisionally: it was the only value with both
-> positive repeats at 11/12; 0.58 helped negative mean but was not repeatable.
-> Reinterpret the prior 600 ms rejection: code reused the startup ramp for every
-> edge-watchdog recovery, so slower launch torque was confounded with slow
-> mid-move restarts. Split them, then sweep initial ramp 200/400/600/800 ms
-> while fixing watchdog restart ramp at 200 ms. Keep W40/K5, 0.55 hold,
+> **RESUME POINT (2026-09-02, ramp factorial):** Commits through `97810b0` and
+> eleven autonomous datasets are verified. Splitting initial and watchdog
+> restart ramps worked: 800 ms initial gave mean max error 1.752 deg, mean
+> overshoot 0.496 deg, and three 11/12 cases. All still failed acceleration.
+> Peak timing shows two mechanisms: negative peaks occur at initial breakaway;
+> one positive peak occurs during a later 200 ms watchdog restart. Next run a
+> 2x2 factorial: initial ramp 800/1200 ms crossed with restart ramp 200/400 ms,
+> two repeats and both directions. Keep 0.65 start, W40/K5, 0.55 hold,
 > governor, trapezoid, 0.5x friction, 10 deg/s release, base endpoint gain, and
 > edge watchdog. Each case erases its fixed
 > slot while coasted, requires a battery sample age <=250 ms (pack >=6.5 V,

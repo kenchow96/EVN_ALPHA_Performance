@@ -166,7 +166,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | 5 — Battery telemetry | ✅ Done | 2026-09-01 | `f556bc8` |
 | 6 — PIO servos | ✅ Done | 2026-09-01 | `a16a5d3` |
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
-| 7 — Motion engine | 🟠 Audit repair HITL in progress — Core 1 timing, battery gates, 12 metrics, and autonomous flash extraction are verified. Startup duty 0.58-0.65 did not clear the physical acceleration gate; 0.65 remains the repeatable positive choice. The earlier slow-ramp run was confounded because one duration controlled both initial launch and every watchdog restart. Next split those ramps and re-test slow initial torque rise with a fixed 200 ms recovery. Follow [ASSUMPTIONS.md](ASSUMPTIONS.md). **Phase 8 remains blocked** until all four motors pass the battery-gated profile suite and beat baseline. | 2026-09-02 | through `02913b8` + startup-duty data |
+| 7 — Motion engine | 🟠 Audit repair HITL in progress — Core 1 timing, battery gates, 12 metrics, and autonomous flash extraction are verified. Splitting launch/restart ramps made 800 ms launch the best yet for repeatable tracking (mean max error 1.752 deg, mean overshoot 0.496 deg), but acceleration still fails. Peaks occur both at initial breakaway and later watchdog restart, so the next compact 2x2 crosses 800/1200 ms launch with 200/400 ms restart. Follow [ASSUMPTIONS.md](ASSUMPTIONS.md). **Phase 8 remains blocked** until all four motors pass the battery-gated profile suite and beat baseline. | 2026-09-02 | through `97810b0` + split-ramp data |
 | 8 — Drive base | ⬜ Not started — **BLOCKED by the Phase 7 smoothness gate above** | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 
