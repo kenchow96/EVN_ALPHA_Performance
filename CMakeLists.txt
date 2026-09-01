@@ -59,3 +59,8 @@ target_include_directories(EVN_ALPHA_Performance PRIVATE
 
 pico_add_extra_outputs(EVN_ALPHA_Performance)
 
+# Spec §4: 200 MHz performance profile
+target_compile_definitions(EVN_ALPHA_Performance PRIVATE
+    PICO_USE_FASTEST_SUPPORTED_CLOCK=1
+)
+
