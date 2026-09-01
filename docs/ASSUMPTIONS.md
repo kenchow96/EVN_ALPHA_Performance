@@ -1,26 +1,22 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, pulse rerun recovery):** Commit `4696c08`
-> deployed the 4/4, 3/4, 2/4, 1/4 startup-floor pulse sweep. It did not enter
-> BOOTSEL within six minutes; COM7 and the reset interface remained enumerated
-> but unresponsive, so no partial journal could be extracted. Every motion was
-> still bounded by the Core 1 4 s auto-coast. Root cause hypothesis is repeated
-> flash-lockout churn: each 760-row trace used 95 separate page-program
-> handshakes. The build now uses one contiguous aligned trace program (three
-> flash lockouts per case total) and a 5 s hardware watchdog; a flash stall will
-> reboot and retry only the header-uncommitted slot. It builds cleanly, has no
-> diagnostics, and uses fresh run ID `0x2609020F` with `Z*` decoded case names.
-> **Board is stalled in application mode and motors are auto-coasted. One
-> physical power-cycle into BOOTSEL is required**, then flash and rerun the same
-> pulse matrix. Acceptance: 16/16 committed records/trace CRCs and automatic
-> BOOTSEL completion. Keep 0.65 start, W40/K5, 0.55 hold,
+> **RESUME POINT (2026-09-02, pulse result):** Commit `3febafa` batches each
+> trace into one aligned flash program and adds watchdog/resume. Its fresh-ID
+> rerun passed: automatic BOOTSEL, verified UF2, 16/16 commit CRCs, 16/16 trace
+> CRCs, battery >=7.247 V, cells >=3.615 V, age <=437 us, zero missed ticks.
+> RT-05 is closed. Reject startup-floor pulse density below continuous 4/4:
+> 2/4 reduced mean acceleration to 1238 deg/s2 but failed duty smoothness in
+> 4/4 cases; 3/4 regressed error/overshoot; 1/4 never broke friction. Keep
+> continuous startup floor, 0.65 start, W40/K5, 0.55 hold,
 > governor, trapezoid, 0.5x friction, 10 deg/s release, base endpoint gain, and
 > edge watchdog. Each case erases its fixed
 > slot while coasted, requires a battery sample age <=250 ms (pack >=6.5 V,
 > cells >=3.0 V), runs with the 4 s
 > Core 1 auto-coast, logs 760 trace rows, aborts on any missed RT tick, writes
-> one trace block under lockout, and commits the CRC header last. Completion enters
-> ROM BOOTSEL. Preserve all prior UF2s. Phase 8 remains blocked until
+> one trace block under lockout, and commits the CRC header last. **Board is now
+> safely in ROM BOOTSEL with motors off.** Preserve all prior UF2s. Next stop
+> tuning M3 heuristics, consolidate proven defaults, and run the same profile
+> gate on M4. Phase 8 remains blocked until
 > all four axes pass `tools/motion_metrics.py` and beat the measured baseline.
 
 Every assumption made during development that is **not** marked `[GROUND TRUTH]` in the specs and has **not** been independently verified against hardware. **Review and confirm/refute each before we build dependent phases on top.** Each entry: the assumption, where it's baked in, why we made it, and how to falsify it.

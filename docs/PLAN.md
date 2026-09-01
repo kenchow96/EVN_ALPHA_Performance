@@ -166,7 +166,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | 5 — Battery telemetry | ✅ Done | 2026-09-01 | `f556bc8` |
 | 6 — PIO servos | ✅ Done | 2026-09-01 | `a16a5d3` |
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
-| 7 — Motion engine | 🟠 Audit repair HITL in progress — Core 1 timing, battery gates, 12 metrics, and flash extraction are verified. The pulse-density run stalled before BOOTSEL because the logger cycled 95 program lockouts per trace. Recovery build batches each trace into one aligned program and adds a 5 s watchdog with commit-last resume. Board is auto-coasted but needs one physical BOOTSEL power-cycle for the clean pulse rerun. Follow [ASSUMPTIONS.md](ASSUMPTIONS.md). **Phase 8 remains blocked** until all four motors pass the battery-gated profile suite and beat baseline. | 2026-09-02 | `4696c08` + recovery build |
+| 7 — Motion engine | 🟠 Audit repair HITL in progress — Core 1 timing, battery gates, 12 metrics, and flash extraction are verified. Batch trace programming plus watchdog/resume passed a fresh 16/16 pulse-density rerun and closes RT-05. Pulse density below continuous 4/4 is rejected: 2/4 reduced acceleration but failed smoothness; 1/4 did not move. M3 heuristic search is paused; consolidate proven defaults and apply the profile gate to M4 next. Board is safe in BOOTSEL. Follow [ASSUMPTIONS.md](ASSUMPTIONS.md). **Phase 8 remains blocked** until all four motors pass the battery-gated profile suite and beat baseline. | 2026-09-02 | `3febafa` + pulse rerun data |
 | 8 — Drive base | ⬜ Not started — **BLOCKED by the Phase 7 smoothness gate above** | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 
