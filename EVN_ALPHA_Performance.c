@@ -27,12 +27,11 @@
 #define BATTERY_US        20000ULL
 #define REPORT_US         100000ULL   // 10 Hz status report
 
-/* Encoder counts per output revolution. Pybricks EV3/NXT tacho = 360 counts/rev
- * (1 count per degree). Our substep gives 256 substeps per quadrature cycle;
- * for these motors 1 cycle = 1 count = 1 degree → 256 substeps/degree.
- * counts_per_rev here is the OBSERVER/trajectory scale; we feed substeps and
- * convert. Exposed for calibration. */
-static const float CPR[4] = { 360.0f, 360.0f, 360.0f, 360.0f };
+/* Encoder edges per output revolution (ground truth: EVN evn_motor_defs.h).
+ * LEGO_PPR=180 pulses/rev of the encoder wheel; EVN counts all 4 edges → 720
+ * edges/rev at the output shaft for EV3 Large/Medium and NXT. Exposed for
+ * calibration via the motion engine's counts_per_rev. */
+static const float CPR[4] = { 720.0f, 720.0f, 720.0f, 720.0f };
 
 static void wait_for_start(void) {
     printf("\n*** Send any character to start the motion test ***\n");

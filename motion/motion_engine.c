@@ -11,14 +11,18 @@
 #define MOTION_DT (1.0f / 1000.0f)
 
 /* Convert between encoder substeps and millidegrees.
- * substep: 256 per encoder cycle. counts_per_rev = cycles per output rev.
- * substeps_per_rev = 256 * counts_per_rev ; mdeg_per_rev = 360000. */
+ * Encoder edge counting: LEGO motors = 720 edges/rev (180 pulses × 4 edges,
+ * both channels). The substep PIO counts 1 "step" per edge and interpolates
+ * 256 substeps per quadrature cycle (= 4 edges). So:
+ *   steps_per_rev    = counts_per_rev            (edges)
+ *   substeps_per_rev = (counts_per_rev / 4) * 256
+ *   mdeg_per_rev     = 360000 */
 static evn_axis_t s_axis[4];
 static uint8_t    s_mask = 0;
 static uint32_t   s_time_ms = 0;
 
 static float axis_substeps_per_rev(uint8_t i) {
-    return 256.0f * s_axis[i].counts_per_rev;
+    return (s_axis[i].counts_per_rev / 4.0f) * 256.0f;
 }
 
 void evn_motion_init(const evn_motor_model_t *const models[4],
