@@ -40,7 +40,7 @@ typedef struct {
     /* battery feedforward compensation scale (0 = disabled) */
     float vbus_comp;    /* nominal voltage (mV) for duty scaling */
 
-    /* speed source: 1 = differentiated encoder (true), 0 = observer speed */
+    /* speed source: 0=observer, 1=windowed, 2=raw edge, 3=filtered edge */
     int   use_enc_speed;
 
     /* deadband (mdeg): inside this position error the integrator decays and the

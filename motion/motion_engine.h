@@ -39,6 +39,10 @@ typedef struct {
     int32_t                last_applied_mv;   /* voltage applied last tick (drives observer) */
     int32_t                observer_voltage_sum_mv;
     uint8_t                observer_divider;
+    float                  edge_speed_filtered;
+    float                  edge_speed_alpha;
+    float                  profile_vel_scale;
+    float                  profile_accel_scale;
 
     /* commanded state (Core 0 → Core 1 handover) */
     volatile uint32_t cmd_seq;
@@ -46,6 +50,8 @@ typedef struct {
     volatile float    cmd_target_deg;
     volatile float    cmd_max_vel_degs;
     volatile float    cmd_max_accel;
+    volatile float    cmd_vel_scale;
+    volatile float    cmd_accel_scale;
     volatile uint32_t cmd_auto_coast_ms;
     uint32_t          cmd_consumed_seq;   /* Core 1: last cmd_seq acted upon */
 
@@ -59,6 +65,8 @@ typedef struct {
     volatile float    stat_total_time;    /* debug: computed profile duration */
     volatile float    stat_max_vel_degs;
     volatile float    stat_max_accel_degs2;
+    volatile float    stat_vel_scale;
+    volatile float    stat_accel_scale;
 
     bool              holding;   /* Core 1: keep regulating at target until coasted */
     uint32_t          auto_coast_deadline_ms;
@@ -89,6 +97,8 @@ bool evn_motion_get_state(uint8_t axis, float *angle_deg, float *speed_degs,
 bool evn_motion_get_debug(uint8_t axis, float *target_deg, float *total_time_s);
 bool evn_motion_get_profile(uint8_t axis, float *max_vel_degs,
                             float *max_accel_degs2);
+bool evn_motion_get_profile_scale(uint8_t axis, float *vel_scale,
+                                  float *accel_scale);
 
 /* Runtime tuning (Core 0, e.g. from a serial console). Apply to all axes. */
 void evn_motion_set_gains(float kp_pos, float ki_pos, float kp_vel, float kd_vel, float kff_accel);
@@ -96,6 +106,11 @@ void evn_motion_set_gains(float kp_pos, float ki_pos, float kp_vel, float kd_vel
 void evn_motion_set_gains_axis(uint8_t axis, float kp_pos, float ki_pos,
                                float kp_vel, float kd_vel, float kff_accel);
 void evn_motion_set_stiction(uint8_t axis, float start_duty, float hold_duty);
+void evn_motion_set_velocity_source(uint8_t axis, int source);
+void evn_motion_set_edge_speed_alpha(uint8_t axis, float alpha);
+float evn_motion_edge_speed_alpha(uint8_t axis);
+void evn_motion_set_profile_scale(uint8_t axis, float vel_scale,
+                                  float accel_scale);
 /* Read an axis' current PID block (Core 0 debug/console use only). */
 const evn_pid_t *evn_motion_axis_pid(uint8_t axis);
 void evn_motion_set_observer(int32_t stall_speed_limit, int32_t stall_time_ms,

@@ -115,6 +115,10 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         a->last_applied_mv = 0;
         a->observer_voltage_sum_mv = 0;
         a->observer_divider = 0;
+        a->edge_speed_filtered = 0.0f;
+        a->edge_speed_alpha = 0.05f;
+        a->profile_vel_scale = 1.0f;
+        a->profile_accel_scale = 1.0f;
         a->traj.active = false;
         a->traj.done = true;
         a->cmd_seq = 0;
@@ -140,6 +144,8 @@ void evn_motion_move_to_test(uint8_t axis, float target_deg,
     a->cmd_target_deg  = target_deg;
     a->cmd_max_vel_degs = max_vel_degs;
     a->cmd_max_accel   = max_accel_degs2;
+    a->cmd_vel_scale   = a->profile_vel_scale;
+    a->cmd_accel_scale = a->profile_accel_scale;
     a->cmd_auto_coast_ms = auto_coast_ms;
     a->cmd_active      = true;
     __dmb();
@@ -208,6 +214,15 @@ bool evn_motion_get_profile(uint8_t axis, float *max_vel_degs,
     return true;
 }
 
+bool evn_motion_get_profile_scale(uint8_t axis, float *vel_scale,
+                                  float *accel_scale) {
+    if (!(s_mask & (1u << axis))) return false;
+    evn_axis_t *a = &s_axis[axis];
+    *vel_scale = a->stat_vel_scale;
+    *accel_scale = a->stat_accel_scale;
+    return true;
+}
+
 void evn_motion_set_gains(float kp_pos, float ki_pos, float kp_vel, float kd_vel, float kff_accel) {
     for (int i = 0; i < 4; i++) {
         if (!(s_mask & (1u << i))) continue;
@@ -234,6 +249,36 @@ void evn_motion_set_stiction(uint8_t axis, float start_duty, float hold_duty) {
     if (hold_duty > 1.0f) hold_duty = 1.0f;
     s_axis[axis].pid.start_duty = start_duty;
     s_axis[axis].pid.min_duty = hold_duty;
+}
+
+void evn_motion_set_velocity_source(uint8_t axis, int source) {
+    if (axis > 3 || !(s_mask & (1u << axis))) return;
+    if (source < 0) source = 0;
+    if (source > 3) source = 3;
+    s_axis[axis].pid.use_enc_speed = source;
+}
+
+void evn_motion_set_edge_speed_alpha(uint8_t axis, float alpha) {
+    if (axis > 3 || !(s_mask & (1u << axis))) return;
+    if (alpha < 0.001f) alpha = 0.001f;
+    if (alpha > 1.0f) alpha = 1.0f;
+    s_axis[axis].edge_speed_alpha = alpha;
+}
+
+float evn_motion_edge_speed_alpha(uint8_t axis) {
+    if (axis > 3 || !(s_mask & (1u << axis))) return 0.0f;
+    return s_axis[axis].edge_speed_alpha;
+}
+
+void evn_motion_set_profile_scale(uint8_t axis, float vel_scale,
+                                  float accel_scale) {
+    if (axis > 3 || !(s_mask & (1u << axis))) return;
+    if (vel_scale < 0.1f) vel_scale = 0.1f;
+    if (vel_scale > 1.0f) vel_scale = 1.0f;
+    if (accel_scale < 0.1f) accel_scale = 0.1f;
+    if (accel_scale > 1.0f) accel_scale = 1.0f;
+    s_axis[axis].profile_vel_scale = vel_scale;
+    s_axis[axis].profile_accel_scale = accel_scale;
 }
 
 const evn_pid_t *evn_motion_axis_pid(uint8_t axis) {
@@ -275,6 +320,8 @@ void __not_in_flash_func(evn_motion_tick)(void) {
             float tdeg   = a->cmd_target_deg;
             float mvel   = a->cmd_max_vel_degs;
             float macc   = a->cmd_max_accel;
+            float vel_scale = a->cmd_vel_scale;
+            float accel_scale = a->cmd_accel_scale;
             uint32_t auto_coast_ms = a->cmd_auto_coast_ms;
             __dmb();
             if (a->cmd_seq == c0) {          /* stable read */
@@ -287,11 +334,15 @@ void __not_in_flash_func(evn_motion_tick)(void) {
                     evn_observer_init(&a->observer, a->model, &a->observer.settings,
                                       (int32_t)cur_mdeg);
                     evn_trajectory_start(&a->traj, cur_mdeg, tdeg * 1000.0f,
-                                         mvel * 1000.0f, macc * 1000.0f);
+                                         mvel * vel_scale * 1000.0f,
+                                         macc * accel_scale * 1000.0f);
                     evn_pid_reset(&a->pid, cur_mdeg);
                     a->last_applied_mv = 0;
                     a->observer_voltage_sum_mv = 0;
                     a->observer_divider = 0;
+                    a->edge_speed_filtered =
+                        (float)hal_encoder_get_speed_substep(a->encoder) *
+                        (360000.0f / axis_substeps_per_rev(i));
                     a->holding = true;
                     a->auto_coast_deadline_ms = auto_coast_ms ? s_time_ms + auto_coast_ms : 0;
                     a->stat_done = false;
@@ -299,6 +350,8 @@ void __not_in_flash_func(evn_motion_tick)(void) {
                     a->stat_total_time = a->traj.total_time;
                     a->stat_max_vel_degs = mvel;
                     a->stat_max_accel_degs2 = macc;
+                    a->stat_vel_scale = vel_scale;
+                    a->stat_accel_scale = accel_scale;
                 } else {
                     hal_motor_coast(a->motor);
                     a->traj.active = false;
@@ -309,6 +362,7 @@ void __not_in_flash_func(evn_motion_tick)(void) {
                     a->last_applied_mv = 0;
                     a->observer_voltage_sum_mv = 0;
                     a->observer_divider = 0;
+                    a->edge_speed_filtered = 0.0f;
                 }
             }
         }
@@ -345,7 +399,15 @@ void __not_in_flash_func(evn_motion_tick)(void) {
 
         /* --- trajectory reference --- */
         float pos_ref, vel_ref, accel_ref;
+        float trajectory_time = a->traj.t;
         evn_trajectory_update(&a->traj, MOTION_DT, &pos_ref, &vel_ref, &accel_ref);
+        float startup_displacement = (float)angle_mdeg - a->pid.motion_start_position;
+        if (startup_displacement < 0.0f) startup_displacement = -startup_displacement;
+        float abs_vel_ref = vel_ref < 0.0f ? -vel_ref : vel_ref;
+        if (a->traj.active && a->pid.start_duty > 0.2f &&
+            startup_displacement < 100.0f && abs_vel_ref > 5000.0f) {
+            a->traj.t = trajectory_time;
+        }
 
         /* Model coefficients are discretized for 5 ms. Average the voltage
          * actually applied over five 1 ms control ticks before one update. */
@@ -365,10 +427,20 @@ void __not_in_flash_func(evn_motion_tick)(void) {
          * the 360 counts/rev Pybricks assumes). Robust to the HAL edge-timed
          * speed's stop-latch dropouts. use_enc_speed==0 -> observer speed. */
         float pos_meas = (float)angle_mdeg;   /* position loop on true encoder */
-        float vel_meas = (float)w_hat;         /* only used if use_enc_speed==0 */
-        float vel_for_pid = a->pid.use_enc_speed
-                            ? evn_pid_speed_of(&a->pid, pos_meas, MOTION_DT)
-                            : vel_meas;
+        float vel_meas = (float)w_hat;
+        float edge_speed = (float)hal_encoder_get_speed_substep(a->encoder) * scale;
+        a->edge_speed_filtered += a->edge_speed_alpha *
+                                  (edge_speed - a->edge_speed_filtered);
+        float vel_for_pid;
+        if (a->pid.use_enc_speed == 3) {
+            vel_for_pid = a->edge_speed_filtered;
+        } else if (a->pid.use_enc_speed == 2) {
+            vel_for_pid = edge_speed;
+        } else if (a->pid.use_enc_speed == 1) {
+            vel_for_pid = evn_pid_speed_of(&a->pid, pos_meas, MOTION_DT);
+        } else {
+            vel_for_pid = vel_meas;
+        }
         a->prev_enc_mdeg = angle_mdeg;
 
         /* Model feedforward is voltage-based and enters the PID before its

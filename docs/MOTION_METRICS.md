@@ -27,8 +27,8 @@ Scope mapping (your master list → what applies at our level):
 ## 2. Limits reached (from `enc`,`vref` derived velocity/accel)
 | Metric | Definition | Acceptance |
 | :--- | :--- | :--- |
-| Peak velocity `v_max` | max |d(enc)/dt| during move | ≤ commanded `speed` |
-| Peak accel `a_max` | max |d²(enc)/dt²| (smoothed) | ≤ commanded `accel` ×1.2 |
+| Peak velocity `v_max` | max |d(enc)/dt| from a centered 151 ms quadratic fit (enough edges to reject 0.5° quantization) | ≤ commanded `speed` |
+| Peak accel `a_max` | max |d²(enc)/dt²| from the same full centered fit; boundary extrapolation excluded | ≤ commanded `accel` ×1.2 |
 | Peak jerk `j_max` | max |d³(enc)/dt³| (smoothed) | bounded; report (no hard cap yet) |
 
 ## 3. Tracking fidelity (from `ref` vs `enc`)

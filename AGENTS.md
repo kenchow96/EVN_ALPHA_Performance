@@ -115,6 +115,7 @@ Typical workflow: `Compile Project` → verify zero errors → `Run Project` (or
 ## Verification & HITL Testing
 
 - Always rebuild after code changes before deploying.
+- Before every automated motor run, require and log a fresh battery sample (age <= 250 ms), pack >= 6.5 V, and each cell >= 3.0 V.
 - **Before any flash/deploy**, explicitly ask the user to confirm the EVN board is powered on. Do not flash unprompted.
 - **HITL rule**: Before any hardware-in-the-loop test requiring the user's visual or physical feedback (LED state, button press, motor movement, marker placement), explicitly prompt the user to prepare and confirm readiness before and after the test.
 - **Motor safety**: At the end of EVERY motor test, leave all motors in COAST state (`hal_motor_coast_all()` / `evn_motion_coast(i)`). Never leave a motor driven or braked when a test ends.

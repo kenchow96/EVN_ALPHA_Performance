@@ -131,6 +131,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 
 - **Cycle timing:** RP2040 hardware µs timer via `bench_cycles`; external logic analyzer when sub-µs resolution is required.
 - **Telemetry discipline:** Core 1 never calls `printf`; it fills lock-free ring buffers drained by Core 0 → USB CDC CSV at decimated rates.
+- **Motor-run preflight:** every automated case logs a fresh battery sample immediately before motion and aborts if age > 250 ms, pack < 6.5 V, or either cell < 3.0 V.
 - **Result storage:** `bench/results/phase<N>_<test>_<YYYYMMDD>.csv` + one summary row per run appended to `bench/RESULTS.md`.
 - **A/B fairness:** identical battery charge, motors, surface, and ambient conditions for Arduino-vs-native comparisons.
 
@@ -162,7 +163,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | 5 — Battery telemetry | ✅ Done | 2026-09-01 | `f556bc8` |
 | 6 — PIO servos | ✅ Done | 2026-09-01 | `a16a5d3` |
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
-| 7 — Motion engine | 🟠 Audit repair HITL in progress — USB ownership/framing, Core 1 direct SRAM timer, PID saturation/anti-windup, speed initialization, 5 ms observer cadence, telemetry schema, and 25 kHz PWM corrected. Core 1: 1000-1000 us idle, zero misses. 16-case/40,000-sample gain sweep: EV3 Large candidate passes 9/9 both directions; Medium startup/hold stiction and batched CDC sweep remain open. Follow [AUDIT_2026-09-02.md](AUDIT_2026-09-02.md). **Phase 8 remains blocked** until all four motors pass the profile suite and beat Arduino. | 2026-09-02 | working tree |
+| 7 — Motion engine | 🟠 Audit repair HITL in progress — Core 1 direct SRAM timer, anti-windup, 5 ms observer cadence, 25 kHz PWM, canonical packet-sized CDC, retryable trace blocks, 12-gate metrics, and fresh battery preflight are verified. Core 1: 1000-1000 us idle, zero misses. Large has a provisional compliant profile margin; Medium window/stiction tuning remains open. Follow [AUDIT_2026-09-02.md](AUDIT_2026-09-02.md). **Phase 8 remains blocked** until all four motors pass the battery-gated profile suite and beat Arduino. | 2026-09-02 | working tree |
 | 8 — Drive base | ⬜ Not started — **BLOCKED by the Phase 7 smoothness gate above** | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 

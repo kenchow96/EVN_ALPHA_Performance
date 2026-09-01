@@ -78,6 +78,44 @@ def derivative(x, t):
     return d
 
 
+def quadratic_kinematics(position, t, window=151):
+    """Local quadratic velocity/acceleration estimate for quantized encoders.
+
+    Only full centered windows contribute extrema; edge samples copy the first
+    or last centered estimate so one-sided startup fits cannot invent peaks.
+    """
+    n = len(position)
+    if n < window or window < 5 or window % 2 == 0:
+        velocity = boxcar(derivative(position, t), min(21, n | 1))
+        return velocity, boxcar(derivative(velocity, t), min(21, n | 1))
+
+    half = window // 2
+    dt = (t[half + 1] - t[half]) / 1000.0
+    offsets = [index * dt for index in range(-half, half + 1)]
+    sum_t2 = sum(value * value for value in offsets)
+    mean_t2 = sum_t2 / window
+    centered_t2 = [value * value - mean_t2 for value in offsets]
+    sum_centered_t2_sq = sum(value * value for value in centered_t2)
+
+    velocity = [0.0] * n
+    acceleration = [0.0] * n
+    for center in range(half, n - half):
+        samples = position[center - half:center + half + 1]
+        velocity[center] = sum(x * y for x, y in zip(offsets, samples)) / sum_t2
+        acceleration[center] = (
+            2.0 * sum(x * y for x, y in zip(centered_t2, samples))
+            / sum_centered_t2_sq
+        )
+
+    for index in range(half):
+        velocity[index] = velocity[half]
+        acceleration[index] = acceleration[half]
+    for index in range(n - half, n):
+        velocity[index] = velocity[n - half - 1]
+        acceleration[index] = acceleration[n - half - 1]
+    return velocity, acceleration
+
+
 def rms(xs):
     return math.sqrt(sum(v * v for v in xs) / len(xs)) if xs else 0.0
 
@@ -103,12 +141,12 @@ def compute(meta, rows):
     n = len(rows)
     if n < 10:
         return None
-    target = ref[-1]
     start = ref[0]
+    target = float(meta["target"]) if "target" in meta else ref[-1]
+    profile_end_error = target - ref[-1]
 
     # --- smooth kinematics from encoder ---
-    vel = boxcar(derivative(enc, t), 21)
-    acc = boxcar(derivative(vel, t), 21)
+    vel, acc = quadratic_kinematics(enc, t)
     jerk = boxcar(derivative(acc, t), 21)
 
     # --- tracking windows ---
@@ -119,7 +157,7 @@ def compute(meta, rows):
     # settle: first index where ref reaches target (profile done) -> |err|<0.5 stays
     prof_end = n - 1
     for i in range(n):
-        if vref[i] == 0.0 and ref[i] == target and i > 0:
+        if vref[i] == 0.0 and abs(ref[i] - target) <= 0.001 and i > 0:
             prof_end = i
             break
     band = 0.5
@@ -141,7 +179,7 @@ def compute(meta, rows):
     srevs = 0
     ssign = 0
     for i in range(settle_idx, n):
-        s = 1 if enc[i] - target > 0.05 else (-1 if enc[i] - target < -0.05 else 0)
+        s = 1 if enc[i] - target > 0.5 else (-1 if enc[i] - target < -0.5 else 0)
         if s and ssign and s != ssign:
             srevs += 1
         if s:
@@ -166,6 +204,14 @@ def compute(meta, rows):
         "axis": meta.get("axis"),
         "gains": {k: meta.get(k) for k in ("kp", "ki", "kv", "kd", "kff")},
         "feedforward": meta.get("ff"),
+        "velocity_source": int(meta["vsrc"]) if "vsrc" in meta else None,
+        "velocity_alpha": float(meta["valpha"]) if "valpha" in meta else None,
+        "commanded_vmax_degs": float(meta["vmax"]) if "vmax" in meta else None,
+        "commanded_accel_degs2": float(meta["accel"]) if "accel" in meta else None,
+        "commanded_target_deg": target,
+        "profile_end_error_deg": round(profile_end_error, 3),
+        "profile_vel_scale": float(meta["vscale"]) if "vscale" in meta else 1.0,
+        "profile_accel_scale": float(meta["ascale"]) if "ascale" in meta else 1.0,
         "move_deg": [round(start, 2), round(target, 2)],
         "rows": n,
         "span_ms": t[-1] - t[0],
@@ -179,9 +225,9 @@ def compute(meta, rows):
         "max_track_err_deg": round(max((abs(e) for e in err), default=0.0), 3),
         "rms_track_err_deg": round(rms(err), 3),
         "final_err_deg": round(target - enc[-1], 3),
-        "overshoot_deg": round(max((enc[i] - target for i in range(n)), default=0.0)
-                               if target > start else
-                               -min((enc[i] - target for i in range(n)), default=0.0), 3),
+        "overshoot_deg": round(max(0.0, max((enc[i] - target for i in range(n)), default=0.0))
+                       if target > start else
+                       max(0.0, -min((enc[i] - target for i in range(n)), default=0.0)), 3),
         "settle_ms": settle_ms,
         "residual_vibration_pp_deg": round(resid_pp, 3),
         "regressive_reversals": srevs,
@@ -217,6 +263,19 @@ ACCEPT = {
 
 def verdicts(m):
     out = []
+    profile_error = m.get("profile_end_error_deg")
+    if profile_error is not None:
+        out.append(("profile_end_error_deg", profile_error, "abs<=", 0.001,
+                    abs(profile_error) <= 0.001))
+    vmax = m.get("commanded_vmax_degs")
+    if vmax is not None:
+        out.append(("peak_vel_degs", m["peak_vel_degs"], "<=", vmax,
+                    m["peak_vel_degs"] <= vmax))
+    accel = m.get("commanded_accel_degs2")
+    if accel is not None:
+        accel_limit = 1.2 * accel
+        out.append(("peak_accel_degs2", m["peak_accel_degs2"], "<=", accel_limit,
+                    m["peak_accel_degs2"] <= accel_limit))
     for k, (op, thr) in ACCEPT.items():
         v = m.get(k)
         if v is None:

@@ -101,28 +101,29 @@ float evn_pid_update(evn_pid_t *p,
      * ~30 ms (genuinely stuck). The integral term does the smooth final creep;
      * the floor just breaks static friction on a real stick, then fades. This
      * avoids a duty kick at the deadzone boundary (which caused a limit cycle). */
-    if (ae > p->deadzone_mdeg) {
-        float abs_speed = vel_meas < 0.0f ? -vel_meas : vel_meas;
-        float abs_vel_ref = vel_ref < 0.0f ? -vel_ref : vel_ref;
-        float displacement = pos_meas - p->motion_start_position;
-        if (displacement < 0.0f) displacement = -displacement;
-        bool starting = abs_vel_ref > 5000.0f && displacement < 100.0f;
-        bool approaching = ae < 3.0f * p->deadzone_mdeg && abs_speed < 5000.0f;
-        if (starting || approaching) {
-            p->stick_ticks++;
-        } else {
-            p->stick_ticks = 0;
-        }
-        int threshold = starting ? 5 : 30;
-        if (p->stick_ticks >= threshold) {
-            float floor_d = starting ? p->start_duty : p->min_duty;
-            float abs_duty = duty < 0.0f ? -duty : duty;
-            float direction = starting ? vel_ref : pos_err;
-            if (floor_d > 0.0f && abs_duty < floor_d)
-                duty = direction < 0.0f ? -floor_d : floor_d;
-        }
+    float abs_speed = vel_meas < 0.0f ? -vel_meas : vel_meas;
+    float abs_vel_ref = vel_ref < 0.0f ? -vel_ref : vel_ref;
+    float displacement = pos_meas - p->motion_start_position;
+    if (displacement < 0.0f) displacement = -displacement;
+    bool starting = abs_vel_ref > 5000.0f && displacement < 100.0f;
+    bool approaching = ae > p->deadzone_mdeg &&
+                       abs_vel_ref < 5000.0f && abs_speed < 5000.0f;
+    if (starting || approaching) {
+        p->stick_ticks++;
     } else {
         p->stick_ticks = 0;
+    }
+    int threshold = starting ? 5 : 30;
+    if (p->stick_ticks >= threshold) {
+        int ramp_ticks = p->stick_ticks - threshold + 1;
+        int ramp_duration = starting ? 200 : 100;
+        float ramp = (float)ramp_ticks / (float)ramp_duration;
+        if (ramp > 1.0f) ramp = 1.0f;
+        float floor_d = (starting ? p->start_duty : p->min_duty) * ramp;
+        float abs_duty = duty < 0.0f ? -duty : duty;
+        float direction = starting ? vel_ref : pos_err;
+        if (floor_d > 0.0f && abs_duty < floor_d)
+            duty = direction < 0.0f ? -floor_d : floor_d;
     }
 
     if (duty > p->out_max) duty = p->out_max;

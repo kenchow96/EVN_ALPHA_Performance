@@ -204,7 +204,7 @@ bool hal_encoder_init_mask(uint8_t mask) {
         s->calibration_data[1] = 64;
         s->calibration_data[2] = 128;
         s->calibration_data[3] = 192;   /* balanced phases until calibrated */
-        s->idle_stop_samples = 3;
+        s->idle_stop_samples = 30;   /* 30 ms: span low-rate edges without stale endpoint speed */
         s->stopped = 1;
         s->clocks_per_us = (clock_get_hz(clk_sys) + 500000u) / 1000000u;
 

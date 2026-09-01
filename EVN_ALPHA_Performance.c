@@ -46,6 +46,18 @@ static void print_battery(void) {
                    b.vbatt_mv/1000.0f, b.vcell1_mv/1000.0f, b.vcell2_mv/1000.0f);
 }
 
+static void print_battery_status(void) {
+    evn_battery_state_t battery;
+    if (!hal_battery_get(&battery)) {
+        con_printf("BATTERY unavailable\n");
+        return;
+    }
+    uint32_t age_us = time_us_32() - battery.timestamp_us;
+    con_printf("BATTERY pack_mv=%u cell1_mv=%u cell2_mv=%u age_us=%lu\n",
+               battery.vbatt_mv, battery.vcell1_mv, battery.vcell2_mv,
+               (unsigned long)age_us);
+}
+
 /* Producers enqueue complete records; Core 0 drains bounded chunks through the
  * SDK stdio driver, which serializes TinyUSB access with its background worker. */
 #define CDC_TX_QUEUE_SIZE 8192u
@@ -61,6 +73,7 @@ static uint32_t s_dump_idx = 0;
 static uint32_t s_dump_n = 0;
 static int32_t  s_dump_t0 = 0;
 static bool     s_dump_active = false;
+static char     s_trace_block_tx[4096];
 
 static uint32_t cdc_tx_free(void) {
     return CDC_TX_QUEUE_SIZE - (s_cdc_tx_head - s_cdc_tx_tail);
@@ -147,6 +160,40 @@ static void move_relative_tune(float delta_deg, int only_axis /* -1 = all */) {
 }
 
 /* Dump the armed axis' 1 kHz trace as CSV (host parses TRACE BEGIN/END). */
+static const char s_trace_columns[] =
+    "t_ms,ref_mdeg,enc_mdeg,hat_mdeg,vref_mdegs,what_mdegs,duty_milli,cur_01ma\n";
+
+static int format_trace_header(char *header, size_t size, uint8_t ax, uint32_t n) {
+    const evn_pid_t *p = evn_motion_axis_pid(ax);
+    float max_vel, max_accel;
+    evn_motion_get_profile(ax, &max_vel, &max_accel);
+    float vel_scale, accel_scale;
+    evn_motion_get_profile_scale(ax, &vel_scale, &accel_scale);
+    float target_deg, duration_s;
+    evn_motion_get_debug(ax, &target_deg, &duration_s);
+    return snprintf(header, size,
+        "TRACE BEGIN axis=%u rows=%lu kp=%g ki=%g kv=%g kd=%g kff=%g ff=%d pwm=%lu target=%g duration=%g vmax=%g accel=%g vscale=%g ascale=%g vsrc=%d valpha=%g\n",
+        ax + 1, (unsigned long)n,
+        (double)p->kp_pos, (double)p->ki_pos, (double)p->kp_vel,
+        (double)p->kd_vel, (double)p->kff_accel,
+        evn_motion_feedforward_on() ? 1 : 0,
+        (unsigned long)hal_motor_get_pwm_freq(),
+        (double)target_deg, (double)duration_s,
+        (double)max_vel, (double)max_accel,
+        (double)vel_scale, (double)accel_scale, p->use_enc_speed,
+        (double)evn_motion_edge_speed_alpha(ax));
+}
+
+static bool dump_trace_header(uint8_t ax, uint32_t n) {
+    char header[320];
+    int length = format_trace_header(header, sizeof header, ax, n);
+    if (length <= 0) return false;
+    size_t header_len = (size_t)((length < (int)sizeof header) ? length : (int)sizeof header - 1);
+    if (header_len + sizeof s_trace_columns - 1 > cdc_tx_free()) return false;
+    return cdc_write_paced(header, header_len) &&
+           cdc_write_paced(s_trace_columns, sizeof s_trace_columns - 1);
+}
+
 static void dump_trace(void) {
     if (s_dump_active) {
         con_printf("?? trace dump already active\n");
@@ -155,29 +202,60 @@ static void dump_trace(void) {
     evn_motion_trace_stop();
     uint8_t ax; uint32_t n; bool armed;
     evn_motion_trace_info(&ax, &n, &armed);
-    const evn_pid_t *p = evn_motion_axis_pid(ax);
-    float max_vel, max_accel;
-    evn_motion_get_profile(ax, &max_vel, &max_accel);
-    static const char columns[] =
-        "t_ms,ref_mdeg,enc_mdeg,hat_mdeg,vref_mdegs,what_mdegs,duty_milli,cur_01ma\n";
-    char header[192];
-    int length = snprintf(header, sizeof header,
-        "TRACE BEGIN axis=%u rows=%lu kp=%g ki=%g kv=%g kd=%g kff=%g ff=%d pwm=%lu vmax=%g accel=%g\n",
-        ax + 1, (unsigned long)n,
-        (double)p->kp_pos, (double)p->ki_pos, (double)p->kp_vel,
-        (double)p->kd_vel, (double)p->kff_accel,
-        evn_motion_feedforward_on() ? 1 : 0,
-        (unsigned long)hal_motor_get_pwm_freq(),
-        (double)max_vel, (double)max_accel);
-    if (length <= 0) return;
-    size_t header_len = (size_t)((length < (int)sizeof header) ? length : (int)sizeof header - 1);
-    if (header_len + sizeof columns - 1 > cdc_tx_free()) {
+    if (!dump_trace_header(ax, n)) {
         con_printf("?? USB TX busy; retry dump\n");
         return;
     }
-    cdc_write_paced(header, header_len);
-    cdc_write_paced(columns, sizeof columns - 1);
     s_dump_idx = 0; s_dump_n = n; s_dump_t0 = 0; s_dump_active = true;
+}
+
+static bool trace_block_append(size_t *used, const char *fmt, ...) {
+    if (*used >= sizeof s_trace_block_tx) return false;
+    va_list ap;
+    va_start(ap, fmt);
+    int length = vsnprintf(s_trace_block_tx + *used,
+                           sizeof s_trace_block_tx - *used, fmt, ap);
+    va_end(ap);
+    if (length < 0 || (size_t)length >= sizeof s_trace_block_tx - *used) return false;
+    *used += (size_t)length;
+    return true;
+}
+
+static void dump_trace_block(uint32_t start, uint32_t count) {
+    evn_motion_trace_stop();
+    uint8_t ax; uint32_t n; bool armed;
+    evn_motion_trace_info(&ax, &n, &armed);
+    if (count == 0 || count > 32 || start >= n) {
+        con_printf("?? usage: D start count (count 1..32, start < %lu)\n", (unsigned long)n);
+        return;
+    }
+    uint32_t end = start + count;
+    if (end > n) end = n;
+    size_t used = 0;
+    if (start == 0) {
+        int length = format_trace_header(s_trace_block_tx, sizeof s_trace_block_tx, ax, n);
+        if (length <= 0 || (size_t)length >= sizeof s_trace_block_tx) return;
+        used = (size_t)length;
+        if (!trace_block_append(&used, "%s", s_trace_columns)) return;
+    }
+    if (!trace_block_append(&used, "TRACE BLOCK start=%lu count=%lu\n",
+                            (unsigned long)start, (unsigned long)(end - start))) return;
+
+    int32_t t0, unused;
+    if (!evn_motion_trace_row(0, &t0, &unused, &unused, &unused,
+                              &unused, &unused, &unused, &unused)) return;
+    for (uint32_t index = start; index < end; index++) {
+        int32_t t, ref, enc, hat, vref, what, duty, cur;
+        if (!evn_motion_trace_row(index, &t, &ref, &enc, &hat, &vref,
+                                  &what, &duty, &cur)) return;
+        if (!trace_block_append(&used, "%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\n",
+                                (long)(t - t0), (long)ref, (long)enc, (long)hat,
+                                (long)vref, (long)what, (long)duty, (long)cur)) return;
+    }
+    if (end >= n && !trace_block_append(&used, "TRACE END\n")) return;
+    if (!trace_block_append(&used, "TRACE BLOCK END next=%lu total=%lu\n",
+                            (unsigned long)end, (unsigned long)n)) return;
+    stdio_put_string(s_trace_block_tx, (int)used, false, false);
 }
 
 /* Called every main-loop iteration; emits up to a few rows then returns so the
@@ -217,6 +295,7 @@ static void handle_command(void) {
     if (*p == 0) return;
 
     switch (p[0]) {
+    case 'B': print_battery_status(); break;
     case 'r': start_full_test(); break;
     case 'q': move_relative_all(90.0f); break;
     case 'Q': move_relative_all(-90.0f); break;
@@ -255,6 +334,13 @@ static void handle_command(void) {
         break;
     }
     case 'd': dump_trace(); break;
+    case 'D': {
+        unsigned long start, count;
+        if (sscanf(p + 1, "%lu %lu", &start, &count) == 2)
+            dump_trace_block((uint32_t)start, (uint32_t)count);
+        else con_printf("?? usage: D start count\n");
+        break;
+    }
     case 'p': s_report = !s_report; con_printf(">> 10Hz report %s\n", s_report ? "ON" : "OFF"); break;
     case 'b': {
         int ax; float start_duty, hold_duty;
@@ -340,15 +426,36 @@ static void handle_command(void) {
         break;
     }
     case 'u': {
-        int on;
-        if (sscanf(p + 1, "%d", &on) == 1) {
+        int source;
+        if (sscanf(p + 1, "%d", &source) == 1 && source >= 0 && source <= 3) {
             for (int i = 0; i < 4; i++) {
-                const evn_pid_t *cur = evn_motion_axis_pid(i);
-                evn_pid_t *pw = (evn_pid_t *)cur;
-                pw->use_enc_speed = on ? 1 : 0;
+                evn_motion_set_velocity_source((uint8_t)i, source);
             }
-            con_printf(">> velocity source = %s\n", on ? "encoder" : "observer");
-        } else con_printf("?? usage: u 0|1\n");
+            static const char *const names[] = {
+                "observer", "windowed encoder", "raw edge encoder", "filtered edge encoder"
+            };
+            con_printf(">> velocity source = %s\n", names[source]);
+        } else con_printf("?? usage: u 0|1|2|3\n");
+        break;
+    }
+    case 'l': {
+        int ax; float alpha;
+        if (sscanf(p + 1, "%d %f", &ax, &alpha) == 2 && ax >= 1 && ax <= 4 &&
+            alpha >= 0.001f && alpha <= 1.0f) {
+            evn_motion_set_edge_speed_alpha((uint8_t)(ax - 1), alpha);
+            con_printf(">> M%d edge speed alpha=%g\n", ax, (double)alpha);
+        } else con_printf("?? usage: l motor alpha_0.001_to_1\n");
+        break;
+    }
+    case 'h': {
+        int ax; float vel_scale, accel_scale;
+        if (sscanf(p + 1, "%d %f %f", &ax, &vel_scale, &accel_scale) == 3 &&
+            ax >= 1 && ax <= 4 && vel_scale >= 0.1f && vel_scale <= 1.0f &&
+            accel_scale >= 0.1f && accel_scale <= 1.0f) {
+            evn_motion_set_profile_scale((uint8_t)(ax - 1), vel_scale, accel_scale);
+            con_printf(">> M%d profile scale vel=%g accel=%g\n", ax,
+                       (double)vel_scale, (double)accel_scale);
+        } else con_printf("?? usage: h motor vel_scale accel_scale\n");
         break;
     }
     case 's': {  /* s <motor 1-4> <enc_sign +/-1> <motor_dir +/-1> */

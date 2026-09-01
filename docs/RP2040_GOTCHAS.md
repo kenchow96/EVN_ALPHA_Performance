@@ -21,6 +21,8 @@ owns `tud_task()`. Dump paths enqueue complete records in an 8 KiB application
 buffer; Core 0 drains bounded chunks through mutex-protected `stdio_put_string()`.
 The host holds one COM handle and must receive `TRACE END` before another command
 or close. Never call any direct `tud_*` API while `pico_stdio_usb` is enabled.
+Keep `CFG_TUD_CDC_TX_BUFSIZE` and RX at the RP2040 full-speed packet size (64 B);
+large class-FIFO overrides caused long-stream stalls even after API ownership was fixed.
 **Rule: never let a bulk `printf` loop run unthrottled against a closed/slow host.**
 
 ### 2. No DWT `CYCCNT` on Cortex-M0+ (already cost us a flash cycle)

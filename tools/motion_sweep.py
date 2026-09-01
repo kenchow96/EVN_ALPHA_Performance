@@ -33,13 +33,18 @@ def find_port(requested=None):
 
 
 class BoardSession:
-    def __init__(self, port):
+    def __init__(self, port, min_battery_mv=6500, min_cell_mv=3000,
+                 max_battery_age_us=250000):
         self.last_trace_data = b""
+        self.min_battery_mv = min_battery_mv
+        self.min_cell_mv = min_cell_mv
+        self.max_battery_age_us = max_battery_age_us
         self.serial = serial.Serial(port, 115200, timeout=0.05, write_timeout=2.0)
         self.serial.dtr = False
         time.sleep(0.05)
         self.serial.dtr = True
         self.read_for(1.0)
+        self.send("S", 0.5, expect="Core1:", retries=3)
 
     def read_for(self, seconds):
         deadline = time.time() + seconds
@@ -50,10 +55,52 @@ class BoardSession:
                 chunks.append(chunk)
         return b"".join(chunks).decode("utf-8", "replace")
 
-    def send(self, command, read_seconds=0.20):
-        self.serial.write(command.encode("ascii") + b"\n")
-        self.serial.flush()
-        return self.read_for(read_seconds)
+    def write_command(self, command, timeout_s=2.0):
+        pending = command.encode("ascii") + b"\n"
+        deadline = time.time() + timeout_s
+        while pending and time.time() < deadline:
+            written = self.serial.write(pending)
+            if written:
+                pending = pending[written:]
+            else:
+                self.read_for(0.05)
+        if pending:
+            raise TimeoutError(f"command write did not queue: {command!r}")
+
+    def send(self, command, read_seconds=0.20, expect=None, retries=3):
+        responses = []
+        for _ in range(retries):
+            self.write_command(command)
+            response = self.read_for(read_seconds)
+            if expect and expect not in response:
+                response += self.read_for(1.0)
+            responses.append(response)
+            if not expect or expect in response:
+                return "".join(responses)
+        raise RuntimeError(
+            f"command not acknowledged after {retries} attempts: {command!r}; "
+            f"response={''.join(responses)!r}")
+
+    def require_battery(self):
+        response = self.send("B", 0.20, expect="BATTERY")
+        line = next((item for item in response.splitlines()
+                     if item.startswith("BATTERY")), "")
+        if "unavailable" in line:
+            raise RuntimeError("battery telemetry unavailable before motion")
+        fields = dict(token.split("=", 1) for token in line.split() if "=" in token)
+        battery = {name: int(fields[name]) for name in
+                   ("pack_mv", "cell1_mv", "cell2_mv", "age_us")}
+        if battery["age_us"] > self.max_battery_age_us:
+            raise RuntimeError(
+                f"battery sample stale: {battery['age_us']} us > {self.max_battery_age_us} us")
+        if battery["pack_mv"] < self.min_battery_mv:
+            raise RuntimeError(
+                f"battery too low: {battery['pack_mv']} mV < {self.min_battery_mv} mV")
+        low_cell = min(battery["cell1_mv"], battery["cell2_mv"])
+        if low_cell < self.min_cell_mv:
+            raise RuntimeError(
+                f"battery cell too low: {low_cell} mV < {self.min_cell_mv} mV")
+        return battery
 
     def read_trace(self, timeout_s=60.0):
         deadline = time.time() + timeout_s
@@ -76,6 +123,55 @@ class BoardSession:
         self.last_trace_data = bytes(data)
         raise TimeoutError(
             f"trace did not produce an ordered frame: bytes={len(data)} begin={begin}")
+
+    def read_trace_block(self, start, count=32, retries=3, timeout_s=5.0):
+        block_marker = f"TRACE BLOCK start={start} ".encode("ascii")
+        first_marker = b"TRACE BEGIN" if start == 0 else block_marker
+        end_marker = b"TRACE BLOCK END "
+        last_data = b""
+        for _ in range(retries):
+            self.write_command(f"D {start} {count}")
+            deadline = time.time() + timeout_s
+            data = bytearray()
+            begin = -1
+            while time.time() < deadline:
+                chunk = self.serial.read(4096)
+                if chunk:
+                    data.extend(chunk)
+                if begin < 0:
+                    begin = data.find(first_marker)
+                if begin >= 0:
+                    end = data.find(end_marker, begin)
+                    if end >= 0:
+                        newline = data.find(b"\n", end)
+                        if newline >= 0:
+                            response = bytes(data[begin:newline + 1])
+                            end_line = response[response.rfind(end_marker):].decode("ascii")
+                            fields = dict(token.split("=", 1) for token in end_line.split()
+                                          if "=" in token)
+                            return response.decode("utf-8", "replace"), int(fields["next"]), int(fields["total"])
+            last_data = bytes(data)
+            self.read_for(0.1)
+        self.last_trace_data = last_data
+        raise TimeoutError(f"trace block {start} incomplete after {retries} attempts")
+
+    def pull_trace(self, block_rows=32):
+        chunks = []
+        start = 0
+        total = None
+        while total is None or start < total:
+            response, next_start, response_total = self.read_trace_block(start, block_rows)
+            if next_start <= start:
+                raise RuntimeError(f"trace block made no progress: {start} -> {next_start}")
+            if total is not None and response_total != total:
+                raise RuntimeError(f"trace total changed: {total} -> {response_total}")
+            total = response_total
+            chunks.append(response)
+            start = next_start
+        frame = "".join(chunks)
+        if "TRACE BEGIN" not in frame or "TRACE END\n" not in frame:
+            raise RuntimeError("pulled trace is missing frame markers")
+        return frame
 
     def close(self):
         try:
@@ -126,6 +222,145 @@ def medium_breakaway_cases():
     return cases
 
 
+def dynamics_cases():
+    cases = []
+    for label, kv in (("LD0", 3.0e-6), ("LD1", 4.0e-6),
+                      ("LD2", 5.0e-6), ("LD3", 6.0e-6)):
+        for direction, delta in (("pos", 90.0), ("neg", -90.0)):
+            cases.append({
+                "name": f"{label}_{direction}", "axis": 1,
+                "delta": delta, "vmax": 180.0, "accel": 900.0,
+                "kp": 1.4e-4, "ki": 1.0e-6, "kv": kv,
+                "start_duty": 0.12, "hold_duty": 0.12,
+            })
+    for label, kv in (("MD0", 2.0e-6), ("MD1", 3.0e-6),
+                      ("MD2", 4.0e-6), ("MD3", 5.0e-6)):
+        for direction, delta in (("pos", 90.0), ("neg", -90.0)):
+            cases.append({
+                "name": f"{label}_{direction}", "axis": 3,
+                "delta": delta, "vmax": 180.0, "accel": 900.0,
+                "kp": 1.2e-4, "ki": 8.0e-7, "kv": kv,
+                "start_duty": 0.65, "hold_duty": 0.55,
+            })
+    return cases
+
+
+def edge_speed_cases():
+    cases = []
+    for axis, prefix, kp, ki, start, hold, gains in (
+        (1, "LE", 1.4e-4, 1.0e-6, 0.12, 0.12, (1.0e-6, 2.0e-6, 3.0e-6)),
+        (3, "ME", 1.2e-4, 8.0e-7, 0.65, 0.55, (5.0e-7, 1.0e-6, 1.5e-6)),
+    ):
+        for index, kv in enumerate(gains):
+            for direction, delta in (("pos", 90.0), ("neg", -90.0)):
+                cases.append({
+                    "name": f"{prefix}{index}_{direction}", "axis": axis,
+                    "delta": delta, "vmax": 180.0, "accel": 900.0,
+                    "kp": kp, "ki": ki, "kv": kv,
+                    "start_duty": start, "hold_duty": hold,
+                    "speed_source": 2,
+                })
+    return cases
+
+
+def filtered_edge_cases():
+    cases = []
+    for axis, prefix, kp, ki, start, hold, combinations in (
+        (1, "LF", 1.4e-4, 1.0e-6, 0.12, 0.12,
+         ((0.03, 3.0e-6), (0.03, 5.0e-6), (0.06, 3.0e-6), (0.06, 5.0e-6))),
+        (3, "MF", 1.2e-4, 8.0e-7, 0.65, 0.55,
+         ((0.03, 5.0e-7), (0.03, 1.0e-6), (0.06, 5.0e-7), (0.06, 1.0e-6))),
+    ):
+        for index, (alpha, kv) in enumerate(combinations):
+            for direction, delta in (("pos", 90.0), ("neg", -90.0)):
+                cases.append({
+                    "name": f"{prefix}{index}_{direction}", "axis": axis,
+                    "delta": delta, "vmax": 180.0, "accel": 900.0,
+                    "kp": kp, "ki": ki, "kv": kv,
+                    "start_duty": start, "hold_duty": hold,
+                    "speed_source": 3, "speed_alpha": alpha,
+                })
+    return cases
+
+
+def observer_speed_cases():
+    cases = []
+    for axis, prefix, kp, ki, start, hold, gains in (
+        (1, "LO", 1.4e-4, 1.0e-6, 0.12, 0.12, (1.0e-6, 2.0e-6, 3.0e-6)),
+        (3, "MO", 1.2e-4, 8.0e-7, 0.65, 0.55, (2.5e-7, 5.0e-7, 7.5e-7)),
+    ):
+        for index, kv in enumerate(gains):
+            for direction, delta in (("pos", 90.0), ("neg", -90.0)):
+                cases.append({
+                    "name": f"{prefix}{index}_{direction}", "axis": axis,
+                    "delta": delta, "vmax": 180.0, "accel": 900.0,
+                    "kp": kp, "ki": ki, "kv": kv,
+                    "start_duty": start, "hold_duty": hold,
+                    "speed_source": 0, "speed_alpha": 0.05,
+                })
+    return cases
+
+
+def profile_margin_cases():
+    cases = []
+    margins = ((0.95, 0.80), (0.95, 0.65), (0.90, 0.80), (0.90, 0.65))
+    for axis, prefix, kp, ki, kv, start, hold in (
+        (1, "LM", 1.4e-4, 1.0e-6, 6.0e-6, 0.12, 0.12),
+        (3, "MM", 1.2e-4, 8.0e-7, 2.0e-6, 0.65, 0.45),
+    ):
+        for index, (vel_scale, accel_scale) in enumerate(margins):
+            for direction, delta in (("pos", 90.0), ("neg", -90.0)):
+                cases.append({
+                    "name": f"{prefix}{index}_{direction}", "axis": axis,
+                    "delta": delta, "vmax": 180.0, "accel": 900.0,
+                    "kp": kp, "ki": ki, "kv": kv,
+                    "start_duty": start, "hold_duty": hold,
+                    "speed_source": 1, "speed_alpha": 0.05,
+                    "vel_scale": vel_scale, "accel_scale": accel_scale,
+                })
+    return cases
+
+
+def margin_refine_cases():
+    cases = []
+    for direction, delta in (("pos", 90.0), ("neg", -90.0)):
+        cases.append({
+            "name": f"LR_{direction}", "axis": 1,
+            "delta": delta, "vmax": 180.0, "accel": 900.0,
+            "kp": 1.4e-4, "ki": 1.0e-6, "kv": 6.0e-6,
+            "start_duty": 0.12, "hold_duty": 0.12,
+            "speed_source": 1, "speed_alpha": 0.05,
+            "vel_scale": 0.90, "accel_scale": 0.60,
+        })
+    margins = ((0.85, 0.50), (0.85, 0.40), (0.80, 0.50), (0.80, 0.40))
+    for index, (vel_scale, accel_scale) in enumerate(margins):
+        for direction, delta in (("pos", 90.0), ("neg", -90.0)):
+            cases.append({
+                "name": f"MR{index}_{direction}", "axis": 3,
+                "delta": delta, "vmax": 180.0, "accel": 900.0,
+                "kp": 1.2e-4, "ki": 8.0e-7, "kv": 2.0e-6,
+                "start_duty": 0.65, "hold_duty": 0.55,
+                "speed_source": 1, "speed_alpha": 0.05,
+                "vel_scale": vel_scale, "accel_scale": accel_scale,
+            })
+    return cases
+
+
+def startup_pause_cases():
+    cases = []
+    for index, start_duty in enumerate((0.45, 0.55, 0.65)):
+        for direction, delta in (("pos", 90.0), ("neg", -90.0)):
+            cases.append({
+                "name": f"SP{index}_{direction}", "axis": 3,
+                "delta": delta, "vmax": 180.0, "accel": 900.0,
+                "kp": 1.2e-4, "ki": 8.0e-7, "kv": 2.0e-6,
+                "start_duty": start_duty, "hold_duty": 0.55,
+                "speed_source": 1, "speed_alpha": 0.05,
+                "vel_scale": 0.85, "accel_scale": 0.40,
+            })
+    return cases
+
+
 def profile_cases(args):
     profiles = [
         ("short", 10.0, 180.0, 900.0),
@@ -147,6 +382,8 @@ def profile_cases(args):
                     "kp": kp, "ki": ki, "kv": kv,
                     "start_duty": args.large_start if axis <= 2 else args.medium_start,
                     "hold_duty": args.large_floor if axis <= 2 else args.medium_floor,
+                    "speed_source": args.speed_source,
+                    "vel_scale": args.vel_scale, "accel_scale": args.accel_scale,
                 })
     return cases
 
@@ -155,7 +392,9 @@ def case_score(metrics):
     checks = verdicts(metrics)
     failures = sum(1 for *_, ok in checks if not ok)
     penalty = (
-        metrics["max_track_err_deg"] / 2.0
+        abs(metrics.get("profile_end_error_deg", 0.0)) * 2.0
+        + abs(metrics["final_err_deg"]) * 2.0
+        + metrics["max_track_err_deg"] / 2.0
         + metrics["rms_track_err_deg"]
         + abs(metrics["overshoot_deg"]) * 2.0
         + metrics["duty_saturation_frac"] * 10.0
@@ -168,16 +407,24 @@ def case_score(metrics):
 
 def run_case(board, case, output_dir):
     axis = case["axis"]
-    board.send("c")
-    board.send(f"G {axis} {case['kp']:.9g} {case['ki']:.9g} {case['kv']:.9g} 0 0")
-    board.send(f"b {axis} {case['start_duty']:.6g} {case['hold_duty']:.6g}")
-    board.send(f"t {axis}")
-    board.send(f"X {axis} {case['delta']:.6g} {case['vmax']:.6g} {case['accel']:.6g}")
+    board.send("c", expect="coast all")
+    board.send(f"u {case.get('speed_source', 1)}", expect="velocity source")
+    board.send(f"l {axis} {case.get('speed_alpha', 0.05):.6g}", expect="edge speed alpha")
+    board.send(f"h {axis} {case.get('vel_scale', 1.0):.6g} {case.get('accel_scale', 1.0):.6g}",
+               expect=f"M{axis} profile scale")
+    board.send(f"G {axis} {case['kp']:.9g} {case['ki']:.9g} {case['kv']:.9g} 0 0",
+               expect=f"gains M{axis}")
+    board.send(f"b {axis} {case['start_duty']:.6g} {case['hold_duty']:.6g}",
+               expect=f"M{axis} stiction")
+    board.send(f"t {axis}", expect="trace armed")
+    battery = board.require_battery()
+    print(f"  battery={battery['pack_mv']}mV cells={battery['cell1_mv']}/{battery['cell2_mv']}mV "
+          f"age={battery['age_us']}us", flush=True)
+    board.send(f"X {axis} {case['delta']:.6g} {case['vmax']:.6g} {case['accel']:.6g}",
+               expect=f"profile M{axis}", retries=1)
     board.read_for(TRACE_SECONDS)
 
-    board.serial.write(b"d\n")
-    board.serial.flush()
-    frame = board.read_trace()
+    frame = board.pull_trace()
     status = board.send("S", 0.5)
     board.send("c")
 
@@ -192,6 +439,7 @@ def run_case(board, case, output_dir):
     if metrics is None:
         raise RuntimeError(f"{case['name']}: metrics rejected trace")
     metrics["case"] = case
+    metrics["battery_pre_run"] = battery
     metrics["core1_status"] = next(
         (line for line in status.splitlines() if line.startswith("Core1:")), "missing")
     failures, score, passed, total = case_score(metrics)
@@ -210,23 +458,32 @@ def write_summary(output_dir, results):
     summary_path = os.path.join(output_dir, "summary.csv")
     fields = [
         "name", "axis", "delta", "vmax", "accel", "kp", "ki", "kv",
-        "start_duty", "hold_duty",
+        "start_duty", "hold_duty", "speed_source", "speed_alpha",
+        "vel_scale", "accel_scale", "peak_vel_degs", "peak_accel_degs2",
         "passed", "total", "failures", "score", "max_track_err_deg",
         "rms_track_err_deg", "overshoot_deg", "final_err_deg",
         "duty_saturation_frac", "duty_smoothness", "duty_cruise_ripple_pp",
         "regressive_reversals", "core1_status",
+        "battery_pack_mv", "battery_cell1_mv", "battery_cell2_mv", "battery_age_us",
     ]
     with open(summary_path, "w", newline="", encoding="utf-8") as summary_file:
         writer = csv.DictWriter(summary_file, fieldnames=fields)
         writer.writeheader()
         for metrics in results:
             case = metrics["case"]
+            battery = metrics.get("battery_pre_run", {})
             writer.writerow({
                 "name": case["name"], "axis": case["axis"],
                 "delta": case["delta"], "vmax": case["vmax"],
                 "accel": case["accel"], "kp": case["kp"],
                 "ki": case["ki"], "kv": case["kv"],
                 "start_duty": case["start_duty"], "hold_duty": case["hold_duty"],
+                "speed_source": case.get("speed_source", 1),
+                "speed_alpha": case.get("speed_alpha", 0.05),
+                "vel_scale": case.get("vel_scale", 1.0),
+                "accel_scale": case.get("accel_scale", 1.0),
+                "peak_vel_degs": metrics["peak_vel_degs"],
+                "peak_accel_degs2": metrics["peak_accel_degs2"],
                 "passed": metrics["acceptance_passed"],
                 "total": metrics["acceptance_total"],
                 "failures": metrics["failure_count"], "score": metrics["score"],
@@ -239,6 +496,10 @@ def write_summary(output_dir, results):
                 "duty_cruise_ripple_pp": metrics["duty_cruise_ripple_pp"],
                 "regressive_reversals": metrics["regressive_reversals"],
                 "core1_status": metrics["core1_status"],
+                "battery_pack_mv": battery.get("pack_mv"),
+                "battery_cell1_mv": battery.get("cell1_mv"),
+                "battery_cell2_mv": battery.get("cell2_mv"),
+                "battery_age_us": battery.get("age_us"),
             })
     with open(os.path.join(output_dir, "summary.json"), "w", encoding="utf-8") as summary_file:
         json.dump(results, summary_file, indent=2)
@@ -248,11 +509,17 @@ def write_summary(output_dir, results):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port")
-    parser.add_argument("--suite", choices=("gain-search", "medium-breakaway", "profiles"),
+    parser.add_argument("--suite", choices=("gain-search", "medium-breakaway",
+                                             "dynamics", "edge-speed",
+                                             "filtered-edge", "observer-speed",
+                                             "profile-margin", "margin-refine",
+                                             "startup-pause", "profiles"),
                         default="gain-search")
     parser.add_argument("--output")
+    parser.add_argument("--case", action="append", default=[],
+                        help="run only named cases; repeat to select a subset")
     parser.add_argument("--resume", action="store_true")
-    parser.add_argument("--batch-size", type=int, default=4,
+    parser.add_argument("--batch-size", type=int, default=1,
                         help="cleanly reopen CDC after this many completed cases")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--large-kp", type=float, default=1.0e-4)
@@ -265,14 +532,40 @@ def main():
     parser.add_argument("--medium-kv", type=float, default=1.5e-6)
     parser.add_argument("--medium-start", type=float, default=0.65)
     parser.add_argument("--medium-floor", type=float, default=0.25)
+    parser.add_argument("--speed-source", type=int, choices=(0, 1, 2, 3), default=1)
+    parser.add_argument("--vel-scale", type=float, default=0.9)
+    parser.add_argument("--accel-scale", type=float, default=0.65)
+    parser.add_argument("--min-battery-mv", type=int, default=6500)
+    parser.add_argument("--min-cell-mv", type=int, default=3000)
+    parser.add_argument("--max-battery-age-ms", type=int, default=250)
     args = parser.parse_args()
 
     if args.suite == "gain-search":
         cases = gain_cases()
     elif args.suite == "medium-breakaway":
         cases = medium_breakaway_cases()
+    elif args.suite == "dynamics":
+        cases = dynamics_cases()
+    elif args.suite == "edge-speed":
+        cases = edge_speed_cases()
+    elif args.suite == "filtered-edge":
+        cases = filtered_edge_cases()
+    elif args.suite == "observer-speed":
+        cases = observer_speed_cases()
+    elif args.suite == "profile-margin":
+        cases = profile_margin_cases()
+    elif args.suite == "margin-refine":
+        cases = margin_refine_cases()
+    elif args.suite == "startup-pause":
+        cases = startup_pause_cases()
     else:
         cases = profile_cases(args)
+    if args.case:
+        selected = set(args.case)
+        cases = [case for case in cases if case["name"] in selected]
+        missing = selected - {case["name"] for case in cases}
+        if missing:
+            parser.error("unknown case(s): " + ", ".join(sorted(missing)))
     if args.dry_run:
         print(json.dumps(cases, indent=2))
         return 0
@@ -309,7 +602,8 @@ def main():
                 port = find_port(args.port)
                 if not port:
                     raise RuntimeError("EVN serial port disappeared between batches")
-                board = BoardSession(port)
+                board = BoardSession(port, args.min_battery_mv, args.min_cell_mv,
+                                     args.max_battery_age_ms * 1000)
                 board.send("w 25000", 0.3)
                 batch_count = 0
             print(f"[{index:02d}/{len(cases):02d}] {case['name']}", flush=True)
