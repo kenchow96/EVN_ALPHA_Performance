@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/* Speed window length (samples at 1 kHz). Defined before the struct. */
+#define PID_SPEED_WINDOW 20
+
 /* ==========================================================================
  * EVN ALPHA - Cascaded motor controller (position outer, velocity inner).
  *
@@ -52,6 +55,13 @@ typedef struct {
     float integrator;
     float prev_vel_meas;
     bool  first;
+
+    /* Pybricks-style windowed differentiator for a low-noise speed estimate
+     * (averages position increments over a window, not per-tick). */
+    float pos_hist[PID_SPEED_WINDOW];   /* ring buffer of pos_meas (mdeg) */
+    int   pos_hist_idx;
+    bool  pos_hist_full;
+    float last_vel_smooth;              /* last windowed speed used (debug) */
 } evn_pid_t;
 
 void evn_pid_init(evn_pid_t *p);

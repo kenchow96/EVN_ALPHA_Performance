@@ -129,16 +129,16 @@ static void dump_trace(void) {
            (double)p->kp_pos, (double)p->ki_pos, (double)p->kp_vel,
            (double)p->kd_vel, (double)p->kff_accel,
            evn_motion_feedforward_on() ? 1 : 0);
-    cdc_puts("t_ms,ref_mdeg,enc_mdeg,hat_mdeg,vref_mdegs,what_mdegs,duty_milli\n");
+    cdc_puts("t_ms,ref_mdeg,enc_mdeg,hat_mdeg,vref_mdegs,what_mdegs,duty_milli,cur_01ma\n");
     int32_t t0 = 0;
     for (uint32_t i = 0; i < n; i++) {
-        int32_t t, ref, enc, hat, vref, what, duty;
-        if (!evn_motion_trace_row(i, &t, &ref, &enc, &hat, &vref, &what, &duty)) break;
+        int32_t t, ref, enc, hat, vref, what, duty, cur;
+        if (!evn_motion_trace_row(i, &t, &ref, &enc, &hat, &vref, &what, &duty, &cur)) break;
         if (i == 0) t0 = t;
-        char line[80];
-        int L = snprintf(line, sizeof line, "%ld,%ld,%ld,%ld,%ld,%ld,%ld\n",
+        char line[96];
+        int L = snprintf(line, sizeof line, "%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\n",
                (long)(t - t0), (long)ref, (long)enc, (long)hat,
-               (long)vref, (long)what, (long)duty);
+               (long)vref, (long)what, (long)duty, (long)cur);
         /* FIFO-paced, non-blocking write: never saturates/wedges the port */
         cdc_write_paced(line, (size_t)L);
     }

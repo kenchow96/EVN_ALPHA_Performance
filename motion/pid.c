@@ -23,6 +23,25 @@ void evn_pid_reset(evn_pid_t *p) {
     p->integrator = 0.0f;
     p->prev_vel_meas = 0.0f;
     p->first = true;
+    p->pos_hist_idx = 0;
+    p->pos_hist_full = false;
+    for (int i = 0; i < PID_SPEED_WINDOW; i++) p->pos_hist[i] = 0.0f;
+}
+
+/* Windowed speed estimate (Pybricks-style): push pos_meas into the ring buffer
+ * and return the average rate over the window in mdeg/s. dt is the sample
+ * period in seconds. Low-noise without the per-tick quantization spikes. */
+static float pid_speed(evn_pid_t *p, float pos_meas, float dt) {
+    /* write current sample into the oldest slot, then the slot AFTER the new
+     * write index is the oldest retained sample */
+    p->pos_hist[p->pos_hist_idx] = pos_meas;
+    int next = (p->pos_hist_idx + 1) % PID_SPEED_WINDOW;
+    bool full = p->pos_hist_full || (next == 0);
+    float oldest_pos = p->pos_hist[next];   /* slot that will be overwritten next call */
+    p->pos_hist_idx = next;
+    p->pos_hist_full = full;
+    if (!p->pos_hist_full || dt <= 0.0f) return 0.0f;
+    return (pos_meas - oldest_pos) / (PID_SPEED_WINDOW * dt);
 }
 
 float evn_pid_update(evn_pid_t *p,
@@ -58,9 +77,16 @@ float evn_pid_update(evn_pid_t *p,
     p->prev_vel_meas = vel_meas;
     p->first = false;
 
+    /* velocity P uses the windowed (low-noise) speed, not the per-tick value,
+     * so quantization noise doesn't bang the duty cycle */
+    float vel_smooth = p->use_enc_speed ? pid_speed(p, pos_meas, dt) : vel_meas;
+    p->last_vel_smooth = vel_smooth;
+    float vel_err_smooth = vel_ref - vel_smooth;
+    if (p->deadzone_mdeg > 0.0f && ae < p->deadzone_mdeg) vel_err_smooth = 0.0f;
+
     float duty = p->kp_pos * pos_err
                + p->ki_pos * p->integrator
-               + p->kp_vel * vel_err
+               + p->kp_vel * vel_err_smooth
                + p->kd_vel * d_vel
                + p->kff_accel * accel_ref;
 

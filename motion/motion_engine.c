@@ -25,7 +25,7 @@ static bool       s_ff_on = true;   /* model-based feedforward (validated ON) */
 
 /* --- 1 kHz trace (tuning): one axis at a time, static buffer, no heap --- */
 typedef struct {
-    int32_t t_ms, ref_mdeg, enc_mdeg, hat_mdeg, vref_mdegs, what_mdegs, duty_milli;
+    int32_t t_ms, ref_mdeg, enc_mdeg, hat_mdeg, vref_mdegs, what_mdegs, duty_milli, cur_01ma;
 } evn_trace_row_t;
 static evn_trace_row_t s_trace[EVN_TRACE_MAX];
 static volatile uint8_t  s_trace_axis = 0;
@@ -58,12 +58,13 @@ bool evn_motion_trace_info(uint8_t *axis, uint32_t *count, bool *armed) {
 bool evn_motion_trace_row(uint32_t i, int32_t *t_ms, int32_t *ref_mdeg,
                           int32_t *enc_mdeg, int32_t *hat_mdeg,
                           int32_t *vref_mdegs, int32_t *what_mdegs,
-                          int32_t *duty_milli) {
+                          int32_t *duty_milli, int32_t *cur_01ma) {
     if (i >= s_trace_count) return false;
     const evn_trace_row_t *r = &s_trace[i];
     *t_ms = r->t_ms; *ref_mdeg = r->ref_mdeg; *enc_mdeg = r->enc_mdeg;
     *hat_mdeg = r->hat_mdeg; *vref_mdegs = r->vref_mdegs;
     *what_mdegs = r->what_mdegs; *duty_milli = r->duty_milli;
+    *cur_01ma = r->cur_01ma;
     return true;
 }
 
@@ -295,8 +296,9 @@ void __not_in_flash_func(evn_motion_tick)(void) {
         int32_t th_hat, w_hat, i_hat;
         evn_observer_get_state(&a->observer, &th_hat, &w_hat, &i_hat);
 
-        /* measured speed: encoder HAL edge-timed speed (low-noise, substeps/s)
-         * converted to mdeg/s; or the observer speed if use_enc_speed == 0 */
+        /* measured speed: the PID's own windowed differentiator on encoder
+         * position (robust to the HAL edge-timed speed's stop-latch dropouts).
+         * use_enc_speed==0 falls back to the observer speed for comparison. */
         float enc_speed = (float)hal_encoder_get_speed_substep(a->encoder) * scale;
         a->prev_enc_mdeg = angle_mdeg;
         float pos_meas = (float)angle_mdeg;   /* position loop on true encoder */
@@ -328,8 +330,9 @@ void __not_in_flash_func(evn_motion_tick)(void) {
             r->enc_mdeg = angle_mdeg;
             r->hat_mdeg = th_hat;
             r->vref_mdegs = (int32_t)vel_ref;
-            r->what_mdegs = (int32_t)vel_meas;   /* actual vel-loop feedback (enc speed) */
+            r->what_mdegs = (int32_t)a->pid.last_vel_smooth;   /* actual vel-loop feedback */
             r->duty_milli = (int32_t)(duty * 1000.0f);
+            r->cur_01ma = i_hat;                 /* observer current (0.1 mA) */
             __dmb();
             s_trace_count++;
             if (s_trace_count >= EVN_TRACE_MAX) s_trace_armed = false;

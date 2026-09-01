@@ -100,7 +100,7 @@ bool     evn_motion_trace_info(uint8_t *axis, uint32_t *count, bool *armed);
 bool     evn_motion_trace_row(uint32_t i, int32_t *t_ms, int32_t *ref_mdeg,
                               int32_t *enc_mdeg, int32_t *hat_mdeg,
                               int32_t *vref_mdegs, int32_t *what_mdegs,
-                              int32_t *duty_milli);
+                              int32_t *duty_milli, int32_t *cur_01ma);
 
 /* The Core 1 tick — call from evn_core1_tick() every 1 ms. */
 void __not_in_flash_func(evn_motion_tick)(void);
