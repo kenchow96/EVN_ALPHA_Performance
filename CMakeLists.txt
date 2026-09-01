@@ -40,6 +40,7 @@ add_executable(EVN_ALPHA_Performance
     hal/hal_led.c
     hal/hal_button.c
     hal/hal_i2c.c
+    hal/hal_battery.c
 )
 
 pico_set_program_name(EVN_ALPHA_Performance "EVN_ALPHA_Performance")

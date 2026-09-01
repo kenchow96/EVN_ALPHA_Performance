@@ -4,37 +4,21 @@
 #include "hal/hal_led.h"
 #include "hal/hal_button.h"
 #include "hal/hal_i2c.h"
+#include "hal/hal_battery.h"
 
-// 1 kHz debouncer poll interval (non-blocking; project rule: never sleep)
-#define BUTTON_POLL_INTERVAL_US 1000ULL
+// Non-blocking scheduler intervals (project rule: never sleep in main loop)
+#define BUTTON_POLL_INTERVAL_US   1000ULL    // 1 kHz debounce
+#define BATTERY_SERVICE_INTERVAL_US 20000ULL // 50 Hz telemetry
 
-static void print_scan(void) {
-    uint8_t counts[EVN_I2C_PORT_COUNT];
-    uint8_t found[EVN_I2C_PORT_COUNT][16];
-
-    printf("\n=== EVN ALPHA I2C 16-Port Scan ===\n");
-    uint64_t t0 = time_us_64();
-    hal_i2c_scan_all(counts, found);
-    uint32_t scan_us = (uint32_t)(time_us_64() - t0);
-
-    int total = 0;
-    for (uint8_t p = 1; p <= EVN_I2C_PORT_COUNT; p++) {
-        if (counts[p - 1] == 0) continue;
-        printf("Port %2d: %d device(s):", p, counts[p - 1]);
-        for (uint8_t addr = 0x08; addr < 0x78; addr++) {
-            if (found[p - 1][addr >> 3] & (1u << (addr & 7u))) {
-                printf(" 0x%02X", addr);
-                total++;
-            }
-        }
-        printf("\n");
+static void print_battery(void) {
+    evn_battery_state_t b;
+    if (!hal_battery_get(&b)) {
+        printf("Battery: BQ25887 not present\n");
+        return;
     }
-    printf("Scan complete: %d device(s) across %d ports in %u us\n",
-           total, EVN_I2C_PORT_COUNT, scan_us);
-
-    // Cache state diagnostic (spec §3.2)
-    printf("Mux cache: bus0=0x%02X bus1=0x%02X\n",
-           hal_i2c_cached_channel(0), hal_i2c_cached_channel(1));
+    printf("Battery: %.3f V | Cell1: %.3f V | Cell2: %.3f V  (seq=%u)\n",
+           b.vbatt_mv / 1000.0f, b.vcell1_mv / 1000.0f, b.vcell2_mv / 1000.0f,
+           (unsigned)b.seq);
 }
 
 int main()
@@ -55,25 +39,33 @@ int main()
     evn_i2c_status_t st = hal_i2c_init();
     printf("hal_i2c_init: %s\n", st == EVN_I2C_OK ? "OK (both muxes ACK)" : "MUX ERROR");
 
-    // One scan at boot
-    print_scan();
+    bool bat = hal_battery_init();
+    printf("hal_battery_init: %s\n", bat ? "OK (BQ25887 found)" : "NOT FOUND");
+
+    // Initial sample + report
+    hal_battery_service();
+    print_battery();
 
     uint64_t next_poll = time_us_64();
+    uint64_t next_battery = time_us_64();
 
     while (true) {
         uint64_t now = time_us_64();
 
-        // Non-blocking 1 kHz scheduler tick
+        // 1 kHz: button debounce
         if ((int64_t)(now - next_poll) >= 0) {
             next_poll = now + BUTTON_POLL_INTERVAL_US;
-
             hal_button_update();
-
-            // Button press = re-scan (and toggle LED as liveness proof)
             if (hal_button_get_event()) {
                 hal_led_toggle();
-                print_scan();
+                print_battery();
             }
+        }
+
+        // 50 Hz: battery telemetry dispatcher (Core 0 background task)
+        if ((int64_t)(now - next_battery) >= 0) {
+            next_battery = now + BATTERY_SERVICE_INTERVAL_US;
+            hal_battery_service();
         }
 
         tight_loop_contents();
