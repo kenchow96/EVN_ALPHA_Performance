@@ -4,3 +4,6 @@ build
 # benchmark working captures (keep RESULTS.md, ignore transient logs/state)
 bench/results/
 !bench/RESULTS.md
+
+__pycache__/
+*.pyc
