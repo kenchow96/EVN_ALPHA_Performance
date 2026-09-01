@@ -8,11 +8,12 @@
 #include "hal/hal_battery.h"
 #include "hal/hal_motor.h"
 #include "hal/hal_encoder.h"
+#include "motion/core1.h"
+#include "bench/bench_cycles.h"
 
 // Non-blocking scheduler intervals (project rule: never sleep in main loop)
 #define BUTTON_POLL_INTERVAL_US   1000ULL    // 1 kHz debounce
 #define BATTERY_SERVICE_INTERVAL_US 20000ULL // 50 Hz telemetry
-#define ENCODER_SERVICE_INTERVAL_US 1000ULL  // 1 kHz encoder drain
 #define MOTOR_TEST_INTERVAL_US    2000000ULL // motor test step every 2 s
 
 static void print_battery(void) {
@@ -41,7 +42,7 @@ static bool  s_test_done = false;     // all motors cycled → test halted
 
 /* Called once after the LAST motor finishes: coast everything, let the bus
  * settle, then log a clean (no-load) battery reading for the multimeter
- * comparison data point. */
+ * comparison data point, plus the Core 1 loop timing stats. */
 static void motor_test_finish(void) {
     hal_motor_coast_all();
     // let brush bounce / bus recover before the no-load reading
@@ -54,8 +55,17 @@ static void motor_test_finish(void) {
         printf("\n=== TEST COMPLETE (no-load battery) ===\n");
         printf("Battery: %.3f V | Cell1: %.3f V | Cell2: %.3f V\n",
                b.vbatt_mv / 1000.0f, b.vcell1_mv / 1000.0f, b.vcell2_mv / 1000.0f);
-        printf("(motors coasted — take multimeter reading now)\n");
     }
+    // Core 1 loop timing report (proves the <1 µs jitter target)
+    evn_core1_status_t cs;
+    if (evn_core1_get_status(&cs)) {
+        printf("Core1 loop: %u ticks, period min=%u us max=%u us (target 1000),\n",
+               (unsigned)cs.tick_count, (unsigned)cs.period_min_us, (unsigned)cs.period_max_us);
+        printf("          last jitter=%ld us, exec max=%u cyc (%u us), rate=%u mHz\n",
+               (long)cs.period_jitter_us, (unsigned)cs.exec_max_cycles,
+               (unsigned)bench_cycles_to_us(cs.exec_max_cycles), (unsigned)cs.tick_rate_milli_hz);
+    }
+    printf("(motors coasted — take multimeter reading now)\n");
 }
 
 static void motor_test_step(void) {
@@ -119,13 +129,14 @@ static void task_button(void) {
         s_cycle = 0;
         s_prev_count = 0;
         s_test_done = false;
+        evn_core1_reset_stats();        // fresh jitter stats for the new run
         hal_encoder_reset(EVN_ENC_1);
         printf(">> Test restarted at Motor 1. Battery %.2f V\n", hal_battery_voltage_v());
     }
 }
-static void task_encoder(void) { hal_encoder_service(); }
 static void task_battery(void) { hal_battery_service(); }
 static void task_motor(void)   { motor_test_step(); }
+/* NOTE: encoder service runs on Core 1 at 1 kHz (evn_core1_tick), not here. */
 
 typedef struct { uint64_t next; uint64_t period_us; void (*fn)(void); } task_t;
 
@@ -171,6 +182,10 @@ int main()
     bool enc = hal_encoder_init();
     printf("hal_encoder_init: %s (4ch PIO substep @ pio0)\n", enc ? "OK" : "FAIL");
 
+    bench_cycles_init();
+    evn_core1_start();   // Core 1 now owns the 1 kHz encoder service
+    printf("core1_start: 1 kHz real-time loop launched (jitter stats on finish)\n");
+
     // Initial battery report
     hal_battery_service();
     print_battery();
@@ -184,7 +199,6 @@ int main()
      * Tasks ordered by rate (fastest first) for deterministic service. */
     static task_t s_tasks[] = {
         { 0, BUTTON_POLL_INTERVAL_US,    task_button  },   // 1 kHz
-        { 0, ENCODER_SERVICE_INTERVAL_US, task_encoder },  // 1 kHz
         { 0, BATTERY_SERVICE_INTERVAL_US, task_battery },  // 50 Hz
         { 0, MOTOR_TEST_INTERVAL_US,     task_motor   },   // 0.5 Hz
     };

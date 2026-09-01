@@ -45,6 +45,8 @@ add_executable(EVN_ALPHA_Performance
     hal/hal_servo.c
     hal/hal_motor.c
     hal/hal_encoder.c
+    motion/core1.c
+    bench/bench_cycles.c
 )
 
 # Generate PIO headers
@@ -61,6 +63,7 @@ pico_enable_stdio_usb(EVN_ALPHA_Performance 1)
 # Add the standard library to the build
 target_link_libraries(EVN_ALPHA_Performance
         pico_stdlib
+        pico_multicore
         hardware_i2c
         hardware_uart
         hardware_pio
