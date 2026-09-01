@@ -145,5 +145,32 @@ void evn_trajectory_update(evn_trajectory_t *tr, float dt,
     tr->t += dt;
 }
 
+void evn_trajectory_advance_to_position(evn_trajectory_t *tr, float position) {
+    if (!tr->active || tr->type != EVN_TRAJECTORY_TRAPEZOID ||
+        tr->max_accel <= 0.0f || tr->peak_vel <= 0.0f)
+        return;
+
+    float distance = (tr->target_pos - tr->start_pos) * tr->dir;
+    float progress = (position - tr->start_pos) * tr->dir;
+    if (progress <= 0.0f || progress >= distance) return;
+
+    float accel_distance = 0.5f * tr->max_accel *
+                           tr->accel_time * tr->accel_time;
+    float coast_end_distance = accel_distance + tr->peak_vel *
+                               (tr->coast_time - tr->accel_time);
+    float candidate_time;
+    if (progress < accel_distance) {
+        candidate_time = sqrtf(2.0f * progress / tr->max_accel);
+    } else if (progress < coast_end_distance) {
+        candidate_time = tr->accel_time +
+                         (progress - accel_distance) / tr->peak_vel;
+    } else {
+        float remaining = distance - progress;
+        candidate_time = tr->total_time -
+                         sqrtf(2.0f * remaining / tr->max_accel);
+    }
+    if (candidate_time > tr->t) tr->t = candidate_time;
+}
+
 bool evn_trajectory_active(const evn_trajectory_t *tr) { return tr->active; }
 bool evn_trajectory_done(const evn_trajectory_t *tr)   { return tr->done; }

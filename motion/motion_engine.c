@@ -122,6 +122,8 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         a->profile_vel_scale = 1.0f;
         a->profile_accel_scale = 1.0f;
         a->trajectory_type = EVN_TRAJECTORY_TRAPEZOID;
+        a->startup_reference_governor = false;
+        a->active_startup_reference_governor = false;
         a->traj.active = false;
         a->traj.done = true;
         a->cmd_seq = 0;
@@ -150,6 +152,7 @@ void evn_motion_move_to_test(uint8_t axis, float target_deg,
     a->cmd_vel_scale   = a->profile_vel_scale;
     a->cmd_accel_scale = a->profile_accel_scale;
     a->cmd_trajectory_type = a->trajectory_type;
+    a->cmd_startup_reference_governor = a->startup_reference_governor;
     a->cmd_auto_coast_ms = auto_coast_ms;
     a->cmd_active      = true;
     __dmb();
@@ -304,6 +307,11 @@ void evn_motion_set_trajectory_type(uint8_t axis, evn_trajectory_type_t type) {
     s_axis[axis].trajectory_type = type;
 }
 
+void evn_motion_set_startup_reference_governor(uint8_t axis, bool enabled) {
+    if (axis > 3 || !(s_mask & (1u << axis))) return;
+    s_axis[axis].startup_reference_governor = enabled;
+}
+
 const evn_pid_t *evn_motion_axis_pid(uint8_t axis) {
     if (axis > 3) return NULL;
     return &s_axis[axis].pid;
@@ -346,6 +354,7 @@ void __not_in_flash_func(evn_motion_tick)(void) {
             float vel_scale = a->cmd_vel_scale;
             float accel_scale = a->cmd_accel_scale;
             evn_trajectory_type_t trajectory_type = a->cmd_trajectory_type;
+            bool startup_reference_governor = a->cmd_startup_reference_governor;
             uint32_t auto_coast_ms = a->cmd_auto_coast_ms;
             __dmb();
             if (a->cmd_seq == c0) {          /* stable read */
@@ -368,6 +377,7 @@ void __not_in_flash_func(evn_motion_tick)(void) {
                     a->edge_speed_filtered =
                         (float)hal_encoder_get_speed_substep(a->encoder) *
                         (360000.0f / axis_substeps_per_rev(i));
+                    a->active_startup_reference_governor = startup_reference_governor;
                     a->holding = true;
                     a->auto_coast_deadline_ms = auto_coast_ms ? s_time_ms + auto_coast_ms : 0;
                     a->stat_done = false;
@@ -423,11 +433,14 @@ void __not_in_flash_func(evn_motion_tick)(void) {
         int32_t angle_mdeg = (int32_t)((float)sub * scale);
 
         /* --- trajectory reference --- */
+        float startup_displacement = (float)angle_mdeg - a->pid.motion_start_position;
+        if (startup_displacement < 0.0f) startup_displacement = -startup_displacement;
+        if (a->active_startup_reference_governor &&
+            startup_displacement >= 100.0f && startup_displacement <= 5000.0f)
+            evn_trajectory_advance_to_position(&a->traj, (float)angle_mdeg);
         float pos_ref, vel_ref, accel_ref;
         float trajectory_time = a->traj.t;
         evn_trajectory_update(&a->traj, MOTION_DT, &pos_ref, &vel_ref, &accel_ref);
-        float startup_displacement = (float)angle_mdeg - a->pid.motion_start_position;
-        if (startup_displacement < 0.0f) startup_displacement = -startup_displacement;
         float abs_vel_ref = vel_ref < 0.0f ? -vel_ref : vel_ref;
         if (a->traj.active && a->pid.start_duty > 0.2f &&
             startup_displacement < 100.0f && abs_vel_ref > 5000.0f) {

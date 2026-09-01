@@ -20,6 +20,7 @@ PAGE_SIZE = 256
 CASE_COUNT = 16
 WINDOW_RUN_ID = 0x26090201
 TRAJECTORY_RUN_ID = 0x26090202
+STARTUP_GOVERNOR_RUN_ID = 0x26090203
 SCHEMA_VERSION = 1
 SUPER_MAGIC = 0x31535645
 RECORD_MAGIC = 0x31525645
@@ -156,6 +157,7 @@ def decode_header(page, case_index, run_id):
         "duration_us": read_u32(page, 39),
         "trajectory_type": read_u32(page, 40),
         "repeat_index": read_u32(page, 41),
+        "startup_reference_governor": read_u32(page, 42),
     }
     if (header["schema_version"] != SCHEMA_VERSION or
             header["run_id"] != run_id or
@@ -168,6 +170,10 @@ def decode_header(page, case_index, run_id):
 
 
 def case_name(header):
+    if header["run_id"] == STARTUP_GOVERNOR_RUN_ID:
+        prefix = "G" if header["startup_reference_governor"] else "B"
+        direction = "pos" if header["delta_mdeg"] >= 0 else "neg"
+        return f"{prefix}{header['repeat_index']}_{direction}"
     if header["run_id"] == TRAJECTORY_RUN_ID:
         prefix = "J" if header["trajectory_type"] == 1 else "T"
         direction = "pos" if header["delta_mdeg"] >= 0 else "neg"
@@ -280,6 +286,8 @@ def decode(image, output_dir):
                     "accel_scale": header["accel_scale"],
                     "trajectory_type": header["trajectory_type"],
                     "repeat_index": header["repeat_index"],
+                    "startup_reference_governor":
+                        bool(header["startup_reference_governor"]),
                 },
                 "battery_pre_run": {
                     "pack_mv": header["battery_pack_mv"],

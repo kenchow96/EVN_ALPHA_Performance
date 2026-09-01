@@ -26,6 +26,7 @@
 
 typedef struct {
     evn_trajectory_type_t trajectory_type;
+    bool startup_reference_governor;
     uint8_t repeat_index;
     float delta;
 } tuning_case_t;
@@ -45,22 +46,22 @@ typedef enum {
 } auto_state_t;
 
 static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
-    {EVN_TRAJECTORY_TRAPEZOID,   0,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID,   0, -90.0f},
-    {EVN_TRAJECTORY_MINIMUM_JERK, 0,  90.0f},
-    {EVN_TRAJECTORY_MINIMUM_JERK, 0, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID,   1,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID,   1, -90.0f},
-    {EVN_TRAJECTORY_MINIMUM_JERK, 1,  90.0f},
-    {EVN_TRAJECTORY_MINIMUM_JERK, 1, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID,   2,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID,   2, -90.0f},
-    {EVN_TRAJECTORY_MINIMUM_JERK, 2,  90.0f},
-    {EVN_TRAJECTORY_MINIMUM_JERK, 2, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID,   3,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID,   3, -90.0f},
-    {EVN_TRAJECTORY_MINIMUM_JERK, 3,  90.0f},
-    {EVN_TRAJECTORY_MINIMUM_JERK, 3, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, false, 0,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, false, 0, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true,  0,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true,  0, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, false, 1,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, false, 1, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true,  1,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true,  1, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, false, 2,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, false, 2, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true,  2,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true,  2, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, false, 3,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, false, 3, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true,  3,  90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true,  3, -90.0f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;
@@ -107,6 +108,7 @@ static void prepare_header(evn_tuning_status_t status) {
     s_header.pwm_hz = hal_motor_get_pwm_freq();
     s_header.trajectory_type = test->trajectory_type;
     s_header.repeat_index = test->repeat_index;
+    s_header.startup_reference_governor = test->startup_reference_governor;
 }
 
 static void snapshot_battery(uint32_t age_us) {
@@ -268,6 +270,8 @@ void autonomous_tuning_service(void) {
         evn_motion_set_edge_speed_alpha(TUNING_AXIS, 0.05f);
         evn_motion_set_profile_scale(TUNING_AXIS, 0.85f, 0.40f);
         evn_motion_set_trajectory_type(TUNING_AXIS, test->trajectory_type);
+        evn_motion_set_startup_reference_governor(
+            TUNING_AXIS, test->startup_reference_governor);
         evn_motion_set_gains_axis(TUNING_AXIS, 1.2e-4f, 8.0e-7f,
                       5.0e-7f, 0.0f, 0.0f);
         evn_motion_set_stiction(TUNING_AXIS, 0.65f, 0.55f);

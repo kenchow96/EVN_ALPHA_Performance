@@ -60,6 +60,10 @@ void evn_trajectory_start_type(evn_trajectory_t *tr, float start, float target,
 void evn_trajectory_update(evn_trajectory_t *tr, float dt,
                            float *pos_ref, float *vel_ref, float *accel_ref);
 
+/* Advance (never rewind) a trapezoid to the time corresponding to position.
+ * Used only by the startup reference governor after physical breakaway. */
+void evn_trajectory_advance_to_position(evn_trajectory_t *tr, float position);
+
 bool evn_trajectory_active(const evn_trajectory_t *tr);
 bool evn_trajectory_done(const evn_trajectory_t *tr);
 
