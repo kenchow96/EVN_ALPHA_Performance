@@ -19,8 +19,9 @@
  *   torque : µN·m (1e6 = 1 N·m)
  *   voltage: mV
  *
- * The d_*_d_* fields are the discrete state-space gains used by the observer
- * (see motion/observer.c). torque_friction is the Coulomb friction (µN·m).
+ * The d_*_d_* fields are 5 ms discrete state-space gains used by the observer
+ * (see motion/observer.c). Do not run them at another cadence without
+ * regenerating the matrices. torque_friction is the Coulomb friction (µN·m).
  * ========================================================================== */
 
 typedef struct {

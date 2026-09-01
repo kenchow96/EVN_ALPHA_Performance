@@ -16,11 +16,11 @@ up and the Windows `usbser` driver can enter a state where the COM port
 enumerates but **won't open** (`PermissionError 31, "A device attached to the
 system is not functioning"`). We hit this repeatedly during trace dumps.
 
-**Mitigation (now in firmware):** dump paths use a **non-blocking, FIFO-aware
-writer** — `tud_cdc_write_available()` → `tud_cdc_write()` →
-`tud_cdc_write_flush()`, servicing `tud_task()` while waiting, never blocking
-(`cdc_write_paced()` in `EVN_ALPHA_Performance.c`). Host side uses small reads
-+ short timeouts + non-blocking writes so the device RX stays polled.
+**Mitigation (now in firmware):** the Pico SDK background USB worker is disabled,
+so Core 0 is the sole `tud_task()` owner. Dump paths enqueue complete records in
+an 8 KiB buffer; the Core 0 service drains only `tud_cdc_write_available()` bytes.
+The host holds one COM handle and must receive `TRACE END` before another command
+or close. Never combine direct TinyUSB calls with the SDK background worker.
 **Rule: never let a bulk `printf` loop run unthrottled against a closed/slow host.**
 
 ### 2. No DWT `CYCCNT` on Cortex-M0+ (already cost us a flash cycle)
@@ -53,7 +53,9 @@ enforced):** RT paths are `__not_in_flash_func()` and use the
   drops/corrupts. (Our console working at 200 MHz confirms the dividers are right;
   keep `PICO_USE_FASTEST_SUPPORTED_CLOCK` + verify `clk_usb` on any clock change.)
 - **Only 4 hardware alarm channels**, shared by `repeating_timer`/`alarm_pool`.
-  Our Core 1 1 kHz loop uses one hardware alarm; budget the rest carefully.
+  `add_alarm_in_us()` uses the Core-0 default pool even when called from Core 1.
+  The control loop therefore claims and installs a dedicated alarm on Core 1;
+  budget the remaining channels carefully.
 
 ### PIO
 - **32-instruction memory per PIO block.** Our split (pio0 = 4× quadrature,

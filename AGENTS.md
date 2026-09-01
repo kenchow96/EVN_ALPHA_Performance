@@ -130,7 +130,7 @@ and append a row to the table.
 
 Follow the phase order in [docs/PLAN.md](docs/PLAN.md) and the HAL naming convention (`hal/hal_<peripheral>.c/h`):
 
-1. Measurement & Core 1 infrastructure (DWT cycle counter, 1 kHz loop skeleton)
+1. Measurement & Core 1 infrastructure (hardware µs timer, 1 kHz loop skeleton; RP2040 has no DWT cycle counter)
 2. DRV8833 motor PWM @ 25 kHz (WRAP = 7999 at 200 MHz)
 3. PIO quadrature encoders (M1–M4) — 100% PIO-offloaded
 4. I2C mux layer (TCA9548A ×2, ports 1–16, BQ25887 battery on port 16)

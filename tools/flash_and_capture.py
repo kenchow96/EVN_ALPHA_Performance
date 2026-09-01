@@ -36,24 +36,45 @@ def find_port():
             return p.device
     return None
 
-def wait_for_port_open(baud, timeout_s=25.0, settle_s=1.0):
-    """Wait for the board's COM port, then return an OPEN, HELD serial handle.
+def wait_for_port_open(baud, timeout_s=25.0, stable_s=0.75, settle_s=1.0):
+    """Wait for stable enumeration, then return a validated held handle+bytes.
 
-    Opening once and keeping the handle avoids the close/reopen race that wedges
-    TinyUSB on the RP2040 (PermissionError 31). Retries through transient
-    re-enumeration faults. Returns an open serial.Serial or None."""
+    Picotool can return while the old COM instance is still disappearing. Wait
+    until one port identity remains continuously present, open it once, and
+    actively read through the settle interval so a reset is detected. Bytes
+    consumed during validation are returned for the boot-banner acceptance gate.
+    """
     deadline = time.time() + timeout_s
+    stable_port = None
+    stable_since = 0.0
     while time.time() < deadline:
         port = find_port()
-        if port:
+        if port != stable_port:
+            stable_port = port
+            stable_since = time.time()
+        if port and time.time() - stable_since >= stable_s:
+            ser = None
             try:
-                s = serial.Serial(port, baud, timeout=0.2)
-                time.sleep(settle_s)   # let it stabilise, handle stays open
-                return s
+                ser = serial.Serial(port, baud, timeout=0.05)
+                # Pico stdio's connected predicate is DTR-based. Force a real
+                # control-line transition; Windows does not reliably emit one
+                # merely because pyserial opened with its default True state.
+                ser.dtr = False
+                time.sleep(0.05)
+                ser.dtr = True
+                warmup = []
+                settle_deadline = time.time() + settle_s
+                while time.time() < settle_deadline:
+                    chunk = ser.read(4096)
+                    if chunk:
+                        warmup.append(chunk)
+                return ser, b"".join(warmup)
             except (serial.SerialException, OSError):
-                time.sleep(0.4)        # wedged — wait for re-enumeration
-        else:
-            time.sleep(0.3)
+                if ser is not None:
+                    ser.close()
+                stable_port = None
+                stable_since = 0.0
+        time.sleep(0.1)
     return None
 
 def flash(uf2):
@@ -69,14 +90,19 @@ def flash(uf2):
     print("[flash] done, board rebooted", file=sys.stderr)
     return True
 
-def capture(ser, seconds, send, expect, logpath):
+def capture(ser, seconds, send, expect, logpath, initial=b""):
     """Capture on an already-open, held serial handle."""
     print(f"[capture] {ser.port} @ {ser.baudrate} for {seconds}s", file=sys.stderr)
-    buf = []
+    buf = [initial] if initial else []
     t0 = time.time()
     if send:
         ser.write(send.encode() + b"\n")
     out = getattr(sys.stdout, "buffer", None)
+    if initial:
+        if out is not None:
+            out.write(initial); out.flush()
+        else:
+            sys.stdout.write(initial.decode("utf-8", "replace")); sys.stdout.flush()
     while time.time() - t0 < seconds:
         chunk = ser.read(4096)
         if chunk:
@@ -119,14 +145,18 @@ def main():
     if not args.no_flash:
         if not flash(args.uf2):
             return 1
+        # Picotool can return before Windows removes the pre-reset COM object.
+        # Do not open anything during that stale-instance window.
+        time.sleep(2.0)
 
-    ser = wait_for_port_open(args.baud)
-    if ser is None:
+    opened = wait_for_port_open(args.baud)
+    if opened is None:
         print("ERROR: board COM port never appeared/openable", file=sys.stderr)
         return 1
+    ser, initial = opened
     print(f"[capture] board on {ser.port}", file=sys.stderr)
 
-    return capture(ser, args.time, args.send, args.expect, args.log)
+    return capture(ser, args.time, args.send, args.expect, args.log, initial)
 
 if __name__ == "__main__":
     sys.exit(main())

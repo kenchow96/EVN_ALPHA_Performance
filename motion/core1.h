@@ -8,9 +8,9 @@
  * Core 1 real-time control skeleton — deterministic 1 kHz loop.
  *
  * Core 1 owns the time-critical path (encoder service now; the Phase 7 motion
- * engine later). The loop is driven by a hardware-timer repeating alarm so the
- * period is clock-accurate; each tick we measure actual period vs the 1 ms
- * target with the DWT cycle counter to prove the < 1 µs jitter target.
+ * engine later). The loop is driven by a Core-1-owned hardware alarm so the
+ * period is clock-accurate; each tick is measured with the RP2040 hardware
+ * microsecond timer. Sub-microsecond proof requires an external logic analyzer.
  *
  * Core 1 never printf()s or touches I2C/UART hardware — it publishes a
  * lock-free status block that Core 0 reads and prints on demand.
@@ -29,6 +29,7 @@ typedef struct {
     volatile uint32_t period_max_us;     /* max observed period (µs, jitter peak) */
     volatile uint32_t exec_max_us;       /* worst-case loop-body cost (µs) */
     volatile uint32_t tick_rate_milli_hz;/* measured loop rate ×1000 */
+    volatile uint32_t missed_tick_count; /* deadlines skipped before ISR re-arm */
 } evn_core1_status_t;
 
 /* Launch Core 1 and start the 1 kHz loop. Call once from Core 0 main, after

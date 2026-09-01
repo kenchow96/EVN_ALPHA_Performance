@@ -8,7 +8,7 @@
 
 /* --------------------------------------------------------------------------
  * Motor PWM on a 200 MHz clock. WRAP = sysclk/freq - 1 (derived at init).
- * Default 40 kHz → WRAP 4999 (~12.3-bit resolution).
+ * Default 25 kHz → WRAP 7999 (~13-bit resolution).
  * -------------------------------------------------------------------------- */
 static uint32_t s_wrap = 4999u;
 static uint32_t s_freq = EVN_MOTOR_PWM_FREQ_HZ;
@@ -74,6 +74,10 @@ void hal_motor_set_pwm_freq(uint32_t freq_hz) {
         if (!(s_populated & (1u << i))) continue;
         pwm_set_wrap(s_slice[i], (uint16_t)s_wrap);
     }
+}
+
+uint32_t hal_motor_get_pwm_freq(void) {
+    return s_freq;
 }
 
 void hal_motor_set(evn_motor_id_t id, float duty) {

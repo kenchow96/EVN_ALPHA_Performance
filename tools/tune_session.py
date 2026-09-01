@@ -11,6 +11,8 @@ The agent drives it by appending commands to the queue file:
 
 Usage:
     python tools/tune_session.py [--port COM7]
+    python tools/tune_session.py --command "c" --command "t 1" \
+        --command "@5 M 1 90" --command "@30 d"
 State files (created under bench/results/):
     cmd.txt   - command queue (one command per line, consumed top-down)
     out.txt   - full serial transcript
@@ -56,11 +58,14 @@ def open_board(baud=115200, timeout_s=30):
             time.sleep(0.3)
     return None
 
-def drain(ser, out_f, seconds):
+def drain(ser, out_f, seconds, expect=None):
     """Read for `seconds`, appending to transcript and echoing. Small reads +
     short timeout keep the device RX polled so the host never times out a write
-    mid-dump (which was the wedge source)."""
+    mid-dump (which was the wedge source). Return whether `expect` was seen."""
     t0 = time.time()
+    expected = [expect] if isinstance(expect, str) else list(expect or [])
+    expected_index = 0
+    received = ""
     while time.time() - t0 < seconds:
         try:
             chunk = ser.read(1024)
@@ -72,10 +77,25 @@ def drain(ser, out_f, seconds):
             out_f.flush()
             sys.stdout.write(txt.encode("ascii", "replace").decode())
             sys.stdout.flush()
+            if expected:
+                received += txt
+                while expected_index < len(expected):
+                    marker = expected[expected_index]
+                    marker_at = received.find(marker)
+                    if marker_at < 0:
+                        received = received[-max(1, len(marker) - 1):]
+                        break
+                    received = received[marker_at + len(marker):]
+                    expected_index += 1
+                    if expected_index == len(expected):
+                        return True
+    return not expected
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", default=None)
+    ap.add_argument("--command", action="append", default=[],
+                    help="run a batch command; repeat for a complete session")
     args = ap.parse_args()
 
     os.makedirs(RESULTS, exist_ok=True)
@@ -83,7 +103,11 @@ def main():
     for f in (CMD, DONE):
         if os.path.exists(f):
             os.remove(f)
-    open(CMD, "a").close()
+    with open(CMD, "w", encoding="utf-8") as cmd_f:
+        for command in args.command:
+            cmd_f.write(command + "\n")
+        if args.command:
+            cmd_f.write("QUIT\n")
 
     ser = open_board()
     if ser is None:
@@ -116,10 +140,18 @@ def main():
                     pass
             print(f"[session] >> {cmd} (drain {drain_s:g}s)", file=sys.stderr)
             try:
+                ser.reset_input_buffer()
                 ser.write(cmd.encode() + b"\n")
                 ser.flush()
-                # capture the response for a bounded window (enough for a move + settle)
-                drain(ser, out_f, drain_s)
+                # A trace is a framed transaction. Never send another command
+                # or close CDC until the device has emitted the closing marker.
+                if cmd.split(maxsplit=1)[0] == "d":
+                    if not drain(ser, out_f, max(drain_s, 30.0),
+                                 expect=("TRACE BEGIN", "TRACE END\n")):
+                        print("[session] ERROR: trace did not reach TRACE END", file=sys.stderr)
+                        break
+                else:
+                    drain(ser, out_f, drain_s)
             except (serial.SerialException, serial.SerialTimeoutException, OSError) as e:
                 print(f"[session] serial error, ending session: {e}", file=sys.stderr)
                 break

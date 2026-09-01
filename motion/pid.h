@@ -35,7 +35,7 @@ typedef struct {
     /* limits */
     float out_min;      /* e.g. -1.0 */
     float out_max;      /* e.g. +1.0 */
-    float i_limit;      /* integrator clamp */
+    float i_limit;      /* maximum integral contribution to duty */
 
     /* battery feedforward compensation scale (0 = disabled) */
     float vbus_comp;    /* nominal voltage (mV) for duty scaling */
@@ -52,24 +52,25 @@ typedef struct {
      * output duty reaches at least this magnitude in the correcting direction,
      * so the position loop can always overcome static friction. 0 = disabled. */
     float min_duty;
+    float start_duty;
 
     /* state */
-    float integrator;
+    float integrator;   /* accumulated integral contribution in duty units */
     float prev_vel_meas;
     bool  first;
+    float motion_start_position;
 
     /* Pybricks-style windowed differentiator for a low-noise speed estimate
      * (averages position increments over a window, not per-tick). */
     float pos_hist[PID_SPEED_WINDOW];   /* ring buffer of pos_meas (mdeg) */
     int   pos_hist_idx;
-    bool  pos_hist_full;
     int   vel_window;                   /* active differentiator window (<= PID_SPEED_WINDOW) */
     float last_vel_smooth;              /* last windowed speed used (debug) */
     int   stick_ticks;                  /* consecutive ticks stuck in the approach band */
 } evn_pid_t;
 
 void evn_pid_init(evn_pid_t *p);
-void evn_pid_reset(evn_pid_t *p);
+void evn_pid_reset(evn_pid_t *p, float initial_position);
 
 /* Windowed (low-noise) speed estimate from position. Advances the ring buffer;
  * call once per tick before evn_pid_update so both see the same value. */
@@ -84,6 +85,6 @@ float evn_pid_speed_of(evn_pid_t *p, float pos_meas, float dt);
 float evn_pid_update(evn_pid_t *p,
                      float pos_ref, float vel_ref, float accel_ref,
                      float pos_meas, float vel_meas, float dt,
-                     uint32_t vbus_mv);
+                     float feedforward_duty, uint32_t vbus_mv);
 
 #endif /* MOTION_PID_H */

@@ -10,6 +10,8 @@
 
 /* 1 kHz tick. dt in seconds. */
 #define MOTION_DT (1.0f / 1000.0f)
+#define MOTION_NOMINAL_VBUS_MV 7400u
+#define OBSERVER_PERIOD_TICKS 5u
 
 /* Convert between encoder substeps and millidegrees.
  * Encoder edge counting: LEGO motors = 720 edges/rev (180 pulses × 4 edges,
@@ -101,13 +103,18 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
          * 0.4 deg hold deadzone + a 12% stiction-break floor. EV3 Medium tracks
          * to 0.000 deg; EV3 Large needs the stronger kp/ki to break stiction
          * and converge to ~0.04 deg. */
-        if (a->model == evn_motor_model_get(EVN_MOTOR_MODEL_EV3_LARGE)) {
-            a->pid.kp_pos = 5.0e-4f; a->pid.kp_vel = 3.0e-5f;
-            a->pid.ki_pos = 4.0e-6f; a->pid.kff_accel = 1.0e-5f;
-        } else {   /* EV3 Medium / NXT */
-            a->pid.kp_pos = 5.0e-4f; a->pid.kp_vel = 4.0e-5f;
-            a->pid.ki_pos = 2.0e-6f; a->pid.kff_accel = 3.0e-5f;
+        if (a->model == evn_motor_model_get(EVN_MOTOR_MODEL_EV3_MEDIUM)) {
+            a->pid.kp_pos = 8.0e-5f; a->pid.kp_vel = 8.0e-7f;
+            a->pid.ki_pos = 8.0e-7f; a->pid.kff_accel = 0.0f;
+            a->pid.start_duty = 0.65f; a->pid.min_duty = 0.45f;
+        } else {   /* EV3 Large / NXT */
+            a->pid.kp_pos = 8.0e-5f; a->pid.kp_vel = 1.0e-6f;
+            a->pid.ki_pos = 1.0e-6f; a->pid.kff_accel = 0.0f;
+            a->pid.start_duty = 0.12f; a->pid.min_duty = 0.12f;
         }
+        a->last_applied_mv = 0;
+        a->observer_voltage_sum_mv = 0;
+        a->observer_divider = 0;
         a->traj.active = false;
         a->traj.done = true;
         a->cmd_seq = 0;
@@ -117,11 +124,13 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         a->stat_stalled = false;
         a->stat_done = true;
         a->holding = false;
+        a->auto_coast_deadline_ms = 0;
     }
 }
 
-void evn_motion_move_to(uint8_t axis, float target_deg,
-                        float max_vel_degs, float max_accel_degs2) {
+void evn_motion_move_to_test(uint8_t axis, float target_deg,
+                             float max_vel_degs, float max_accel_degs2,
+                             uint32_t auto_coast_ms) {
     if (!(s_mask & (1u << axis))) return;
     evn_axis_t *a = &s_axis[axis];
 
@@ -131,11 +140,17 @@ void evn_motion_move_to(uint8_t axis, float target_deg,
     a->cmd_target_deg  = target_deg;
     a->cmd_max_vel_degs = max_vel_degs;
     a->cmd_max_accel   = max_accel_degs2;
+    a->cmd_auto_coast_ms = auto_coast_ms;
     a->cmd_active      = true;
     __dmb();
     a->cmd_seq++;
     /* NOTE: no printf here — this runs in the command path and must not touch
      * blocking stdio (dual-core USB deadlock). */
+}
+
+void evn_motion_move_to(uint8_t axis, float target_deg,
+                        float max_vel_degs, float max_accel_degs2) {
+    evn_motion_move_to_test(axis, target_deg, max_vel_degs, max_accel_degs2, 0);
 }
 
 void evn_motion_coast(uint8_t axis) {
@@ -184,6 +199,15 @@ bool evn_motion_get_debug(uint8_t axis, float *target_deg, float *total_time_s) 
     return true;
 }
 
+bool evn_motion_get_profile(uint8_t axis, float *max_vel_degs,
+                            float *max_accel_degs2) {
+    if (!(s_mask & (1u << axis))) return false;
+    evn_axis_t *a = &s_axis[axis];
+    *max_vel_degs = a->stat_max_vel_degs;
+    *max_accel_degs2 = a->stat_max_accel_degs2;
+    return true;
+}
+
 void evn_motion_set_gains(float kp_pos, float ki_pos, float kp_vel, float kd_vel, float kff_accel) {
     for (int i = 0; i < 4; i++) {
         if (!(s_mask & (1u << i))) continue;
@@ -200,6 +224,16 @@ void evn_motion_set_gains_axis(uint8_t axis, float kp_pos, float ki_pos,
     p->kp_vel = kp_vel;
     p->kd_vel = kd_vel;
     p->kff_accel = kff_accel;
+}
+
+void evn_motion_set_stiction(uint8_t axis, float start_duty, float hold_duty) {
+    if (axis > 3 || !(s_mask & (1u << axis))) return;
+    if (start_duty < 0.0f) start_duty = 0.0f;
+    if (start_duty > 1.0f) start_duty = 1.0f;
+    if (hold_duty < 0.0f) hold_duty = 0.0f;
+    if (hold_duty > 1.0f) hold_duty = 1.0f;
+    s_axis[axis].pid.start_duty = start_duty;
+    s_axis[axis].pid.min_duty = hold_duty;
 }
 
 const evn_pid_t *evn_motion_axis_pid(uint8_t axis) {
@@ -227,6 +261,7 @@ void __not_in_flash_func(evn_motion_tick)(void) {
 
     /* battery voltage for feedforward compensation (lock-free cache) */
     uint32_t vbus_mv = hal_battery_voltage_mv();
+    if (vbus_mv == 0) vbus_mv = MOTION_NOMINAL_VBUS_MV;
 
     for (int i = 0; i < 4; i++) {
         if (!(s_mask & (1u << i))) continue;
@@ -240,6 +275,7 @@ void __not_in_flash_func(evn_motion_tick)(void) {
             float tdeg   = a->cmd_target_deg;
             float mvel   = a->cmd_max_vel_degs;
             float macc   = a->cmd_max_accel;
+            uint32_t auto_coast_ms = a->cmd_auto_coast_ms;
             __dmb();
             if (a->cmd_seq == c0) {          /* stable read */
                 a->cmd_consumed_seq = c0;    /* mark consumed */
@@ -252,19 +288,39 @@ void __not_in_flash_func(evn_motion_tick)(void) {
                                       (int32_t)cur_mdeg);
                     evn_trajectory_start(&a->traj, cur_mdeg, tdeg * 1000.0f,
                                          mvel * 1000.0f, macc * 1000.0f);
-                    evn_pid_reset(&a->pid);
+                    evn_pid_reset(&a->pid, cur_mdeg);
+                    a->last_applied_mv = 0;
+                    a->observer_voltage_sum_mv = 0;
+                    a->observer_divider = 0;
                     a->holding = true;
+                    a->auto_coast_deadline_ms = auto_coast_ms ? s_time_ms + auto_coast_ms : 0;
                     a->stat_done = false;
                     a->stat_target_mdeg = (int32_t)(tdeg * 1000.0f);
                     a->stat_total_time = a->traj.total_time;
+                    a->stat_max_vel_degs = mvel;
+                    a->stat_max_accel_degs2 = macc;
                 } else {
                     hal_motor_coast(a->motor);
                     a->traj.active = false;
                     a->traj.done = true;
                     a->holding = false;
+                    a->auto_coast_deadline_ms = 0;
                     a->stat_done = true;
+                    a->last_applied_mv = 0;
+                    a->observer_voltage_sum_mv = 0;
+                    a->observer_divider = 0;
                 }
             }
+        }
+
+        if (a->holding && a->auto_coast_deadline_ms != 0 &&
+            (int32_t)(s_time_ms - a->auto_coast_deadline_ms) >= 0) {
+            hal_motor_coast(a->motor);
+            a->traj.active = false;
+            a->traj.done = true;
+            a->holding = false;
+            a->auto_coast_deadline_ms = 0;
+            a->stat_done = true;
         }
 
         if (!a->holding) {
@@ -291,8 +347,16 @@ void __not_in_flash_func(evn_motion_tick)(void) {
         float pos_ref, vel_ref, accel_ref;
         evn_trajectory_update(&a->traj, MOTION_DT, &pos_ref, &vel_ref, &accel_ref);
 
-        /* --- observer update driven by the PREVIOUS tick's applied voltage --- */
-        evn_observer_update(&a->observer, s_time_ms, angle_mdeg, a->last_applied_mv);
+        /* Model coefficients are discretized for 5 ms. Average the voltage
+         * actually applied over five 1 ms control ticks before one update. */
+        a->observer_voltage_sum_mv += a->last_applied_mv;
+        a->observer_divider++;
+        if (a->observer_divider >= OBSERVER_PERIOD_TICKS) {
+            int32_t average_mv = a->observer_voltage_sum_mv / (int32_t)OBSERVER_PERIOD_TICKS;
+            evn_observer_update(&a->observer, s_time_ms, angle_mdeg, average_mv);
+            a->observer_voltage_sum_mv = 0;
+            a->observer_divider = 0;
+        }
         int32_t th_hat, w_hat, i_hat;
         evn_observer_get_state(&a->observer, &th_hat, &w_hat, &i_hat);
 
@@ -307,20 +371,19 @@ void __not_in_flash_func(evn_motion_tick)(void) {
                             : vel_meas;
         a->prev_enc_mdeg = angle_mdeg;
 
-        /* --- cascaded PID + feedforward --- */
-        float duty = evn_pid_update(&a->pid, pos_ref, vel_ref, accel_ref,
-                              pos_meas, vel_for_pid, MOTION_DT, vbus_mv);
-
-        /* model-based feedforward (friction + back-EMF + accel → voltage),
-         * additive with the PID duty and clamped to [-1, 1] */
+        /* Model feedforward is voltage-based and enters the PID before its
+         * single saturation/anti-windup decision. */
+        float feedforward_duty = 0.0f;
         if (s_ff_on && vbus_mv > 0) {
             int32_t t_ff = evn_observer_feedforward_torque(a->model,
                                (int32_t)vel_ref, (int32_t)accel_ref);
             int32_t v_ff = evn_observer_torque_to_voltage(a->model, t_ff);
-            duty += (float)v_ff / (float)vbus_mv;
-            if (duty > 1.0f) duty = 1.0f;
-            if (duty < -1.0f) duty = -1.0f;
+            feedforward_duty = (float)v_ff / (float)vbus_mv;
         }
+
+        float duty = evn_pid_update(&a->pid, pos_ref, vel_ref, accel_ref,
+                              pos_meas, vel_for_pid, MOTION_DT,
+                              feedforward_duty, vbus_mv);
 
         hal_motor_set(a->motor, duty);
         a->last_applied_mv = (int32_t)(duty * (float)vbus_mv);
@@ -348,7 +411,7 @@ void __not_in_flash_func(evn_motion_tick)(void) {
         a->stat_seq++;
         __dmb();
         a->stat_angle_mdeg = angle_mdeg;   /* report TRUE encoder angle (not diverging θ̂) */
-        a->stat_speed_mdegs = (int32_t)vel_meas;
+        a->stat_speed_mdegs = (int32_t)vel_for_pid;
         a->stat_stalled = stalled;
         a->stat_done = a->traj.done;
         __dmb();

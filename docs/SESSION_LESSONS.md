@@ -89,17 +89,13 @@ large, that jitter slams duty. **Sweep result (live `v` command):**
 
 ## C. USB-CDC / tooling (cost the most wall-clock time)
 
-**C1. Blocking `printf` over stdio-USB wedges the Windows port — and the fix is
-NOT to call `tud_task()` yourself.** When the host is slow/closed, blocking CDC
-writes back up the TinyUSB FIFO and the Windows `usbser.sys` driver enters a
-state where COM7 enumerates but **won't open** (`PermissionError 31`). Only a
-cold physical re-enumeration clears it. The correct firmware fix: route console
-output through a **FIFO-paced writer** that checks `tud_cdc_write_available()`
-and waits for space **without calling `tud_task()`** — the Pico SDK's stdio-USB
-driver already owns `tud_task()` under `stdio_usb_mutex` (a timer-driven task),
-so calling `tud_task()` from a command handler is a **mutex deadlock** that
-kills the CDC mid-dump (this was the recurring hang). Host side: small reads,
-short timeouts, `write_timeout=0`.
+**C1. TinyUSB must have exactly one execution owner.** The original direct CDC
+writer called `tud_task()` while the Pico SDK background worker could preempt it
+and call `tud_task()` again. The private SDK mutex does not protect direct calls,
+so this was a non-reentrant endpoint-state race, not a simple mutex deadlock.
+The repaired architecture disables `PICO_STDIO_USB_ENABLE_IRQ_BACKGROUND_TASK`;
+Core 0 alone polls TinyUSB and drains a bounded record queue. If the SDK worker
+is re-enabled later, all direct `tud_*` calls must be removed.
 
 **C2. The encoder HAL's edge-timed speed drops to 0 mid-move.** `hal_encoder_
 get_speed_substep` latches `stopped` (speed→0) after only `idle_stop_samples=3`
@@ -122,16 +118,12 @@ defaults as soon as they're validated (per-model in `evn_motion_init`), so a
 reflash doesn't silently revert a motor to untuned gains mid-analysis. We lost
 a run to exactly this (analyzed a trace with defaults, not the tuned gains).
 
-**C5. A host script dying mid-write wedges the port as reliably as a firmware
-bug.** A `serial.Serial` write that hits a full TinyUSB TX FIFO and times out
-(`SerialTimeoutException`) leaves the Windows handle in a state where the next
-open fails (`PermissionError 31`) until a replug. **The durable firmware fix is
-the non-blocking dump:** `dump_trace()` no longer loops in the command handler —
-it sets `s_dump_*` state and `dump_service()` streams a few rows **per main-loop
-iteration**, so the SDK USB task keeps being serviced and the TX FIFO never
-fills. Verified: `alive=YES` after every dump across all 4 motors. Host scripts
-must also be robust (single persistent connection, generous read window, never
-re-open mid-session). `tools/tune_session.py` is the hardened reference.
+**C5. A trace is complete only at `TRACE END`.** Fixed drain windows allowed the
+host to send another command or close while the device was still streaming; the
+historical transcript contains overlapping/unmatched `TRACE BEGIN` records.
+Firmware now queues records without blocking, and `tools/tune_session.py` waits
+for the closing marker before recording `DONE`. A timeout is a failed trace, not
+a partially valid sample.
 
 ---
 

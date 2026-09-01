@@ -17,7 +17,8 @@
  * All math is fixed-point integer (no floats on the 1 kHz RT path). Units are
  * the Pybricks internal units (see motor_models.h).
  *
- * Runs on Core 1 at 1 kHz via evn_core1_tick(). Zero heap, not-in-flash.
+ * The 1 kHz Core 1 controller advances this 5 ms discrete model every fifth
+ * tick using mean applied voltage. Zero heap, not-in-flash.
  * ========================================================================== */
 
 /* Prescale constants + numeric bounds (from pbio observer.c — do not change;

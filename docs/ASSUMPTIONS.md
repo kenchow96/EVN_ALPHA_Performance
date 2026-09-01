@@ -1,26 +1,16 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-01, end of smoothness session):** Phase 7 motors
-> endpoint-TUNED and committed; **smoothness fix IN PROGRESS (uncommitted).**
-> The working tree has an **uncommitted** improvement over `5a1425e`:
->   - velocity loop = windowed differentiation of the **substep** position
->     (`evn_pid_speed_of`, now public); runtime-tunable window `pid.vel_window`
->     (≤ `PID_SPEED_WINDOW`=60); **trace dump made NON-BLOCKING** (streams from
->     the main loop in `dump_service`) so the host COM port survives dumps.
->   - **FINDING (per-type, both units traced):** the cruise "banging" is
->     systemic, NOT one bad motor. Fix = lower kp_vel. **EV3 Medium (M3/M4) is
->     SMOOTH at kp_vel≤2e-6** (cruise sd 0.10–0.15, 0% sat). **EV3 Large (M1/M2)
->     still bangs at 2e-6** — next: widen velocity window + shift cruise onto
->     feedforward for Large. Tune live: `v <kp_vel> 0` then `t <m>` `M <m> 360` `d`.
->   - **Do NOT start Phase 8 drivebase** until single-motor motion passes
->     `tools/motion_metrics.py` acceptance on all 4 AND visually beats the
->     Arduino baseline. See `docs/SESSION_LESSONS.md` §B3 and `docs/PLAN.md`.
->   - **USB wedge gotcha:** if a host script dies mid-write the COM port wedges
->     (PermissionError 31). Recover = replug cable or BOOTSEL reflash. The
->     non-blocking dump prevents the common case; `tools/tune_session.py` is the
->     most robust driver.
-> Next: finish EV3 Large smoothness → full metrics acceptance → Arduino baseline
-> A/B → Phase 8 drivebase.
+> **RESUME POINT (2026-09-02, post-audit repair):** Phase 7 endpoint results
+> from 2026-09-01 are superseded by a first-principles repair. The working tree
+> now has sole-Core-0 TinyUSB ownership, framed asynchronous trace output, a
+> Core-1-owned hardware alarm, saturation-aware PID with bounded integral duty,
+> seeded 60 ms velocity history, Pybricks observer updates at their native 5 ms
+> cadence, and 25 kHz/8000-step PWM. Static checks and the Pico build pass;
+> post-fix HITL is active: Core 1 passes 1000-1000 us with zero misses and an
+> EV3 Large candidate passes 9/9 in both directions over a 40,000-sample gain
+> dataset. Medium wheel stiction and long-session CDC batching remain open. Follow
+> `docs/AUDIT_2026-09-02.md` exactly. Do not start Phase 8 until all four axes
+> pass `tools/motion_metrics.py` and beat the Arduino baseline.
 
 Every assumption made during development that is **not** marked `[GROUND TRUTH]` in the specs and has **not** been independently verified against hardware. **Review and confirm/refute each before we build dependent phases on top.** Each entry: the assumption, where it's baked in, why we made it, and how to falsify it.
 
@@ -48,6 +38,9 @@ Legend: ✅ confirmed · ❓ needs confirmation · ⚠️ known-deviation (accep
 | B3 | Mux **channel caching** (skip reselect on same port) is safe — no other master changes the TCA9548A behind our back | `hal_i2c.c` `s_cached_channel` | We are the only I2C master on these buses | External write to mux → stale cache → wrong port. Recovery: `hal_i2c_deselect_all()` | ✅ (sole master) |
 | B4 | `hal_i2c_*` blocking calls with 5 ms timeout are acceptable on Core 0 (they never run on the RT path) | `hal_i2c.c` | Spec §4.1 default 5000 µs | Confirm no RT consumer calls them directly | ✅ by design |
 | B5 | Lock-free caches (battery seqlock; Core 1 status seqlock) correct cross-core | `hal_battery.c`, `motion/core1.c` | seqlock + `__dmb` | Core 1 status read cleanly by Core 0 under load; no torn reads in 88k-tick run | ✅ Phase 1 |
+| B6 | TinyUSB has exactly one execution owner | `CMakeLists.txt`, `EVN_ALPHA_Performance.c` | SDK worker disabled; Core 0 polls and drains one bounded queue | Repeated full trace dumps, close/reopen, and command response soak | ⚠️ core ownership confirmed; Windows bulk-session batching still under test |
+| B7 | Core 1 hardware-alarm callback remains on Core 1 with zero missed deadlines | `motion/core1.c` | Highest-priority direct-register ISR installed from Core 1 and linked in SRAM | 53,932-tick idle run + 16-case loaded sweep | ✅ 1000-1000 us idle; zero misses |
+| B8 | Pybricks 5 ms observer remains valid when driven by five-sample mean applied voltage inside the 1 kHz controller | `motion/motion_engine.c` | Preserves generated model timestep and integrated input voltage | Compare observer state/stall behavior against encoder on both motor types | ❓ post-fix HITL |
 
 ## C. Pin / Peripheral Mapping
 

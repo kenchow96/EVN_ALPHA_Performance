@@ -16,12 +16,12 @@ def load_last_trace(path):
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         lines = [l.rstrip("\n") for l in f]
 
-    # find last TRACE BEGIN
-    begin = None
-    for i in range(len(lines) - 1, -1, -1):
-        if lines[i].startswith("TRACE BEGIN"):
-            begin = i
-            break
+    end = next((i for i in range(len(lines) - 1, -1, -1)
+                if lines[i].startswith("TRACE END")), None)
+    if end is None:
+        return None, None
+    begin = next((i for i in range(end - 1, -1, -1)
+                  if lines[i].startswith("TRACE BEGIN")), None)
     if begin is None:
         return None, None
 
@@ -33,17 +33,19 @@ def load_last_trace(path):
 
     header_idx = begin + 1
     rows = []
-    for i in range(header_idx + 1, len(lines)):
+    for i in range(header_idx + 1, end):
         l = lines[i].strip()
         if l.startswith("TRACE END"):
             break
         if not l or "," not in l:
             continue
         parts = l.split(",")
-        if len(parts) != 7:
+        if len(parts) < 7:
             continue
         try:
-            rows.append([int(p) for p in parts])
+            row = [int(p) for p in parts[:7]]
+            row.append(int(parts[7]) if len(parts) > 7 else 0)
+            rows.append(row)
         except ValueError:
             continue
     return meta, rows
@@ -54,7 +56,8 @@ def report(meta, rows):
         print("no trace rows")
         return
     ax = meta.get("axis", "?")
-    # columns: t_ms, ref_mdeg, enc_mdeg, hat_mdeg, vref_mdegs, what_mdegs, duty_milli
+    # columns: t_ms, ref_mdeg, enc_mdeg, hat_mdeg, vref_mdegs,
+    #          what_mdegs, duty_milli, cur_01ma
     t = [r[0] for r in rows]
     ref = [r[1] / 1000.0 for r in rows]
     enc = [r[2] / 1000.0 for r in rows]

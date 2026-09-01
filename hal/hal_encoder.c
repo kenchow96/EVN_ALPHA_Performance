@@ -101,15 +101,12 @@ static void substep_program_init(uint sm, uint pin) {
 
 static void substep_get_counts(uint sm, uint *step, int *cycles, uint *us) {
     int i, pairs;
-    uint ints;
     pairs = pio_sm_get_rx_fifo_level(ENC_PIO, sm) >> 1;
-    ints = save_and_disable_interrupts();
     for (i = 0; i < pairs + 1; i++) {
         *cycles = (int)pio_sm_get_blocking(ENC_PIO, sm);
         *step   = pio_sm_get_blocking(ENC_PIO, sm);
     }
     *us = time_us_32();
-    restore_interrupts(ints);
 }
 
 /* --- speed/position estimation (ported) --- */

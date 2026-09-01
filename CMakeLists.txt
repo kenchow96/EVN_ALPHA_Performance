@@ -86,6 +86,8 @@ pico_add_extra_outputs(EVN_ALPHA_Performance)
 # USB speed instead of drip-feeding through a tiny buffer.
 target_compile_definitions(EVN_ALPHA_Performance PRIVATE
     PICO_USE_FASTEST_SUPPORTED_CLOCK=1
+    PICO_STDIO_USB_ENABLE_IRQ_BACKGROUND_TASK=0
+    PICO_STDIO_USB_STDOUT_TIMEOUT_US=20000
     CFG_TUD_CDC_TX_BUFSIZE=4096
     CFG_TUD_CDC_RX_BUFSIZE=512
 )

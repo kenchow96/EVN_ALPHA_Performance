@@ -1,6 +1,6 @@
 # EVN ALPHA Performance — Master Plan
 
-Status of phases is kept in the [Status Board](#status-board) and updated at every verified checkpoint. This document is the single source of truth for sequencing; [AGENTS.md](../AGENTS.md) holds the mandatory working rules. Unverified assumptions are tracked in [ASSUMPTIONS.md](ASSUMPTIONS.md) — close them before building dependent phases.
+Status of phases is kept in the [Status Board](#status-board) and updated at every verified checkpoint. This document is the single source of truth for sequencing; [AGENTS.md](../AGENTS.md) holds the mandatory working rules. Unverified assumptions are tracked in [ASSUMPTIONS.md](ASSUMPTIONS.md) — close them before building dependent phases. The Phase 7 failure analysis and repair ledger are in [AUDIT_2026-09-02.md](AUDIT_2026-09-02.md).
 
 ## 1. Mission & Quantitative Success Metrics
 
@@ -9,9 +9,9 @@ Native C/C++ SDK for the EVN ALPHA (RP2040, 200 MHz) that beats the EVN Arduino 
 | Metric | Target | How Measured |
 | :--- | :--- | :--- |
 | Control loop rate | 1000 Hz sustained | Core 1 loop period counters over ≥ 10 s |
-| Loop jitter | < 1 µs (max) | DWT `CYCCNT` delta histogram (5 ns resolution) |
+| Loop jitter | < 1 µs target; ≤ 5 µs firmware gate | Hardware µs timer; logic analyzer for sub-µs proof |
 | Encoder overhead | ~0% CPU (100% PIO) | Cycle count of 1 kHz accumulator read; logic probe optional |
-| Motor PWM | 25 kHz, 8000 steps | Frequency report / ultrasonic (inaudible) operation |
+| Motor PWM | 25 kHz, 8000 steps | Frequency report; optional 25/40 kHz current-ripple A/B |
 | I2C throughput | Dual-bus parallel, 400 kHz, mux re-select caching | Transaction timing + bus scan benchmark |
 | Telemetry cache read | < 1 µs from control loop | DWT cycle count on cached read |
 | RT-path heap | 0 allocations | Link-map audit + runtime `malloc` trap |
@@ -78,14 +78,15 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 
 ### Phase 1 — Measurement & Concurrency Infrastructure
 - `hal/hal_sysclk`: enforce/validate 200 MHz profile (`PICO_USE_FASTEST_SUPPORTED_CLOCK`), print clock tree on boot.
-- `bench/bench_cycles`: DWT `CYCCNT` enable + `BENCH_START/END` macros (5 ns resolution).
-- `motion/core1`: Core 1 launcher; 1 kHz alarm-driven loop skeleton (`__not_in_flash_func`, zero heap); lock-free period/jitter counters (min/max/mean) readable from Core 0 on USB request.
-- **Acceptance (automated via USB console):** `clk_sys == 200 MHz`; loop at 1000.0 Hz ±0.1% over 10 s; max jitter < 1 µs; counters printable on demand.
+- `bench/bench_cycles`: hardware microsecond timer measurement. RP2040 Cortex-M0+ has no DWT `CYCCNT`; use a logic analyzer for sub-microsecond proof.
+- `motion/core1`: Core 1 launcher; Core-1-owned hardware alarm, 1 kHz loop (`__not_in_flash_func`, zero heap); lock-free period/jitter/missed-deadline counters readable from Core 0.
+- **Acceptance (automated via USB console):** `clk_sys == 200 MHz`; loop at 1000.0 Hz ±0.1% over 10 s; measured jitter ≤ 5 µs; zero missed deadlines; counters printable on demand.
 - **HITL:** none.
 
 ### Phase 2 — Motor PWM (DRV8833 ×4)
 - `hal/hal_motor`: PWM slices 6/5/3/2, WRAP = 7999 (25 kHz); API `hal_motor_set(id, duty ∈ [-1,1])`, `hal_motor_brake(id)`, `hal_motor_coast(id)`; duty writes via direct PWM register access.
 - **Acceptance:** all four channels command forward/reverse/brake/coast; duty→speed monotonic; operation inaudible (25 kHz).
+- **Carrier decision:** 25 kHz is the performance default: both options are ultrasonic, while 25 kHz provides 8,000 vs 5,000 duty levels and 37.5% fewer switching events than 40 kHz. Revisit only with an isolated current-ripple/thermal/tracking A/B.
 - **HITL:** wheels off ground; user confirms spin direction per channel in one session.
 
 ### Phase 3 — PIO Quadrature Encoders (M1–M4)
@@ -128,7 +129,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 
 ## 5. Measurement Methodology
 
-- **Cycle timing:** DWT `CYCCNT` (5 ns @ 200 MHz) via `bench_cycles` macros; `time_us_64()` for long windows.
+- **Cycle timing:** RP2040 hardware µs timer via `bench_cycles`; external logic analyzer when sub-µs resolution is required.
 - **Telemetry discipline:** Core 1 never calls `printf`; it fills lock-free ring buffers drained by Core 0 → USB CDC CSV at decimated rates.
 - **Result storage:** `bench/results/phase<N>_<test>_<YYYYMMDD>.csv` + one summary row per run appended to `bench/RESULTS.md`.
 - **A/B fairness:** identical battery charge, motors, surface, and ambient conditions for Arduino-vs-native comparisons.
@@ -143,7 +144,8 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | :--- | :--- | :--- |
 | PIO instruction budget: quadrature (4 SM) + servo (4 SM) across 2 PIO blocks × 32 instr | Blocks Phases 3 & 6 | Budget table before coding; quadrature on pio0, servo on pio1; servo SM time-multiplexing fallback |
 | 1 kHz budget: 4× (trajectory + PID + observer) per tick | Phase 7 timing failure | 200k cycles available; profile with DWT per stage; fixed-point math if float falls short |
-| USB stdio stalls leaking into RT path | Jitter target missed | printf from Core 0 only; ring-buffer telemetry |
+| USB stdio stalls or TinyUSB re-entry | CDC corruption / jitter | Core 0 sole `tud_task()` owner; bounded TX queue; host waits for framed `TRACE END` |
+| Timer callback installed through default Core 0 alarm pool | USB conflict / false RT isolation | Dedicated hardware alarm claimed and installed on Core 1 |
 | I2C shared across cores | Deadlock/corruption | Only Core 0 ever touches I2C hardware |
 | Flash writes while Core 1 runs from XIP | Bus stall / crash | `multicore_lockout` pattern only (§6.4 of Hardware Reference) |
 | M2/M4 encoder direction inversion wrong | Negative feedback | Phase 3 HITL verifies sign before any closed loop |
@@ -160,7 +162,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | 5 — Battery telemetry | ✅ Done | 2026-09-01 | `f556bc8` |
 | 6 — PIO servos | ✅ Done | 2026-09-01 | `a16a5d3` |
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
-| 7 — Motion engine | 🟡 Mostly done — endpoint accuracy PASS (committed `5a1425e`); **smoothness fix IN PROGRESS (uncommitted)**: EV3 Medium smooth at kp_vel≤2e-6, EV3 Large still bangs — see [ASSUMPTIONS.md resume point](ASSUMPTIONS.md) + [SESSION_LESSONS.md](SESSION_LESSONS.md) §B3. **Gate before Phase 8:** single-motor motion must pass `tools/motion_metrics.py` acceptance on all 4 + beat Arduino baseline | 2026-09-01 | uncommitted |
+| 7 — Motion engine | 🟠 Audit repair HITL in progress — USB ownership/framing, Core 1 direct SRAM timer, PID saturation/anti-windup, speed initialization, 5 ms observer cadence, telemetry schema, and 25 kHz PWM corrected. Core 1: 1000-1000 us idle, zero misses. 16-case/40,000-sample gain sweep: EV3 Large candidate passes 9/9 both directions; Medium startup/hold stiction and batched CDC sweep remain open. Follow [AUDIT_2026-09-02.md](AUDIT_2026-09-02.md). **Phase 8 remains blocked** until all four motors pass the profile suite and beat Arduino. | 2026-09-02 | working tree |
 | 8 — Drive base | ⬜ Not started — **BLOCKED by the Phase 7 smoothness gate above** | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 

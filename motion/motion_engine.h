@@ -37,6 +37,8 @@ typedef struct {
     evn_trajectory_t       traj;
     evn_pid_t              pid;
     int32_t                last_applied_mv;   /* voltage applied last tick (drives observer) */
+    int32_t                observer_voltage_sum_mv;
+    uint8_t                observer_divider;
 
     /* commanded state (Core 0 → Core 1 handover) */
     volatile uint32_t cmd_seq;
@@ -44,6 +46,7 @@ typedef struct {
     volatile float    cmd_target_deg;
     volatile float    cmd_max_vel_degs;
     volatile float    cmd_max_accel;
+    volatile uint32_t cmd_auto_coast_ms;
     uint32_t          cmd_consumed_seq;   /* Core 1: last cmd_seq acted upon */
 
     /* live status (Core 1 → Core 0) */
@@ -54,8 +57,11 @@ typedef struct {
     volatile bool     stat_done;
     volatile int32_t  stat_target_mdeg;   /* debug: commanded target */
     volatile float    stat_total_time;    /* debug: computed profile duration */
+    volatile float    stat_max_vel_degs;
+    volatile float    stat_max_accel_degs2;
 
     bool              holding;   /* Core 1: keep regulating at target until coasted */
+    uint32_t          auto_coast_deadline_ms;
     int32_t           prev_enc_mdeg;   /* Core 1: last encoder angle (for speed) */
 } evn_axis_t;
 
@@ -67,6 +73,9 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
 /* Command a trapezoidal move to `target_deg` (degrees at output). */
 void evn_motion_move_to(uint8_t axis, float target_deg,
                         float max_vel_degs, float max_accel_degs2);
+void evn_motion_move_to_test(uint8_t axis, float target_deg,
+                             float max_vel_degs, float max_accel_degs2,
+                             uint32_t auto_coast_ms);
 
 /* Stop an axis (coast) / hold position (active brake + hold loop). */
 void evn_motion_coast(uint8_t axis);
@@ -78,12 +87,15 @@ bool evn_motion_get_state(uint8_t axis, float *angle_deg, float *speed_degs,
 
 /* Debug: commanded target (deg) and computed profile duration (s). */
 bool evn_motion_get_debug(uint8_t axis, float *target_deg, float *total_time_s);
+bool evn_motion_get_profile(uint8_t axis, float *max_vel_degs,
+                            float *max_accel_degs2);
 
 /* Runtime tuning (Core 0, e.g. from a serial console). Apply to all axes. */
 void evn_motion_set_gains(float kp_pos, float ki_pos, float kp_vel, float kd_vel, float kff_accel);
 /* Per-axis variant (tune one motor at a time). */
 void evn_motion_set_gains_axis(uint8_t axis, float kp_pos, float ki_pos,
                                float kp_vel, float kd_vel, float kff_accel);
+void evn_motion_set_stiction(uint8_t axis, float start_duty, float hold_duty);
 /* Read an axis' current PID block (Core 0 debug/console use only). */
 const evn_pid_t *evn_motion_axis_pid(uint8_t axis);
 void evn_motion_set_observer(int32_t stall_speed_limit, int32_t stall_time_ms,
@@ -93,7 +105,7 @@ void evn_motion_set_feedforward(bool on);
 bool evn_motion_feedforward_on(void);
 
 /* --- 1 kHz per-axis trace (tuning): record ref/meas/duty every tick --- */
-#define EVN_TRACE_MAX 2500   /* rows × 28 B = 70 KB static */
+#define EVN_TRACE_MAX 2500   /* rows × 32 B = 80 KB static */
 void     evn_motion_trace_arm(uint8_t axis);   /* clear + start recording */
 void     evn_motion_trace_stop(void);          /* stop recording (keep data) */
 bool     evn_motion_trace_info(uint8_t *axis, uint32_t *count, bool *armed);

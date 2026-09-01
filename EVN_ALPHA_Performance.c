@@ -37,25 +37,76 @@
  * calibration via the motion engine's counts_per_rev. */
 static const float CPR[4] = { 720.0f, 720.0f, 720.0f, 720.0f };
 
+static void con_printf(const char *fmt, ...);
+
 static void print_battery(void) {
     evn_battery_state_t b;
     if (hal_battery_get(&b))
-        printf("Battery: %.3f V (cells %.3f / %.3f)\n",
-               b.vbatt_mv/1000.0f, b.vcell1_mv/1000.0f, b.vcell2_mv/1000.0f);
+        con_printf("Battery: %.3f V (cells %.3f / %.3f)\n",
+                   b.vbatt_mv/1000.0f, b.vcell1_mv/1000.0f, b.vcell2_mv/1000.0f);
 }
 
-/* Console writer: uses the Pico SDK stdio-USB path (putchar_raw), which is
- * thread-safe with the SDK's own timer-driven USB task (it takes stdio_usb_mutex
- * internally). We must NOT call tud_task/tud_cdc_write* from the command
- * handler — that deadlocks against the SDK task and wedges the host COM port
- * (PermissionError 31). putchar routes through the SDK safely. */
-static void cdc_write_paced(const char *buf, size_t len) {
+/* Core 0 is the sole tud_task() owner (the SDK background worker is disabled).
+ * Producers enqueue complete records; cdc_service drains only what TinyUSB can
+ * accept, so a slow or closing host cannot block the scheduler or split rows. */
+#define CDC_TX_QUEUE_SIZE 8192u
+#define CDC_TX_QUEUE_MASK (CDC_TX_QUEUE_SIZE - 1u)
+_Static_assert((CDC_TX_QUEUE_SIZE & CDC_TX_QUEUE_MASK) == 0, "CDC queue must be a power of two");
+
+static char s_cdc_tx[CDC_TX_QUEUE_SIZE];
+static uint32_t s_cdc_tx_head = 0;
+static uint32_t s_cdc_tx_tail = 0;
+static bool s_cdc_was_connected = false;
+
+static uint32_t s_dump_idx = 0;
+static uint32_t s_dump_n = 0;
+static int32_t  s_dump_t0 = 0;
+static bool     s_dump_active = false;
+
+static uint32_t cdc_tx_free(void) {
+    return CDC_TX_QUEUE_SIZE - (s_cdc_tx_head - s_cdc_tx_tail);
+}
+
+static bool cdc_write_paced(const char *buf, size_t len) {
+    if (len > cdc_tx_free()) return false;
+
     for (size_t i = 0; i < len; i++) {
-        putchar_raw(buf[i]);   /* SDK-managed; never blocks forever */
+        s_cdc_tx[s_cdc_tx_head & CDC_TX_QUEUE_MASK] = buf[i];
+        s_cdc_tx_head++;
     }
+    return true;
 }
 
-static void cdc_puts(const char *s) { cdc_write_paced(s, strlen(s)); }
+static bool cdc_puts(const char *s) { return cdc_write_paced(s, strlen(s)); }
+
+static void cdc_service(void) {
+    tud_task();
+    bool connected = tud_cdc_connected();
+    if (!connected) {
+        if (s_cdc_was_connected) {
+            tud_cdc_write_clear();
+            s_cdc_tx_tail = s_cdc_tx_head;
+            s_dump_active = false;
+        }
+        s_cdc_was_connected = false;
+        return;
+    }
+    s_cdc_was_connected = true;
+
+    uint32_t available = tud_cdc_write_available();
+    while (s_cdc_tx_tail != s_cdc_tx_head && available > 0) {
+        uint32_t queued = s_cdc_tx_head - s_cdc_tx_tail;
+        uint32_t contiguous = CDC_TX_QUEUE_SIZE - (s_cdc_tx_tail & CDC_TX_QUEUE_MASK);
+        if (contiguous > queued) contiguous = queued;
+        if (contiguous > available) contiguous = available;
+
+        uint32_t written = tud_cdc_write(&s_cdc_tx[s_cdc_tx_tail & CDC_TX_QUEUE_MASK], contiguous);
+        if (written == 0) break;
+        s_cdc_tx_tail += written;
+        available -= written;
+    }
+    tud_cdc_write_flush();
+}
 
 /* Non-blocking console printf for command/status responses. Uses the FIFO-paced
  * writer so the host port can never wedge, even if the host is slow to read. */
@@ -103,25 +154,36 @@ static void move_relative_tune(float delta_deg, int only_axis /* -1 = all */) {
 }
 
 /* Dump the armed axis' 1 kHz trace as CSV (host parses TRACE BEGIN/END). */
-/* Non-blocking trace dumper: streams rows a few per main-loop iteration so the
- * SDK USB task keeps being serviced between writes (blocking in the command
- * handler starves the SDK task and wedges the host port). s_dump_* holds state. */
-static uint32_t s_dump_idx = 0;
-static uint32_t s_dump_n = 0;
-static int32_t  s_dump_t0 = 0;
-static bool     s_dump_active = false;
-
 static void dump_trace(void) {
+    if (s_dump_active) {
+        con_printf("?? trace dump already active\n");
+        return;
+    }
     evn_motion_trace_stop();
     uint8_t ax; uint32_t n; bool armed;
     evn_motion_trace_info(&ax, &n, &armed);
     const evn_pid_t *p = evn_motion_axis_pid(ax);
-    con_printf("TRACE BEGIN axis=%u rows=%lu kp=%g ki=%g kv=%g kd=%g kff=%g ff=%d\n",
-           ax + 1, (unsigned long)n,
-           (double)p->kp_pos, (double)p->ki_pos, (double)p->kp_vel,
-           (double)p->kd_vel, (double)p->kff_accel,
-           evn_motion_feedforward_on() ? 1 : 0);
-    cdc_puts("t_ms,ref_mdeg,enc_mdeg,hat_mdeg,vref_mdegs,what_mdegs,duty_milli,cur_01ma\n");
+    float max_vel, max_accel;
+    evn_motion_get_profile(ax, &max_vel, &max_accel);
+    static const char columns[] =
+        "t_ms,ref_mdeg,enc_mdeg,hat_mdeg,vref_mdegs,what_mdegs,duty_milli,cur_01ma\n";
+    char header[192];
+    int length = snprintf(header, sizeof header,
+        "TRACE BEGIN axis=%u rows=%lu kp=%g ki=%g kv=%g kd=%g kff=%g ff=%d pwm=%lu vmax=%g accel=%g\n",
+        ax + 1, (unsigned long)n,
+        (double)p->kp_pos, (double)p->ki_pos, (double)p->kp_vel,
+        (double)p->kd_vel, (double)p->kff_accel,
+        evn_motion_feedforward_on() ? 1 : 0,
+        (unsigned long)hal_motor_get_pwm_freq(),
+        (double)max_vel, (double)max_accel);
+    if (length <= 0) return;
+    size_t header_len = (size_t)((length < (int)sizeof header) ? length : (int)sizeof header - 1);
+    if (header_len + sizeof columns - 1 > cdc_tx_free()) {
+        con_printf("?? USB TX busy; retry dump\n");
+        return;
+    }
+    cdc_write_paced(header, header_len);
+    cdc_write_paced(columns, sizeof columns - 1);
     s_dump_idx = 0; s_dump_n = n; s_dump_t0 = 0; s_dump_active = true;
 }
 
@@ -129,7 +191,7 @@ static void dump_trace(void) {
  * SDK USB task runs. */
 static void dump_service(void) {
     if (!s_dump_active) return;
-    for (int k = 0; k < 4 && s_dump_idx < s_dump_n; k++, s_dump_idx++) {
+    for (int k = 0; k < 4 && s_dump_idx < s_dump_n; k++) {
         int32_t t, ref, enc, hat, vref, what, duty, cur;
         if (!evn_motion_trace_row(s_dump_idx, &t, &ref, &enc, &hat, &vref, &what, &duty, &cur)) { s_dump_idx = s_dump_n; break; }
         if (s_dump_idx == 0) s_dump_t0 = t;
@@ -137,9 +199,12 @@ static void dump_service(void) {
         int L = snprintf(line, sizeof line, "%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\n",
                (long)(t - s_dump_t0), (long)ref, (long)enc, (long)hat,
                (long)vref, (long)what, (long)duty, (long)cur);
-        cdc_write_paced(line, (size_t)L);
+        if (L <= 0) { s_dump_idx = s_dump_n; break; }
+        size_t line_len = (size_t)((L < (int)sizeof line) ? L : (int)sizeof line - 1);
+        if (!cdc_write_paced(line, line_len)) break;
+        s_dump_idx++;
     }
-    if (s_dump_idx >= s_dump_n) { cdc_puts("TRACE END\n"); s_dump_active = false; }
+    if (s_dump_idx >= s_dump_n && cdc_puts("TRACE END\n")) s_dump_active = false;
 }
 
 /* Serial command loop (tuning without reflash). Commands (line-based):
@@ -169,6 +234,19 @@ static void handle_command(void) {
         else con_printf("?? usage: m degs\n");
         break;
     }
+    case 'X': {
+        int ax; float delta, max_vel, max_accel;
+        if (sscanf(p + 1, "%d %f %f %f", &ax, &delta, &max_vel, &max_accel) == 4 &&
+            ax >= 1 && ax <= 4 && max_vel > 0.0f && max_accel > 0.0f) {
+            float angle, speed; bool stall, done;
+            evn_motion_get_state((uint8_t)(ax - 1), &angle, &speed, &stall, &done);
+            evn_motion_move_to_test((uint8_t)(ax - 1), angle + delta,
+                                    max_vel, max_accel, 4000);
+            con_printf(">> profile M%d delta=%+.1f vmax=%.1f accel=%.1f\n",
+                       ax, (double)delta, (double)max_vel, (double)max_accel);
+        } else con_printf("?? usage: X motor delta_deg max_vel max_accel\n");
+        break;
+    }
     case 'M': {
         int ax; float d;
         if (sscanf(p + 1, "%d %f", &ax, &d) == 2 && ax >= 1 && ax <= 4) move_relative_tune(d, ax - 1);
@@ -185,6 +263,27 @@ static void handle_command(void) {
     }
     case 'd': dump_trace(); break;
     case 'p': s_report = !s_report; con_printf(">> 10Hz report %s\n", s_report ? "ON" : "OFF"); break;
+    case 'b': {
+        int ax; float start_duty, hold_duty;
+        if (sscanf(p + 1, "%d %f %f", &ax, &start_duty, &hold_duty) == 3 &&
+            ax >= 1 && ax <= 4 && start_duty >= 0.0f && start_duty <= 1.0f &&
+            hold_duty >= 0.0f && hold_duty <= 1.0f) {
+            evn_motion_set_stiction((uint8_t)(ax - 1), start_duty, hold_duty);
+            con_printf(">> M%d stiction start=%.3f hold=%.3f\n", ax,
+                       (double)start_duty, (double)hold_duty);
+        } else con_printf("?? usage: b motor start_duty hold_duty\n");
+        break;
+    }
+    case 'w': {
+        unsigned long hz;
+        if (sscanf(p + 1, "%lu", &hz) == 1 && (hz == 25000UL || hz == 40000UL)) {
+            for (int i = 0; i < 4; i++) evn_motion_coast(i);
+            hal_motor_coast_all();
+            hal_motor_set_pwm_freq((uint32_t)hz);
+            con_printf(">> motor PWM %lu Hz\n", hz);
+        } else con_printf("?? usage: w 25000|40000\n");
+        break;
+    }
     case 'S': {
         for (int i = 0; i < 4; i++) {
             float ang, spd; bool stall, done;
@@ -194,6 +293,13 @@ static void handle_command(void) {
             con_printf("M%d: %7.1f deg  %6.1f d/s  tgt=%5.0f  %s%s\n", i+1,
                    (double)ang, (double)spd, (double)tgt,
                    stall ? "STALL " : "", done ? "done" : "moving");
+        }
+        evn_core1_status_t cs;
+        if (evn_core1_get_status(&cs)) {
+            con_printf("Core1: %u ticks, period %u-%u us, exec max %u us, missed %u\n",
+                       (unsigned)cs.tick_count, (unsigned)cs.period_min_us,
+                       (unsigned)cs.period_max_us, (unsigned)cs.exec_max_us,
+                       (unsigned)cs.missed_tick_count);
         }
         break;
     }
@@ -279,16 +385,19 @@ static void poll_serial(void) {
 int main(void) {
     stdio_init_all();
 
-    /* bounded console wait so the banner always lands (SDK owns tud_task) */
+    /* bounded console wait so the banner always lands */
     uint64_t deadline = time_us_64() + 3000000ULL;
-    while (!stdio_usb_connected() && time_us_64() < deadline) tight_loop_contents();
+    while (!stdio_usb_connected() && time_us_64() < deadline) {
+        tud_task();
+        tight_loop_contents();
+    }
 
     hal_led_init();
     hal_button_init();
     for (int i = 0; i < 3; i++) { hal_led_set(true); busy_wait_ms(80); hal_led_set(false); busy_wait_ms(80); }
 
-    printf("hal_i2c_init: %s\n", hal_i2c_init() == EVN_I2C_OK ? "OK" : "MUX ERROR");
-    printf("hal_battery_init: %s\n", hal_battery_init() ? "OK" : "NOT FOUND");
+    con_printf("hal_i2c_init: %s\n", hal_i2c_init() == EVN_I2C_OK ? "OK" : "MUX ERROR");
+    con_printf("hal_battery_init: %s\n", hal_battery_init() ? "OK" : "NOT FOUND");
 
     /* standard-peripheral model table: M1,M2 = EV3 Large; M3,M4 = EV3 Medium */
     static const evn_motor_model_t *models[4];
@@ -300,14 +409,14 @@ int main(void) {
     hal_motor_init_mask(0xF);
     hal_encoder_init_mask(0xF);
     evn_motion_init(models, CPR, 0xF);
-    printf("motion_init: 4 axes (M1/M2=EV3-L, M3/M4=EV3-M)\n");
+    con_printf("motion_init: 4 axes (M1/M2=EV3-L, M3/M4=EV3-M)\n");
 
     bench_init();
     evn_core1_start();
-    printf("core1: 1 kHz loop + motion engine running\n");
+    con_printf("core1: 1 kHz loop + motion engine running\n");
     print_battery();
 
-    printf("\nEVN motion console. cmds: r=+360/0  q/Q=+-90  m deg=all-rel  M m deg=one  c=coast  g/G=gains  o=obs  f=ff  t/d=trace\n");
+    con_printf("\nEVN motion console. cmds: r=+360/0  q/Q=+-90  m/M=relative  X=profile  c=coast  g/G=gains  o=obs  f=ff  w=pwm  t/d=trace\n");
 
     uint64_t next_button = time_us_64();
     uint64_t next_batt = time_us_64();
@@ -320,7 +429,8 @@ int main(void) {
     while (true) {
         uint64_t now = time_us_64();
 
-        poll_serial();   // host-driven commands (run/tune/coast)  [SDK owns tud_task]
+        cdc_service();
+        poll_serial();   // host-driven commands (run/tune/coast)
 
         dump_service();  // non-blocking trace dump (streams a few rows per loop)
 
@@ -369,9 +479,10 @@ int main(void) {
                 evn_core1_status_t cs;
                 if (evn_core1_get_status(&cs)) {
                     con_printf("=== MOTION TEST COMPLETE (all coasted) ===\n");
-                    con_printf("Core1: %u ticks, period %u-%u us, exec max %u us\n",
+                          con_printf("Core1: %u ticks, period %u-%u us, exec max %u us, missed %u\n",
                            (unsigned)cs.tick_count, (unsigned)cs.period_min_us,
-                           (unsigned)cs.period_max_us, (unsigned)cs.exec_max_us);
+                              (unsigned)cs.period_max_us, (unsigned)cs.exec_max_us,
+                              (unsigned)cs.missed_tick_count);
                 }
                 print_battery();
                 s_state = ST_DONE;   // latched — never re-fires

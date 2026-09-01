@@ -24,10 +24,11 @@
 
 #define EVN_MOTOR_COUNT 4
 
-/* PWM frequency. 40 kHz default: still ultrasonic (no whine) but ~60% faster
- * DRV8833 current-loop response than 25 kHz → tighter torque control. The
- * WRAP is derived at init from the actual sysclk, so resolution scales. */
-#define EVN_MOTOR_PWM_FREQ_HZ  40000UL
+/* 25 kHz is ultrasonic and gives 8000 duty steps at 200 MHz. Raising the
+ * carrier to 40 kHz does not raise the 1 kHz control bandwidth or average
+ * motor voltage; it reduces resolution to 5000 steps and raises switching
+ * loss. Revisit only with an isolated current-ripple/response A/B result. */
+#define EVN_MOTOR_PWM_FREQ_HZ  25000UL
 
 typedef enum {
     EVN_MOTOR_1 = 0,
@@ -47,6 +48,9 @@ bool hal_motor_init(void);
 /* Runtime PWM frequency change (Hz). Recomputes WRAP; call before enabling
  * outputs. Rarely needed — the default is tuned. */
 void hal_motor_set_pwm_freq(uint32_t freq_hz);
+
+/* Current configured carrier frequency, for benchmark trace metadata. */
+uint32_t hal_motor_get_pwm_freq(void);
 
 /* Drive a motor. duty in [-1.0, +1.0]; magnitude → PWM duty, sign → direction
  * per the DRV8833 truth table. 0 = coast (both low). Clamped internally. */

@@ -21,11 +21,12 @@ RESULTS = os.path.join("bench", "results")
 def load_last_trace(path):
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         lines = [l.rstrip("\n") for l in f]
-    begin = None
-    for i in range(len(lines) - 1, -1, -1):
-        if lines[i].startswith("TRACE BEGIN"):
-            begin = i
-            break
+    end = next((i for i in range(len(lines) - 1, -1, -1)
+                if lines[i].startswith("TRACE END")), None)
+    if end is None:
+        return None, None
+    begin = next((i for i in range(end - 1, -1, -1)
+                  if lines[i].startswith("TRACE BEGIN")), None)
     if begin is None:
         return None, None
     meta = {}
@@ -34,7 +35,7 @@ def load_last_trace(path):
             k, v = tok.split("=", 1)
             meta[k] = v
     rows = []
-    for i in range(begin + 2, len(lines)):   # skip header row
+    for i in range(begin + 2, end):   # skip header row
         l = lines[i].strip()
         if l.startswith("TRACE END"):
             break
@@ -208,6 +209,7 @@ ACCEPT = {
     "overshoot_deg": ("abs<=", 0.5),
     "settle_ms": ("<=", 300),
     "residual_vibration_pp_deg": ("<=", 0.5),
+    "regressive_reversals": ("<=", 2),
     "duty_saturation_frac": ("<=", 0.15),
     "duty_smoothness": (">=", 0.7),
 }
