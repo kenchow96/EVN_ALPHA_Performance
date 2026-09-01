@@ -320,6 +320,12 @@ void evn_motion_set_friction_feedforward(uint8_t axis, uint16_t permille) {
     s_axis[axis].friction_feedforward_permille = permille;
 }
 
+void evn_motion_set_startup_release_speed(uint8_t axis, float speed_degs) {
+    if (axis > 3 || !(s_mask & (1u << axis)) ||
+        speed_degs < 0.0f || speed_degs > 100.0f) return;
+    s_axis[axis].pid.startup_release_speed_mdegs = speed_degs * 1000.0f;
+}
+
 const evn_pid_t *evn_motion_axis_pid(uint8_t axis) {
     if (axis > 3) return NULL;
     return &s_axis[axis].pid;

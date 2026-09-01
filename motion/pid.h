@@ -53,6 +53,7 @@ typedef struct {
      * so the position loop can always overcome static friction. 0 = disabled. */
     float min_duty;
     float start_duty;
+    float startup_release_speed_mdegs;
 
     /* state */
     float integrator;   /* accumulated integral contribution in duty units */
