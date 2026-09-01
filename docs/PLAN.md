@@ -30,6 +30,14 @@ All results stored as CSV in `bench/results/` with a one-line summary appended t
 6. Separate automated measurement from the **single** human observation a HITL test genuinely needs; batch physical asks.
 7. Keep progress updates to new facts; never restate an unchanged plan.
 8. Stop when acceptance criteria pass — no opportunistic refactoring.
+9. **Verify hardware capability exists before coding against it** (grep SDK /
+   datasheet). Example cost: RP2040 M0+ has no DWT `CYCCNT`; don't assume from
+   the ARM family name.
+10. **Three corrective patches on the same bug → rewrite the function cleanly**
+    instead of patching again. Patching a wrong mental model compounds errors.
+11. **One command for flash+verify**: always use `tools/flash_and_capture.py`
+    (flash → robust port wait → optional start char → capture → log). Never
+    hand-chain flash/sleep/capture — it races USB re-enumeration.
 
 ## 3. Target Repository Structure
 

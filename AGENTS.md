@@ -55,12 +55,36 @@ Items tagged `[GROUND TRUTH]` are non-negotiable hardware facts. Items tagged `[
 └── pico_sdk_import.cmake
 ```
 
-## Reading Board Output (no manual serial monitor)
+## Reading Board Output & Deploying (single command)
 
-Use `python tools/serial_capture.py --time N [--expect "substr"]` to read the
-board's USB-CDC output directly. Auto-detects the RP2040 COM port (usually
-COM7). `--expect` exits non-zero if the substring never appears — use it as a
-machine-checkable acceptance gate.
+Use the wrapper for any flash+verify cycle — do NOT chain flash/sleep/capture
+by hand (it races USB re-enumeration and loses boot banners):
+
+```
+python tools/flash_and_capture.py --time 105 --send s --expect "TEST COMPLETE" --log bench/results/run.txt
+```
+
+It flashes the UF2, robustly waits for the COM port to appear AND be openable,
+optionally sends the start char, captures output, and logs it. `--expect` is a
+machine-checkable acceptance gate (nonzero exit if the substring never appears).
+Use `--no-flash` to capture from an already-running board. Confirm the board is
+powered on first.
+
+## Preflight: Verify Hardware Facts Before Coding
+
+Before using any peripheral capability, confirm it EXISTS on the RP2040 in the
+SDK/datasheet — do not assume from the ARM architecture family. (Cost us a
+flash cycle: the Cortex-M0+ has NO DWT `CYCCNT` cycle counter; use the hardware
+µs timer `time_us_64()` for sub-µs-adjacent measurement.) One grep of the SDK
+headers or a 30-second datasheet check beats a flash-and-discover loop.
+
+## Edit Discipline: Rewrite vs Patch
+
+If a file needs a third corrective patch in a row for the same bug, STOP and
+rewrite the affected function/file cleanly from the corrected mental model.
+Incremental patching of a misunderstanding compounds errors (see the hal_i2c
+probe saga). Batch independent edits in one call; never edit-run-inspect the
+same file more than twice without re-reading it in full.
 
 ## Hard-Won Gotchas (do not relearn)
 
