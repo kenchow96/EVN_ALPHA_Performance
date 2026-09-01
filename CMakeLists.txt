@@ -43,10 +43,13 @@ add_executable(EVN_ALPHA_Performance
     hal/hal_battery.c
     hal/hal_uart.c
     hal/hal_servo.c
+    hal/hal_motor.c
+    hal/hal_encoder.c
 )
 
 # Generate PIO headers
 pico_generate_pio_header(EVN_ALPHA_Performance ${CMAKE_CURRENT_LIST_DIR}/pio/servo.pio)
+pico_generate_pio_header(EVN_ALPHA_Performance ${CMAKE_CURRENT_LIST_DIR}/pio/quadrature.pio)
 
 pico_set_program_name(EVN_ALPHA_Performance "EVN_ALPHA_Performance")
 pico_set_program_version(EVN_ALPHA_Performance "0.1")
@@ -60,7 +63,8 @@ target_link_libraries(EVN_ALPHA_Performance
         pico_stdlib
         hardware_i2c
         hardware_uart
-        hardware_pio)
+        hardware_pio
+        hardware_pwm)
 
 # Add the standard include files to the build
 target_include_directories(EVN_ALPHA_Performance PRIVATE

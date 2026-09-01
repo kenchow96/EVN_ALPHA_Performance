@@ -6,14 +6,14 @@
 #include "hal/hal_button.h"
 #include "hal/hal_i2c.h"
 #include "hal/hal_battery.h"
-#include "hal/hal_uart.h"
-#include "hal/hal_servo.h"
+#include "hal/hal_motor.h"
+#include "hal/hal_encoder.h"
 
 // Non-blocking scheduler intervals (project rule: never sleep in main loop)
 #define BUTTON_POLL_INTERVAL_US   1000ULL    // 1 kHz debounce
 #define BATTERY_SERVICE_INTERVAL_US 20000ULL // 50 Hz telemetry
-#define UART_LOOPBACK_INTERVAL_US 500000ULL  // 2 Hz loopback self-test
-#define SERVO_SWEEP_INTERVAL_US   20000ULL   // 50 Hz sweep update
+#define ENCODER_SERVICE_INTERVAL_US 1000ULL  // 1 kHz encoder drain
+#define MOTOR_TEST_INTERVAL_US    2000000ULL // motor test step every 2 s
 
 static void print_battery(void) {
     evn_battery_state_t b;
@@ -26,49 +26,36 @@ static void print_battery(void) {
            (unsigned)b.seq);
 }
 
-/* Loopback: send a counter on Serial 1 (uart0 TX=GP0), read it back on
- * Serial 2 (uart1 RX=GP9) via the TX1->RX2 crossover wire, and vice versa. */
-static void uart_loopback_test(void) {
-    static uint32_t counter = 0;
-    char msg[32];
-    int len = snprintf(msg, sizeof msg, "PING%lu", (unsigned long)counter++);
+/* Motor + encoder self-test. Cycles a test motor through:
+ *   forward 60% (2 s) -> brake (0.5 s) -> reverse 60% (2 s) -> coast (rest)
+ * while draining the PIO encoders at 1 kHz and reporting counts each step.
+ * The button advances to the next motor. */
+static int   s_test_motor = 0;        // which motor is under test
+static int   s_phase = 0;             // 0=fwd 1=brake 2=rev 3=coast
+static const float TEST_DUTY = 0.60f; // ~60% overcomes stiction
+static int32_t s_prev_count = 0;
 
-    // Send on both ports
-    hal_uart_flush_rx(EVN_UART_2);
-    hal_uart_write(EVN_UART_1, (const uint8_t *)msg, len);
+static void motor_test_step(void) {
+    evn_motor_id_t m = (evn_motor_id_t)s_test_motor;
+    static const char  *names[] = { "FWD",   "BRAKE", "REV",    "COAST" };
+    static const float  duty [] = {  0.60f,   0.0f,    -0.60f,     0.0f    };
 
-    // Give the wire a moment (bytes arrive via RX IRQ into ring buffer)
-    uint64_t deadline = time_us_64() + 50000ULL; // 50 ms
-    int got = 0;
-    uint8_t rx[32];
-    while (time_us_64() < deadline && got < len) {
-        int c = hal_uart_getc(EVN_UART_2);
-        if (c >= 0) rx[got++] = (uint8_t)c;
+    // measure encoder delta over the phase that JUST ran, then advance
+    int32_t c = hal_encoder_get_count((evn_encoder_id_t)s_test_motor);
+    int32_t delta = c - s_prev_count;
+    s_prev_count = c;
+    int ran = (s_phase + 3) & 3;   // phase that just finished
+    printf("Motor %d ran %-5s duty=%+.2f  enc=%ld  (delta=%+ld)\n",
+           s_test_motor + 1, names[ran], (double)duty[ran], (long)c, (long)delta);
+
+    // now command the NEXT phase
+    switch (s_phase) {
+    case 0: hal_motor_set(m, TEST_DUTY);  break;   // forward
+    case 1: hal_motor_brake(m);           break;   // brake
+    case 2: hal_motor_set(m, -TEST_DUTY); break;   // reverse
+    case 3: hal_motor_coast(m);           break;   // coast
     }
-    rx[got] = '\0';
-
-    bool pass = (got == len) && (memcmp(rx, msg, len) == 0);
-    static uint32_t pass_count = 0, fail_count = 0;
-    if (pass) pass_count++; else fail_count++;
-    // Print every test while failing, else a summary every 10 tests
-    if (!pass || (pass_count % 10u) == 1u) {
-        printf("UART loopback: '%s'->'%s' %s (pass=%lu fail=%lu)\n",
-               msg, rx, pass ? "PASS" : "FAIL",
-               (unsigned long)pass_count, (unsigned long)fail_count);
-    }
-}
-
-/* Servo sweep self-test: triangle-wave all 4 channels 0↔180°, 50 Hz update.
- * Prints a status line each time the sweep reverses. */
-static void servo_sweep_test(void) {
-    static float angle = 0.0f;
-    static float step = 1.0f;      // degrees per 20 ms tick → 90°/s sweep
-    angle += step;
-    if (angle >= 180.0f) { angle = 180.0f; step = -1.0f; printf("Servo sweep: at 180°\n"); }
-    if (angle <= 0.0f)   { angle = 0.0f;   step =  1.0f; printf("Servo sweep: at 0°\n"); }
-    for (int i = 0; i < EVN_SERVO_COUNT; i++) {
-        hal_servo_write_angle((evn_servo_id_t)i, angle, false);
-    }
+    s_phase = (s_phase + 1) & 3;
 }
 
 int main()
@@ -92,21 +79,22 @@ int main()
     bool bat = hal_battery_init();
     printf("hal_battery_init: %s\n", bat ? "OK (BQ25887 found)" : "NOT FOUND");
 
-    hal_uart_init(EVN_UART_1, 115200);
-    hal_uart_init(EVN_UART_2, 115200);
-    printf("hal_uart_init: Serial1 (uart0 GP0/GP1) + Serial2 (uart1 GP8/GP9) @115200\n");
+    bool mot = hal_motor_init();
+    printf("hal_motor_init: %s (4ch DRV8833 @ 25 kHz)\n", mot ? "OK" : "FAIL");
 
-    bool srv = hal_servo_init();
-    printf("hal_servo_init: %s (4ch PIO @ 50 Hz, centred 1500us)\n", srv ? "OK" : "SM CLAIM FAIL");
+    bool enc = hal_encoder_init();
+    printf("hal_encoder_init: %s (4ch PIO quadrature @ pio0)\n", enc ? "OK" : "FAIL");
 
-    // Initial sample + report
+    // Initial battery report
     hal_battery_service();
     print_battery();
+    printf("Motor test: M%d selected. Button = next motor. Cycling FWD/BRAKE/REV/COAST.\n",
+           s_test_motor + 1);
 
     uint64_t next_poll = time_us_64();
     uint64_t next_battery = time_us_64();
-    uint64_t next_loopback = time_us_64();
-    uint64_t next_servo = time_us_64();
+    uint64_t next_encoder = time_us_64();
+    uint64_t next_motor = time_us_64();
 
     while (true) {
         uint64_t now = time_us_64();
@@ -117,8 +105,20 @@ int main()
             hal_button_update();
             if (hal_button_get_event()) {
                 hal_led_toggle();
-                print_battery();
+                // advance to next motor, coast the current one first
+                hal_motor_coast_all();
+                s_test_motor = (s_test_motor + 1) & 3;
+                s_phase = 0;
+                hal_encoder_reset((evn_encoder_id_t)s_test_motor);
+                printf(">> Motor %d selected (prev coasted). Battery %.2f V\n",
+                       s_test_motor + 1, hal_battery_voltage_v());
             }
+        }
+
+        // 1 kHz: encoder drain
+        if ((int64_t)(now - next_encoder) >= 0) {
+            next_encoder = now + ENCODER_SERVICE_INTERVAL_US;
+            hal_encoder_service();
         }
 
         // 50 Hz: battery telemetry dispatcher (Core 0 background task)
@@ -127,16 +127,10 @@ int main()
             hal_battery_service();
         }
 
-        // 2 Hz: UART loopback self-test
-        if ((int64_t)(now - next_loopback) >= 0) {
-            next_loopback = now + UART_LOOPBACK_INTERVAL_US;
-            uart_loopback_test();
-        }
-
-        // 50 Hz: servo sweep self-test
-        if ((int64_t)(now - next_servo) >= 0) {
-            next_servo = now + SERVO_SWEEP_INTERVAL_US;
-            servo_sweep_test();
+        // every 2 s: advance the motor test phase and report encoder count
+        if ((int64_t)(now - next_motor) >= 0) {
+            next_motor = now + MOTOR_TEST_INTERVAL_US;
+            motor_test_step();
         }
 
         tight_loop_contents();

@@ -1,0 +1,63 @@
+; EVN ALPHA quadrature encoder — 1 motor per PIO state machine (pio0, SM0–SM3).
+;
+; Adapted from the official Raspberry Pi pico-examples "quadrature_encoder"
+; (BSD-3-Clause, (c) 2023 Raspberry Pi (Trading) Ltd.), with the C init/fetch
+; helpers folded into hal_encoder.c.
+;
+; Continuously shifts the 2 phase pins into ISR and uses the lower 4 bits as a
+; computed jump to increment / decrement / hold a step counter in Y. The count
+; is pushed (non-blocking) to the RX FIFO; the CPU drains it at 1 kHz.
+;
+; Max step rate ≈ sysclk / 10  (200 MHz → 20 Msteps/sec — far beyond any
+; EVN motor encoder). Pins: A on `base`, B on `base+1` (both pulled up).
+; Motors with B on the lower pin (M2/M4) are sign-flipped in hal_encoder.c.
+;
+; MUST be loaded at origin 0 (uses computed jumps into a jump table).
+
+.pio_version 0
+
+.program evn_quad
+.origin 0
+
+; jump table for the low 4 bits of {prev(2), cur(2)}:
+; 00 state
+    JMP update    ; read 00
+    JMP decrement ; read 01
+    JMP increment ; read 10
+    JMP update    ; read 11
+; 01 state
+    JMP increment ; read 00
+    JMP update    ; read 01
+    JMP update    ; read 10
+    JMP decrement ; read 11
+; 10 state
+    JMP decrement ; read 00
+    JMP update    ; read 01
+    JMP update    ; read 10
+    JMP increment ; read 11
+; 11 state (first two entries in the table; decrement/others in place)
+    JMP update    ; read 00
+    JMP increment ; read 01
+decrement:
+    ; JMP Y-- to the NEXT address = pure "decrement Y", no branch side effect
+    JMP Y--, update ; read 10
+
+.wrap_target
+update:
+    MOV ISR, Y      ; report current count
+    PUSH noblock
+
+sample_pins:
+    ; shift last 2-bit state (in OSR) + new 2-bit pin state into ISR → 4-bit index
+    OUT ISR, 2
+    IN PINS, 2
+    MOV OSR, ISR    ; remember state for next iteration
+    MOV PC, ISR     ; computed jump into the table
+
+increment:
+    ; PIO has no increment: negate, decrement, negate
+    MOV Y, ~Y
+    JMP Y--, increment_cont
+increment_cont:
+    MOV Y, ~Y
+.wrap
