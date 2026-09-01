@@ -50,6 +50,15 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         };
         evn_observer_init(&a->observer, a->model, &a->observer.settings, 0);
         evn_pid_init(&a->pid);
+        /* Per-model starting gains. EV3 Medium validated on hardware;
+         * EV3 Large (more torque/inertia) needs a softer loop for stability. */
+        if (a->model == evn_motor_model_get(EVN_MOTOR_MODEL_EV3_LARGE)) {
+            a->pid.kp_pos = 2.5e-4f; a->pid.kp_vel = 3.0e-5f;
+            a->pid.ki_pos = 1.0e-6f; a->pid.kff_accel = 5.0e-6f;
+        } else {   /* EV3 Medium / NXT */
+            a->pid.kp_pos = 5.0e-4f; a->pid.kp_vel = 6.0e-5f;
+            a->pid.ki_pos = 2.0e-6f; a->pid.kff_accel = 1.0e-5f;
+        }
         a->traj.active = false;
         a->traj.done = true;
         a->cmd_seq = 0;

@@ -49,7 +49,11 @@ typedef struct {
 } substep_t;
 
 static substep_t s_enc[4];
-static int8_t    s_sign[4] = { +1, -1, +1, -1 };   /* runtime overrides */
+/* Runtime sign overrides. Defaults: M1/M3 +1 (A lower), M2/M4 -1 (B lower).
+ * Per-installation direction/mounting tuning via the 's' serial command.
+ * NOTE: port 2 motor showed a runaway not fixed by sign/dir flips — suspected
+ * hardware (encoder/leads on port 2); see docs/ASSUMPTIONS.md C3. */
+static int8_t    s_sign[4] = { +1, -1, +1, -1 };
 static uint8_t   s_populated = 0;
 static bool      s_loaded = false;
 

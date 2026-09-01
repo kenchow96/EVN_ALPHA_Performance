@@ -10,6 +10,7 @@
 #include "motion/core1.h"
 #include "motion/motion_engine.h"
 #include "bench/bench_cycles.h"
+#include <stdlib.h>
 
 /* ==========================================================================
  * Phase 7 motion-engine test.
@@ -96,6 +97,15 @@ static void handle_command(void) {
             evn_motion_set_observer(ssl, st, neg, ratio);
             printf(">> observer ssl=%d st=%d neg=%d ratio=%d\n", ssl, st, neg, ratio);
         } else printf("?? usage: o ssl st neg ratio\n");
+        break;
+    }
+    case 's': {  /* s <motor 1-4> <enc_sign +/-1> <motor_dir +/-1> */
+        int m, es, md;
+        if (sscanf(p + 1, "%d %d %d", &m, &es, &md) == 3 && m >= 1 && m <= 4) {
+            hal_encoder_set_sign((evn_encoder_id_t)(m - 1), (int8_t)es);
+            hal_motor_set_direction((evn_motor_id_t)(m - 1), (int8_t)md);
+            printf(">> motor %d enc_sign=%d motor_dir=%d\n", m, es, md);
+        } else printf("?? usage: s motor enc_sign motor_dir\n");
         break;
     }
     default: printf("?? unknown cmd '%c'\n", p[0]); break;
