@@ -48,6 +48,9 @@ add_executable(EVN_ALPHA_Performance
     motion/core1.c
     motion/observer.c
     motion/motor_models.c
+    motion/trajectory.c
+    motion/pid.c
+    motion/motion_engine.c
     bench/bench_cycles.c
 )
 

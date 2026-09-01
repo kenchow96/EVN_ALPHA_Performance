@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <string.h>
 #include "pico/stdlib.h"
 #include "hardware/clocks.h"
 #include "hal/hal_led.h"
@@ -9,223 +8,139 @@
 #include "hal/hal_motor.h"
 #include "hal/hal_encoder.h"
 #include "motion/core1.h"
+#include "motion/motion_engine.h"
 #include "bench/bench_cycles.h"
 
-// Non-blocking scheduler intervals (project rule: never sleep in main loop)
-#define BUTTON_POLL_INTERVAL_US   1000ULL    // 1 kHz debounce
-#define BATTERY_SERVICE_INTERVAL_US 20000ULL // 50 Hz telemetry
-#define MOTOR_TEST_INTERVAL_US    2000000ULL // motor test step every 2 s
+/* ==========================================================================
+ * Phase 7 motion-engine test.
+ *
+ * Setup (per user):
+ *   Port 1, 2 = EV3 Large (unloaded)
+ *   Port 3, 4 = EV3 Medium (wheels on, off-ground)
+ *
+ * Test: on start-char, each motor runs a trapezoidal move +360° then back to
+ * 0°, using the full pipeline (trajectory → cascaded PID+FF → observer → PWM).
+ * We log commanded vs observed angle/speed each 100 ms, and flag stalls.
+ * ========================================================================== */
 
-static void print_battery(void) {
-    evn_battery_state_t b;
-    if (!hal_battery_get(&b)) {
-        printf("Battery: BQ25887 not present\n");
-        return;
-    }
-    printf("Battery: %.3f V | Cell1: %.3f V | Cell2: %.3f V  (seq=%u)\n",
-           b.vbatt_mv / 1000.0f, b.vcell1_mv / 1000.0f, b.vcell2_mv / 1000.0f,
-           (unsigned)b.seq);
-}
+#define BUTTON_POLL_US    1000ULL
+#define BATTERY_US        20000ULL
+#define REPORT_US         100000ULL   // 10 Hz status report
 
-/* Motor + encoder self-test. Cycles a test motor through:
- *   forward 60% (2 s) -> brake (0.5 s) -> reverse 60% (2 s) -> coast (rest)
- * while draining the PIO encoders at 1 kHz and reporting counts each step.
- * The button advances to the next motor. */
-static int   s_test_motor = 0;        // which motor is under test
-static int   s_phase = 0;             // 0=fwd 1=brake 2=rev 3=coast
-static const float TEST_DUTY = 0.60f; // ~60% overcomes stiction
-static int32_t s_prev_count = 0;
-static int   s_cycle = 0;             // completed FWD..COAST cycles this motor
-static bool  s_test_done = false;     // all motors cycled → test halted
+/* Encoder counts per output revolution. Pybricks EV3/NXT tacho = 360 counts/rev
+ * (1 count per degree). Our substep gives 256 substeps per quadrature cycle;
+ * for these motors 1 cycle = 1 count = 1 degree → 256 substeps/degree.
+ * counts_per_rev here is the OBSERVER/trajectory scale; we feed substeps and
+ * convert. Exposed for calibration. */
+static const float CPR[4] = { 360.0f, 360.0f, 360.0f, 360.0f };
 
-#define TEST_CYCLES_PER_MOTOR 3       // 3 full cycles, then move on
-
-/* Called once after the LAST motor finishes: coast everything, let the bus
- * settle, then log a clean (no-load) battery reading for the multimeter
- * comparison data point, plus the Core 1 loop timing stats. */
-static void motor_test_finish(void) {
-    hal_motor_coast_all();
-    // let brush bounce / bus recover before the no-load reading
-    busy_wait_ms(500);
-    hal_battery_service();
-    busy_wait_ms(50);
-    hal_battery_service();              // ensure a fresh published sample
-    evn_battery_state_t b;
-    if (hal_battery_get(&b)) {
-        printf("\n=== TEST COMPLETE (no-load battery) ===\n");
-        printf("Battery: %.3f V | Cell1: %.3f V | Cell2: %.3f V\n",
-               b.vbatt_mv / 1000.0f, b.vcell1_mv / 1000.0f, b.vcell2_mv / 1000.0f);
-    }
-    // Core 1 loop timing report (proves the <1 µs jitter target at µs resolution)
-    evn_core1_status_t cs;
-    if (evn_core1_get_status(&cs)) {
-        printf("Core1 loop: %u ticks, period min=%u us max=%u us (target 1000),\n",
-               (unsigned)cs.tick_count, (unsigned)cs.period_min_us, (unsigned)cs.period_max_us);
-        printf("          last jitter=%ld us, exec max=%u us, rate=%u mHz\n",
-               (long)cs.period_jitter_us, (unsigned)cs.exec_max_us, (unsigned)cs.tick_rate_milli_hz);
-    }
-    printf("(motors coasted — take multimeter reading now)\n");
-}
-
-static void motor_test_step(void) {
-    if (s_test_done) return;
-    evn_motor_id_t m = (evn_motor_id_t)s_test_motor;
-    static const char  *names[] = { "FWD",   "BRAKE", "REV",    "COAST" };
-    static const float  duty [] = {  0.60f,   0.0f,    -0.60f,     0.0f    };
-
-    // measure encoder delta over the phase that JUST ran, then advance
-    evn_encoder_id_t e = (evn_encoder_id_t)s_test_motor;
-    int32_t c = hal_encoder_get_count(e);
-    int32_t delta = c - s_prev_count;
-    s_prev_count = c;
-    int ran = (s_phase + 3) & 3;   // phase that just finished
-    int32_t spd = hal_encoder_get_speed_substep(e);
-    int32_t pos = hal_encoder_get_position_substep(e);
-    printf("Motor %d cyc%d %-5s duty=%+.2f  steps=%ld (delta=%+ld)  speed=%ld s/s %s\n",
-           s_test_motor + 1, s_cycle, names[ran], (double)duty[ran], (long)c, (long)delta,
-           (long)spd, hal_encoder_is_stopped(e) ? "[stopped]" : "");
-
-    // now command the NEXT phase
-    switch (s_phase) {
-    case 0: hal_motor_set(m, TEST_DUTY);  break;   // forward
-    case 1: hal_motor_brake(m);           break;   // brake
-    case 2: hal_motor_set(m, -TEST_DUTY); break;   // reverse
-    case 3: hal_motor_coast(m);           break;   // coast
-    }
-
-    // completed a full FWD..COAST cycle when we wrap from coast back to fwd
-    if (s_phase == 3) {
-        s_cycle++;
-        if (s_cycle >= TEST_CYCLES_PER_MOTOR) {
-            // this motor done — auto-advance to next populated motor
-            s_cycle = 0;
-            hal_motor_coast(m);
-            s_test_motor++;
-            s_phase = 0;
-            if (s_test_motor >= 4) {
-                s_test_motor = 3;      // stay parked
-                s_test_done = true;
-                motor_test_finish();
-                return;
-            }
-            hal_encoder_reset((evn_encoder_id_t)s_test_motor);
-            s_prev_count = 0;
-            printf(">> Auto-advance to Motor %d\n", s_test_motor + 1);
-        }
-    }
-    s_phase = (s_phase + 1) & 3;
-}
-
-/* --- scheduler tasks (file scope) --- */
-static void task_button(void) {
-    hal_button_update();
-    if (hal_button_get_event()) {
-        hal_led_toggle();
-        // button = restart the finite test from Motor 1
-        hal_motor_coast_all();
-        s_test_motor = 0;
-        s_phase = 0;
-        s_cycle = 0;
-        s_prev_count = 0;
-        s_test_done = false;
-        evn_core1_reset_stats();        // fresh jitter stats for the new run
-        hal_encoder_reset(EVN_ENC_1);
-        printf(">> Test restarted at Motor 1. Battery %.2f V\n", hal_battery_voltage_v());
-    }
-}
-static void task_battery(void) { hal_battery_service(); }
-static void task_motor(void)   { motor_test_step(); }
-/* NOTE: encoder service runs on Core 1 at 1 kHz (evn_core1_tick), not here. */
-
-typedef struct { uint64_t next; uint64_t period_us; void (*fn)(void); } task_t;
-
-/* Block (with LED heartbeat) until the host sends any character over USB-CDC.
- * Prevents tests from auto-starting and truncating the boot banner / early
- * output before the operator is ready. Returns once a byte arrives. */
 static void wait_for_start(void) {
-    printf("\n*** Send any character to start the motor test ***\n");
+    printf("\n*** Send any character to start the motion test ***\n");
     bool led = false;
     while (getchar_timeout_us(0) == PICO_ERROR_TIMEOUT) {
-        // slow heartbeat so we can see it's armed and waiting
         hal_led_set(led = !led);
         busy_wait_ms(250);
     }
     hal_led_set(false);
-    printf("Start received. Running...\n");
+    printf("Start received.\n");
 }
 
-int main()
-{
+static void print_battery(void) {
+    evn_battery_state_t b;
+    if (hal_battery_get(&b))
+        printf("Battery: %.3f V (cells %.3f / %.3f)\n",
+               b.vbatt_mv/1000.0f, b.vcell1_mv/1000.0f, b.vcell2_mv/1000.0f);
+}
+
+int main(void) {
     stdio_init_all();
 
-    // Wait (bounded, 3 s) for the USB console to attach so the boot banner and
-    // diagnostics aren't lost before the host connects.
-    {
-        uint64_t deadline = time_us_64() + 3000000ULL;
-        while (!stdio_usb_connected() && time_us_64() < deadline) tight_loop_contents();
-    }
+    /* bounded console wait so the banner always lands */
+    uint64_t deadline = time_us_64() + 3000000ULL;
+    while (!stdio_usb_connected() && time_us_64() < deadline) tight_loop_contents();
 
     hal_led_init();
     hal_button_init();
+    for (int i = 0; i < 3; i++) { hal_led_set(true); busy_wait_ms(80); hal_led_set(false); busy_wait_ms(80); }
 
-    // Boot heartbeat: 3 quick LED blinks so liveness is visible without console
-    for (int i = 0; i < 3; i++) {
-        hal_led_set(true);
-        busy_wait_ms(80);
-        hal_led_set(false);
-        busy_wait_ms(80);
-    }
+    printf("hal_i2c_init: %s\n", hal_i2c_init() == EVN_I2C_OK ? "OK" : "MUX ERROR");
+    printf("hal_battery_init: %s\n", hal_battery_init() ? "OK" : "NOT FOUND");
 
-    evn_i2c_status_t st = hal_i2c_init();
-    printf("hal_i2c_init: %s\n", st == EVN_I2C_OK ? "OK (both muxes ACK)" : "MUX ERROR");
+    /* standard-peripheral model table: M1,M2 = EV3 Large; M3,M4 = EV3 Medium */
+    static const evn_motor_model_t *models[4];
+    models[0] = evn_motor_model_get(EVN_MOTOR_MODEL_EV3_LARGE);
+    models[1] = evn_motor_model_get(EVN_MOTOR_MODEL_EV3_LARGE);
+    models[2] = evn_motor_model_get(EVN_MOTOR_MODEL_EV3_MEDIUM);
+    models[3] = evn_motor_model_get(EVN_MOTOR_MODEL_EV3_MEDIUM);
 
-    bool bat = hal_battery_init();
-    printf("hal_battery_init: %s\n", bat ? "OK (BQ25887 found)" : "NOT FOUND");
-
-    bool mot = hal_motor_init();
-    printf("hal_motor_init: %s (4ch DRV8833 @ %u kHz)\n", mot ? "OK" : "FAIL", (unsigned)(EVN_MOTOR_PWM_FREQ_HZ/1000));
-
-    bool enc = hal_encoder_init();
-    printf("hal_encoder_init: %s (4ch PIO substep @ pio0)\n", enc ? "OK" : "FAIL");
+    hal_motor_init_mask(0xF);
+    hal_encoder_init_mask(0xF);
+    evn_motion_init(models, CPR, 0xF);
+    printf("motion_init: 4 axes (M1/M2=EV3-L, M3/M4=EV3-M)\n");
 
     bench_init();
-    // µs-timer sanity: confirm time_us_64 advances (RP2040 has no DWT CYCCNT).
-    uint64_t t0 = bench_now_us();
-    busy_wait_us(100);
-    uint64_t t1 = bench_now_us();
-    printf("bench: µs timer %s (delta over 100us = %llu)\n",
-           (t1 > t0) ? "RUNNING" : "FROZEN", (unsigned long long)(t1 - t0));
-
-    evn_core1_start();   // Core 1 now owns the 1 kHz encoder service
-    printf("core1_start: 1 kHz real-time loop launched (jitter stats on finish)\n");
-
-    // Initial battery report
-    hal_battery_service();
+    evn_core1_start();
+    printf("core1: 1 kHz loop + motion engine running\n");
     print_battery();
-    printf("Motor test: %d cycles/motor, auto-advance M1→M4, then coast + clean battery reading.\n",
-           TEST_CYCLES_PER_MOTOR);
 
     wait_for_start();
 
-    /* --- Non-blocking task-table scheduler -------------------------------
-     * One elapsed-time check per task; a single now timestamp per pass.
-     * Tasks ordered by rate (fastest first) for deterministic service. */
-    static task_t s_tasks[] = {
-        { 0, BUTTON_POLL_INTERVAL_US,    task_button  },   // 1 kHz
-        { 0, BATTERY_SERVICE_INTERVAL_US, task_battery },  // 50 Hz
-        { 0, MOTOR_TEST_INTERVAL_US,     task_motor   },   // 0.5 Hz
-    };
-    const unsigned n_tasks = sizeof(s_tasks) / sizeof(s_tasks[0]);
-    for (unsigned i = 0; i < n_tasks; i++) s_tasks[i].next = time_us_64();
+    /* command: +360° then back to 0°, 180 deg/s, 900 deg/s^2 */
+    for (int i = 0; i < 4; i++)
+        evn_motion_move_to(i, 360.0f, 180.0f, 900.0f);
+    printf("Commanded +360deg on all 4 axes.\n");
+
+    uint64_t next_button = time_us_64();
+    uint64_t next_batt = time_us_64();
+    uint64_t next_report = time_us_64();
+    bool returned = false;
 
     while (true) {
         uint64_t now = time_us_64();
-        for (unsigned i = 0; i < n_tasks; i++) {
-            if ((int64_t)(now - s_tasks[i].next) >= 0) {
-                s_tasks[i].next = now + s_tasks[i].period_us;
-                s_tasks[i].fn();
+
+        if ((int64_t)(now - next_button) >= 0) {
+            next_button = now + BUTTON_POLL_US;
+            hal_button_update();
+            if (hal_button_get_event()) {  // emergency coast all
+                for (int i = 0; i < 4; i++) evn_motion_coast(i);
+                printf(">> BUTTON: coast all\n");
             }
         }
+
+        if ((int64_t)(now - next_batt) >= 0) {
+            next_batt = now + BATTERY_US;
+            hal_battery_service();
+        }
+
+        if ((int64_t)(now - next_report) >= 0) {
+            next_report = now + REPORT_US;
+            printf("---\n");
+            bool all_done = true;
+            for (int i = 0; i < 4; i++) {
+                float ang, spd; bool stall, done;
+                evn_motion_get_state(i, &ang, &spd, &stall, &done);
+                printf("M%d: %7.1f deg  %6.1f d/s  %s%s\n", i+1, (double)ang, (double)spd,
+                       stall ? "STALL " : "", done ? "done" : "moving");
+                if (!done) all_done = false;
+            }
+            /* when all reached +360, command return to 0 once */
+            if (all_done && !returned) {
+                returned = true;
+                for (int i = 0; i < 4; i++) evn_motion_move_to(i, 0.0f, 180.0f, 900.0f);
+                printf("All reached +360. Commanding return to 0.\n");
+            } else if (all_done && returned) {
+                /* finished both legs — final report */
+                evn_core1_status_t cs;
+                if (evn_core1_get_status(&cs)) {
+                    printf("=== MOTION TEST COMPLETE ===\n");
+                    printf("Core1: %u ticks, period %u-%u us, exec max %u us\n",
+                           (unsigned)cs.tick_count, (unsigned)cs.period_min_us,
+                           (unsigned)cs.period_max_us, (unsigned)cs.exec_max_us);
+                }
+                print_battery();
+            }
+        }
+
         tight_loop_contents();
     }
 }

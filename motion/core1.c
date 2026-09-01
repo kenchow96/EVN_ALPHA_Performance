@@ -7,6 +7,7 @@
 
 #include "../bench/bench_cycles.h"
 #include "../hal/hal_encoder.h"
+#include "motion_engine.h"
 
 /* --------------------------------------------------------------------------
  * Core 1 runs a deterministic 1 kHz loop driven by a hardware-timer repeating
@@ -28,12 +29,11 @@ static int64_t __not_in_flash_func(core1_alarm_isr)(alarm_id_t id, void *ud) {
     return EVN_CORE1_PERIOD_US;   /* repeat after 1 ms (hardware-timed) */
 }
 
-/* The Core 1 1 kHz loop body. Phase 1: encoder service. The motion engine
- * (trajectory → cascaded PID → observer) plugs in here in Phase 7.
+/* The Core 1 1 kHz loop body. Phase 1: encoder service. Phase 7: motion engine.
  * __not_in_flash_func per spec §4 (0-wait SRAM, no flash-cache stalls). */
 void __not_in_flash_func(evn_core1_tick)(void) {
     hal_encoder_service();
-    /* Phase 7: trajectory_update(); pid_update(); observer_update(); */
+    evn_motion_tick();
 }
 
 static void __not_in_flash_func(core1_main)(void) {
