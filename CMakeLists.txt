@@ -41,6 +41,7 @@ add_executable(EVN_ALPHA_Performance
     hal/hal_button.c
     hal/hal_i2c.c
     hal/hal_battery.c
+    hal/hal_uart.c
 )
 
 pico_set_program_name(EVN_ALPHA_Performance "EVN_ALPHA_Performance")
@@ -53,7 +54,8 @@ pico_enable_stdio_usb(EVN_ALPHA_Performance 1)
 # Add the standard library to the build
 target_link_libraries(EVN_ALPHA_Performance
         pico_stdlib
-        hardware_i2c)
+        hardware_i2c
+        hardware_uart)
 
 # Add the standard include files to the build
 target_include_directories(EVN_ALPHA_Performance PRIVATE

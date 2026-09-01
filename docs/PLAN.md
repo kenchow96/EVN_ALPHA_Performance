@@ -125,6 +125,10 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 
 ## 6. Risk Register & Open Questions
 
+### Action Items (open)
+- [ ] **Battery calibration**: BQ25887 reads ~0.8% low (7.12 V vs multimeter 7.18 V). Add a calibration constant (or verify against a second meter) in Phase 9 hardening. Monitor drift over charge cycles.
+- [ ] **Custom board header**: `boards/evn_alpha.h` broke USB enumeration; currently using `pico` board + flash overrides. Revisit a proper board header in Phase 9 (needs correct TinyUSB/VID-PID defaults).
+
 | Risk / Question | Impact | Mitigation |
 | :--- | :--- | :--- |
 | PIO instruction budget: quadrature (4 SM) + servo (4 SM) across 2 PIO blocks × 32 instr | Blocks Phases 3 & 6 | Budget table before coding; quadrature on pio0, servo on pio1; servo SM time-multiplexing fallback |
