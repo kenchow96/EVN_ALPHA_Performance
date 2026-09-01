@@ -325,7 +325,8 @@ def decode(image, output_dir):
         header = decode_header(image[slot:slot + PAGE_SIZE], index, run_id)
         if header is None:
             continue
-        name = case_name(header)
+        name = (f"case_{index:02d}_r{header['repeat_index']}_"
+            f"{case_name(header)}")
         record = {"name": name, "header": header}
         if header["status"] == STATUS_COMPLETE:
             rows = decode_rows(image, index, header)

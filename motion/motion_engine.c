@@ -107,15 +107,19 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         };
         evn_observer_init(&a->observer, a->model, &a->observer.settings, 0);
         evn_pid_init(&a->pid);
-        /* Per-model gains, validated on hardware (2026-09-01): position loop on
-         * the true encoder + edge-timed encoder speed + model feedforward + a
-         * 0.4 deg hold deadzone + a 12% stiction-break floor. EV3 Medium tracks
-         * to 0.000 deg; EV3 Large needs the stronger kp/ki to break stiction
-         * and converge to ~0.04 deg. */
-        if (a->model == evn_motor_model_get(EVN_MOTOR_MODEL_EV3_MEDIUM)) {
-            a->pid.kp_pos = 8.0e-5f; a->pid.kp_vel = 8.0e-7f;
+        /* Per-model gains and launch behavior validated on hardware. */
+        bool is_medium =
+            a->model == evn_motor_model_get(EVN_MOTOR_MODEL_EV3_MEDIUM);
+        if (is_medium) {
+            a->pid.kp_pos = 1.2e-4f; a->pid.kp_vel = 5.0e-7f;
             a->pid.ki_pos = 8.0e-7f; a->pid.kff_accel = 0.0f;
-            a->pid.start_duty = 0.65f; a->pid.min_duty = 0.45f;
+            a->pid.endpoint_kp_vel = 5.0e-7f;
+            a->pid.start_duty = 0.65f; a->pid.min_duty = 0.55f;
+            a->pid.startup_release_speed_mdegs = 10000.0f;
+            a->pid.startup_ramp_ticks = 800u;
+            a->pid.restart_ramp_ticks = 200u;
+            a->pid.startup_pulse_on_ticks = 4u;
+            a->pid.vel_window = 40;
         } else {   /* EV3 Large / NXT */
             a->pid.kp_pos = 8.0e-5f; a->pid.kp_vel = 1.0e-6f;
             a->pid.ki_pos = 1.0e-6f; a->pid.kff_accel = 0.0f;
@@ -126,15 +130,15 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         a->observer_divider = 0;
         a->edge_speed_filtered = 0.0f;
         a->edge_speed_alpha = 0.05f;
-        a->profile_vel_scale = 1.0f;
-        a->profile_accel_scale = 1.0f;
+        a->profile_vel_scale = is_medium ? 0.85f : 1.0f;
+        a->profile_accel_scale = is_medium ? 0.40f : 1.0f;
         a->trajectory_type = EVN_TRAJECTORY_TRAPEZOID;
-        a->startup_reference_governor = false;
-        a->active_startup_reference_governor = false;
+        a->startup_reference_governor = is_medium;
+        a->active_startup_reference_governor = is_medium;
         a->friction_feedforward_permille = 500u;
         a->active_friction_feedforward_permille = 500u;
-        a->edge_watchdog_enabled = false;
-        a->active_edge_watchdog_enabled = false;
+        a->edge_watchdog_enabled = is_medium;
+        a->active_edge_watchdog_enabled = is_medium;
         a->traj.active = false;
         a->traj.done = true;
         a->cmd_seq = 0;
