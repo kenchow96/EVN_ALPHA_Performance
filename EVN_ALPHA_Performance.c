@@ -11,6 +11,7 @@
 #include "motion/core1.h"
 #include "motion/motion_engine.h"
 #include "bench/bench_cycles.h"
+#include "bench/autonomous_tuning.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
@@ -524,6 +525,7 @@ int main(void) {
     evn_core1_start();
     con_printf("core1: 1 kHz loop + motion engine running\n");
     print_battery();
+    autonomous_tuning_init();
 
     con_printf("\nEVN motion console. cmds: r=+360/0  q/Q=+-90  m/M=relative  X=profile  c=coast  g/G=gains  o=obs  f=ff  w=pwm  t/d=trace\n");
 
@@ -558,6 +560,8 @@ int main(void) {
             next_batt = now + BATTERY_US;
             hal_battery_service();
         }
+
+        autonomous_tuning_service();
 
         /* r-test state machine: runs every loop so completion is detected even
          * when the 10 Hz report is off. Only the status print is gated. */

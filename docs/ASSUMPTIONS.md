@@ -1,21 +1,20 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, unattended handoff):** Base HEAD is `4d2898b`;
-> this checkpoint adds packet-bounded CDC writes and a cadence-aware 1/5 ms
-> trace validator. A fresh 200 Hz run completed `W20_K5_{pos,neg}` and
-> `W20_K10_pos` in `bench/results/sweep_window_speed_200hz_20260902`; case 4
-> wedged CDC during its first trace-block write after a valid 7.411 V battery
-> gate. The 4 s Core 1 deadline coasted the motor, and the user then placed the
-> powered board in BOOTSEL with Motor 3 clear and authorized an unattended run.
-> Do not resume CDC sweeping: one persistent handle still fails after roughly
-> three cases, picotool cannot force BOOTSEL once wedged, no CMSIS-DAP probe is
-> attached, and Windows device restart is denied without elevation. Implement
-> the USB-independent flash-backed 16-case Motor 3 sweep next: fixed binary
-> records below the reserved `0x10FF0000` calibration region, mandatory
-> multicore lockout, fresh battery gate per move, coast before every flash
-> operation, commit header last, then `reset_usb_boot()` for extraction.
-> Picotool 2.3.0 supports `save -r <from> <to> <file> -t uf2`. Phase 8 remains
-> blocked until all four axes pass `tools/motion_metrics.py` and beat baseline.
+> **RESUME POINT (2026-09-02, autonomous run):** Checkpoints `909ac01` and
+> `58c368c` retire CDC as the tuning data plane and add a multicore-safe flash
+> journal. The current build also contains the autonomous 16-case Motor 3
+> window sweep and `tools/decode_tuning_flash.py`; it builds cleanly and its
+> C/Python schema plus CRC path pass a synthetic 200 Hz end-to-end test. The
+> user placed the powered board in BOOTSEL with Motor 3 clear and authorized
+> unattended motion. Each case erases its fixed slot while coasted, requires a
+> battery sample age <=250 ms (pack >=6.5 V, cells >=3.0 V), runs with the 4 s
+> Core 1 auto-coast, logs ~530 trace rows, aborts on any missed RT tick, writes
+> trace pages under lockout, and commits the CRC header last. Completion enters
+> ROM BOOTSEL. Extract and decode exactly:
+> `picotool save -r 0x10F00000 0x10FF0000 bench/results/autonomous_window_20260902.uf2 -t uf2 -v`
+> then `python tools/decode_tuning_flash.py bench/results/autonomous_window_20260902.uf2 --output bench/results/autonomous_window_20260902`.
+> Do not resume CDC sweeping. Phase 8 remains blocked until all four axes pass
+> `tools/motion_metrics.py` and beat the measured baseline.
 
 Every assumption made during development that is **not** marked `[GROUND TRUTH]` in the specs and has **not** been independently verified against hardware. **Review and confirm/refute each before we build dependent phases on top.** Each entry: the assumption, where it's baked in, why we made it, and how to falsify it.
 

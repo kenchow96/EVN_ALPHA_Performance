@@ -53,6 +53,7 @@ add_executable(EVN_ALPHA_Performance
     motion/pid.c
     motion/motion_engine.c
     bench/bench_cycles.c
+    bench/autonomous_tuning.c
 )
 
 # Generate PIO headers
@@ -88,6 +89,7 @@ pico_add_extra_outputs(EVN_ALPHA_Performance)
 # packet; the application owns an 8 KiB record queue and retryable trace blocks.
 target_compile_definitions(EVN_ALPHA_Performance PRIVATE
     PICO_USE_FASTEST_SUPPORTED_CLOCK=1
+    EVN_AUTONOMOUS_TUNING=1
     PICO_STDIO_USB_STDOUT_TIMEOUT_US=500000
     CFG_TUD_CDC_TX_BUFSIZE=64
     CFG_TUD_CDC_RX_BUFSIZE=64
