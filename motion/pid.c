@@ -20,6 +20,7 @@ void evn_pid_init(evn_pid_t *p) {
     p->start_duty = 0.12f;
     p->startup_release_speed_mdegs = 0.0f;
     p->startup_ramp_ticks = 200u;
+    p->restart_ramp_ticks = 200u;
     p->motion_stuck = false;
     p->vel_window = PID_SPEED_WINDOW;
     evn_pid_reset(p, 0.0f);
@@ -130,7 +131,7 @@ float evn_pid_update(evn_pid_t *p,
     if (p->stick_ticks >= threshold) {
         int ramp_ticks = p->stick_ticks - threshold + 1;
         int ramp_duration = initial_starting ? p->startup_ramp_ticks :
-                    (restarting ? 200 : 100);
+                            (restarting ? p->restart_ramp_ticks : 100);
         float ramp = (float)ramp_ticks / (float)ramp_duration;
         if (ramp > 1.0f) ramp = 1.0f;
         float floor_d = (starting ? p->start_duty : p->min_duty) * ramp;
