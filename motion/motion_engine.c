@@ -6,6 +6,7 @@
 
 #include "pico/stdlib.h"
 #include "hardware/sync.h"   /* __dmb */
+#include <stdio.h>
 
 /* 1 kHz tick. dt in seconds. */
 #define MOTION_DT (1.0f / 1000.0f)
@@ -52,7 +53,7 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         a->traj.active = false;
         a->traj.done = true;
         a->cmd_seq = 0;
-        a->cmd_consumed_seq = 0;
+        a->cmd_consumed_seq = 0xFFFFFFFFu;   /* sentinel: no command consumed yet */
         a->cmd_active = false;
         a->stat_seq = 0;
         a->stat_stalled = false;
@@ -74,6 +75,7 @@ void evn_motion_move_to(uint8_t axis, float target_deg,
     a->cmd_active      = true;
     __dmb();
     a->cmd_seq++;
+    printf("[move_to] axis %d target=%.1f seq=%u\n", axis, (double)target_deg, (unsigned)a->cmd_seq);
 }
 
 void evn_motion_coast(uint8_t axis) {

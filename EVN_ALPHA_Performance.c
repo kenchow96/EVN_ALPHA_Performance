@@ -92,7 +92,9 @@ int main(void) {
     uint64_t next_button = time_us_64();
     uint64_t next_batt = time_us_64();
     uint64_t next_report = time_us_64();
-    bool returned = false;
+
+    /* test state machine: OUT (to +360) -> RETURN (to 0) -> DONE (latched) */
+    enum { ST_OUT, ST_RETURN, ST_DONE } st = ST_OUT;
 
     while (true) {
         uint64_t now = time_us_64();
@@ -102,6 +104,7 @@ int main(void) {
             hal_button_update();
             if (hal_button_get_event()) {  // emergency coast all
                 for (int i = 0; i < 4; i++) evn_motion_coast(i);
+                st = ST_DONE;
                 printf(">> BUTTON: coast all\n");
             }
         }
@@ -125,14 +128,13 @@ int main(void) {
                        stall ? "STALL " : "", done ? "done" : "moving");
                 if (!done) all_done = false;
             }
-            /* when all reached +360, command return to 0 once */
-            if (all_done && !returned) {
-                returned = true;
+
+            if (st == ST_OUT && all_done) {
                 for (int i = 0; i < 4; i++) evn_motion_move_to(i, 0.0f, 180.0f, 900.0f);
-                printf("All reached +360. Commanding return to 0.\n");
-            } else if (all_done && returned) {
-                /* finished both legs — coast ALL motors for safety, then report */
-                for (int i = 0; i < 4; i++) evn_motion_coast(i);
+                printf(">>> all at +360. Commanding return to 0.\n");
+                st = ST_RETURN;
+            } else if (st == ST_RETURN && all_done) {
+                for (int i = 0; i < 4; i++) evn_motion_coast(i);   // safety: coast all
                 hal_motor_coast_all();
                 evn_core1_status_t cs;
                 if (evn_core1_get_status(&cs)) {
@@ -142,7 +144,9 @@ int main(void) {
                            (unsigned)cs.period_max_us, (unsigned)cs.exec_max_us);
                 }
                 print_battery();
+                st = ST_DONE;   // latched — never re-fires
             }
+            /* ST_DONE: idle forever, motors coasted */
         }
 
         tight_loop_contents();
