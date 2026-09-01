@@ -45,6 +45,7 @@ add_executable(EVN_ALPHA_Performance
     hal/hal_servo.c
     hal/hal_motor.c
     hal/hal_encoder.c
+    hal/hal_tuning_log.c
     motion/core1.c
     motion/observer.c
     motion/motor_models.c
@@ -72,7 +73,8 @@ target_link_libraries(EVN_ALPHA_Performance
         hardware_i2c
         hardware_uart
         hardware_pio
-        hardware_pwm)
+        hardware_pwm
+        hardware_flash)
 
 # Add the standard include files to the build
 target_include_directories(EVN_ALPHA_Performance PRIVATE

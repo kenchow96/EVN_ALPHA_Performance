@@ -51,6 +51,7 @@ void __not_in_flash_func(evn_core1_tick)(void) {
 
 static void __not_in_flash_func(core1_main)(void) {
     /* The hardware microsecond timer is shared and monotonic across cores. */
+    multicore_lockout_victim_init();
 
     const uint32_t target_us = EVN_CORE1_PERIOD_US;   /* 1000 µs */
 
