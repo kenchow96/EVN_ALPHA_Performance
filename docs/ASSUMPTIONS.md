@@ -1,16 +1,18 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, post-audit repair):** Phase 7 endpoint results
-> from 2026-09-01 are superseded by a first-principles repair. The working tree
-> now has SDK-exclusive TinyUSB task ownership, framed asynchronous trace output, a
-> Core-1-owned hardware alarm, saturation-aware PID with bounded integral duty,
-> seeded 60 ms velocity history, Pybricks observer updates at their native 5 ms
-> cadence, and 25 kHz/8000-step PWM. Static checks and the Pico build pass;
-> post-fix HITL is active: Core 1 passes 1000-1000 us with zero misses and an
-> EV3 Large candidate passes 9/9 in both directions over a 40,000-sample gain
-> dataset. Medium wheel stiction and long-session CDC batching remain open. Follow
-> `docs/AUDIT_2026-09-02.md` exactly. Do not start Phase 8 until all four axes
-> pass `tools/motion_metrics.py` and beat the Arduino baseline.
+> **RESUME POINT (2026-09-02, context handoff):** Start a fresh agent session.
+> Verified commits: `b92b648` (USB/RT/control foundation), `4e27bb6`
+> (SDK-serialized USB), `66c5d6a` (battery-gated telemetry), `ef34dbb`
+> (velocity-window tuning + 200 Hz diagnostic traces). Motors are confirmed
+> coasted. Windows COM7 is locked after an in-flight trace, so first unplug/replug
+> USB in normal mode (no UF2, no flash). Then run exactly:
+> `python tools/motion_sweep.py --suite window-speed --output bench/results/sweep_window_speed_20260902 --resume`
+> Completed JSON cases (skip automatically): `W20_K5_{pos,neg}`,
+> `W20_K10_{pos,neg}`, `W30_K5_{pos,neg}`. Ten cases remain. The failed next
+> case `W30_K10_pos` passed battery preflight at 7.388 V (cells 3.680/3.684 V,
+> age 26.641 ms) but produced no JSON. Each resumed run must keep the fresh
+> battery gate and 4 s Core 1 auto-coast. Do not start Phase 8 until all four
+> axes pass `tools/motion_metrics.py` and beat the Arduino baseline.
 
 Every assumption made during development that is **not** marked `[GROUND TRUTH]` in the specs and has **not** been independently verified against hardware. **Review and confirm/refute each before we build dependent phases on top.** Each entry: the assumption, where it's baked in, why we made it, and how to falsify it.
 

@@ -38,6 +38,9 @@ All results stored as CSV in `bench/results/` with a one-line summary appended t
 11. **One command for flash+verify**: always use `tools/flash_and_capture.py`
     (flash → robust port wait → optional start char → capture → log). Never
     hand-chain flash/sleep/capture — it races USB re-enumeration.
+12. **Start a fresh agent session when context becomes inefficient.** First
+    coast hardware, commit verified work, update the Status Board and
+    `ASSUMPTIONS.md` resume point, and leave one exact continuation command.
 
 ## 3. Target Repository Structure
 
@@ -163,7 +166,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | 5 — Battery telemetry | ✅ Done | 2026-09-01 | `f556bc8` |
 | 6 — PIO servos | ✅ Done | 2026-09-01 | `a16a5d3` |
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
-| 7 — Motion engine | 🟠 Audit repair HITL in progress — Core 1 direct SRAM timer, anti-windup, 5 ms observer cadence, 25 kHz PWM, canonical packet-sized CDC, retryable trace blocks, 12-gate metrics, and fresh battery preflight are verified. Core 1: 1000-1000 us idle, zero misses. Large has a provisional compliant profile margin; Medium window/stiction tuning remains open. Follow [AUDIT_2026-09-02.md](AUDIT_2026-09-02.md). **Phase 8 remains blocked** until all four motors pass the battery-gated profile suite and beat Arduino. | 2026-09-02 | working tree |
+| 7 — Motion engine | 🟠 Audit repair HITL in progress — Core 1 direct SRAM timer, anti-windup, 5 ms observer cadence, 25 kHz PWM, canonical packet-sized CDC, retryable trace blocks, 12-gate metrics, and fresh battery preflight are verified. Large has a provisional compliant profile margin. Medium window sweep has 6/16 cases checkpointed; remaining cases resume from JSON after one normal USB replug. Follow [ASSUMPTIONS.md](ASSUMPTIONS.md) resume point. **Phase 8 remains blocked** until all four motors pass the battery-gated profile suite and beat Arduino. | 2026-09-02 | `ef34dbb` + handoff |
 | 8 — Drive base | ⬜ Not started — **BLOCKED by the Phase 7 smoothness gate above** | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 

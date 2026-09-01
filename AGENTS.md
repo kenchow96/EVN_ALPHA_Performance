@@ -31,6 +31,7 @@ Items tagged `[GROUND TRUTH]` are non-negotiable hardware facts. Items tagged `[
 - **Dual-core plan**: Core 1 = deterministic 1 kHz real-time control loop; Core 0 = background tasks, I2C governor, stdio. Never call `flash_range_erase()`/`flash_range_program()` without the `multicore_lockout` pattern documented in the Hardware Reference §6.4.
 - **Peripheral conflicts**: PWM Slice 5 is shared between Motor 2 (GP26/27) and Servos 3/4 (GP10/11). Motors keep hardware PWM at 25 kHz; servos must be PIO-driven. See Hardware Reference §9.1.
 - **Efficiency**: Follow the Efficiency Protocol in [docs/PLAN.md](docs/PLAN.md) §2 — falsifying check first, batched reads, single focused validation, commit at each verified checkpoint.
+- **Context budget**: Proactively recommend a fresh agent session when accumulated audit history or repeated HITL cycles make the active context inefficient. Before handoff: coast hardware, commit the verified checkpoint, update the Status Board/resume note, and provide one exact next command plus any required physical action.
 
 ## Repository Layout
 
