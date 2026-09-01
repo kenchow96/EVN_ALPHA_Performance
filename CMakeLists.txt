@@ -39,6 +39,7 @@ add_executable(EVN_ALPHA_Performance
     EVN_ALPHA_Performance.c 
     hal/hal_led.c
     hal/hal_button.c
+    hal/hal_i2c.c
 )
 
 pico_set_program_name(EVN_ALPHA_Performance "EVN_ALPHA_Performance")
@@ -50,7 +51,8 @@ pico_enable_stdio_usb(EVN_ALPHA_Performance 1)
 
 # Add the standard library to the build
 target_link_libraries(EVN_ALPHA_Performance
-        pico_stdlib)
+        pico_stdlib
+        hardware_i2c)
 
 # Add the standard include files to the build
 target_include_directories(EVN_ALPHA_Performance PRIVATE
@@ -62,5 +64,12 @@ pico_add_extra_outputs(EVN_ALPHA_Performance)
 # Spec §4: 200 MHz performance profile
 target_compile_definitions(EVN_ALPHA_Performance PRIVATE
     PICO_USE_FASTEST_SUPPORTED_CLOCK=1
+)
+
+# EVN ALPHA flash: Winbond W25Q128JV 16 MB (override generic pico 2 MB).
+# QSPI clkdiv /2 -> 100 MHz SCK at 200 MHz sys (W25Q128JV rated to 133 MHz).
+target_compile_definitions(EVN_ALPHA_Performance PRIVATE
+    PICO_FLASH_SIZE_BYTES=16777216
+    PICO_FLASH_SPI_CLKDIV=2
 )
 

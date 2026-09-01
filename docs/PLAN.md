@@ -142,7 +142,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | 1 — Measurement & Core 1 skeleton | ⬜ Not started | — | — |
 | 2 — Motor PWM | ⬜ Not started | — | — |
 | 3 — PIO encoders | ⬜ Not started | — | — |
-| 4 — I2C mux | ⬜ Not started | — | — |
+| 4 — I2C mux | ✅ Done | 2026-09-01 | see below |
 | 5 — Battery telemetry | ⬜ Not started | — | — |
 | 6 — PIO servos | ⬜ Not started | — | — |
 | 7 — Motion engine | ⬜ Not started | — | — |
