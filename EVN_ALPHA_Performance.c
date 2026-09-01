@@ -118,7 +118,10 @@ int main(void) {
             for (int i = 0; i < 4; i++) {
                 float ang, spd; bool stall, done;
                 evn_motion_get_state(i, &ang, &spd, &stall, &done);
-                printf("M%d: %7.1f deg  %6.1f d/s  %s%s\n", i+1, (double)ang, (double)spd,
+                float tgt, tt;
+                evn_motion_get_debug(i, &tgt, &tt);
+                printf("M%d: %7.1f deg  %6.1f d/s  tgt=%5.0f tt=%.2fs  %s%s\n", i+1,
+                       (double)ang, (double)spd, (double)tgt, (double)tt,
                        stall ? "STALL " : "", done ? "done" : "moving");
                 if (!done) all_done = false;
             }

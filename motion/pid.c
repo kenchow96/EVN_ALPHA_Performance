@@ -1,16 +1,17 @@
 #include "pid.h"
 
 void evn_pid_init(evn_pid_t *p) {
-    /* Starting gains for EV3 motors, references in mdeg / mdeg/s, duty [-1,1].
-     * Tuned so ~10 deg position error -> ~0.5 duty. */
-    p->kp_pos = 5.0e-5f;     /* duty per mdeg error */
-    p->ki_pos = 0.0f;
-    p->kp_vel = 3.0e-6f;     /* duty per mdeg/s error */
+    /* EV3 motors, references mdeg / mdeg/s, duty [-1,1]. Tuned to break
+     * stiction and track: ~10 deg error -> near-full duty; velocity loop
+     * tracks the trapezoid; small integral clears residual. */
+    p->kp_pos = 2.5e-4f;     /* duty per mdeg (10 deg err -> ~0.9 duty) */
+    p->ki_pos = 1.0e-6f;     /* duty per (mdeg·s) integral */
+    p->kp_vel = 1.0e-5f;     /* duty per mdeg/s error */
     p->kd_vel = 0.0f;
     p->kff_accel = 0.0f;
     p->out_min = -1.0f;
     p->out_max =  1.0f;
-    p->i_limit = 1.0e7f;
+    p->i_limit = 5.0e6f;     /* anti-windup (mdeg·s) */
     p->vbus_comp = 0.0f;   /* disabled until calibrated */
     evn_pid_reset(p);
 }

@@ -52,6 +52,8 @@ typedef struct {
     volatile int32_t  stat_speed_mdegs;
     volatile bool     stat_stalled;
     volatile bool     stat_done;
+    volatile int32_t  stat_target_mdeg;   /* debug: commanded target */
+    volatile float    stat_total_time;    /* debug: computed profile duration */
 } evn_axis_t;
 
 /* Initialise the engine: claim motor+encoder masks and attach a standard
@@ -70,6 +72,9 @@ void evn_motion_hold(uint8_t axis);
 /* Read live axis state (degrees, deg/s, stalled, done). */
 bool evn_motion_get_state(uint8_t axis, float *angle_deg, float *speed_degs,
                           bool *stalled, bool *done);
+
+/* Debug: commanded target (deg) and computed profile duration (s). */
+bool evn_motion_get_debug(uint8_t axis, float *target_deg, float *total_time_s);
 
 /* The Core 1 tick — call from evn_core1_tick() every 1 ms. */
 void __not_in_flash_func(evn_motion_tick)(void);

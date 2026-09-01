@@ -113,6 +113,15 @@ bool evn_motion_get_state(uint8_t axis, float *angle_deg, float *speed_degs,
     return true;
 }
 
+/* Debug: read commanded target (deg) + computed profile duration (s). */
+bool evn_motion_get_debug(uint8_t axis, float *target_deg, float *total_time_s) {
+    if (!(s_mask & (1u << axis))) return false;
+    evn_axis_t *a = &s_axis[axis];
+    *target_deg = (float)a->stat_target_mdeg / 1000.0f;
+    *total_time_s = a->stat_total_time;
+    return true;
+}
+
 void __not_in_flash_func(evn_motion_tick)(void) {
     s_time_ms++;
 
@@ -141,6 +150,8 @@ void __not_in_flash_func(evn_motion_tick)(void) {
                                          mvel * 1000.0f, macc * 1000.0f);
                     evn_pid_reset(&a->pid);
                     a->stat_done = false;
+                    a->stat_target_mdeg = (int32_t)(tdeg * 1000.0f);
+                    a->stat_total_time = a->traj.total_time;
                 } else {
                     hal_motor_coast(a->motor);
                     a->traj.active = false;
