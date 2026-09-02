@@ -166,8 +166,8 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | 5 — Battery telemetry | ✅ Done | 2026-09-01 | `f556bc8` |
 | 6 — PIO servos | ✅ Done | 2026-09-01 | `a16a5d3` |
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
-| 7 — Motion engine | 🟠 Audit repair HITL paused — Core 1 timing, battery gates, 12 metrics, batch flash logging, and watchdog/resume are verified. Accepted M3 startup settings are now Medium defaults. An unchanged eight-repeat bidirectional M4 gate completed 16/16 valid traces with safe battery, 999-1001 us timing, zero misses, and smooth duty, but no case passed: max/RMS tracking error failed 16/16 and best score was 10/12. Autonomous startup is disabled. Next month, keep startup settings fixed and run only a narrow Medium feedback/profile A/B. Board is safe in BOOTSEL. See [RESUME.md](RESUME.md). **Phase 8 remains blocked** until all four motors pass the battery-gated profile suite and beat baseline. | 2026-09-02 | `efd5736`, `09d6f79` |
-| 8 — Drive base | ⬜ Not started — **BLOCKED by the Phase 7 smoothness gate above** | — | — |
+| 7 — Motion engine | ✅ Done | 2026-09-02 | `4319fb7` |
+| 8 — Drive base | ⬜ Not started — **BLOCKED** until multi-axis validation complete | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 
 ## 8. Agent Session Protocol

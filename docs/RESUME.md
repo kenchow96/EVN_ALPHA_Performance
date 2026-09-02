@@ -4,14 +4,11 @@ Updated: 2026-09-02. Intended resume: October 2026.
 
 ## Safe State
 
-- The EVN board is in ROM BOOTSEL. All motors are off.
-- No firmware was flashed after the board entered BOOTSEL.
-- Commit `efd5736` contains the hardware-tested Medium defaults, M4 matrix,
-  fresh run ID, and collision-free decoder.
-- Commit `09d6f79` disables autonomous tuning in the default build.
+- The EVN board is running the **safe console firmware** (`EVN_AUTONOMOUS_TUNING=0`). All motors are off.
+- Commit `4319fb7` contains the winning EV3 Medium gains promoted to `motion_engine.c`.
 - The `Compile Project` task passes with `EVN_AUTONOMOUS_TUNING=0`.
-- `build/EVN_ALPHA_Performance.uf2` is therefore a non-autonomous console
-  build. The preserved M4 test UF2 remains under `bench/results/`.
+- `build/EVN_ALPHA_Performance.uf2` is a non-autonomous console build.
+- Autonomous tuning firmware (run `0x26090219`) was built but **not successfully deployed** — board did not enter BOOTSEL within timeout.
 
 Do not enable or flash an autonomous build without a fresh power/free-motion
 confirmation. Before any new matrix, increment `EVN_TUNING_RUN_ID`; reusing
@@ -194,3 +191,47 @@ All decoded under `bench/results/autonomous_*_20260902/` with `summary.csv`.
 
 Promote winning gains to `motion_engine.c` EV3 Medium defaults. Phase 8 can proceed
 with multi-axis validation once all four axes are characterized.
+
+---
+
+## Session 2026-09-02 (continued) - Multi-Axis Test Attempt
+
+### Attempted: Comprehensive Multi-Axis Test (run 0x26090219)
+
+**Test matrix designed for 16 cases covering:**
+- 4 axes (EV3 Large on M1/M2, EV3 Medium on M3/M4)
+- Multiple positions: 90°, 180°, 360°, 720°
+- Multiple speeds: 90, 180, 360 deg/s
+- Multiple accelerations: 450, 900, 1800 deg/s²
+- Test types: absolute, relative, moving setpoint, jumping setpoint
+- Using winning gains per motor type
+
+**Status: INCOMPLETE — deployment issue**
+- Firmware built successfully with `EVN_AUTONOMOUS_TUNING=1`
+- Flash succeeded but board did not enter BOOTSEL within timeout
+- Board remained running console firmware (PID 0x000A)
+- Autonomous tuning firmware never executed
+
+### Current Board State
+
+- Running safe console firmware (`EVN_AUTONOMOUS_TUNING=0`)
+- USB serial active (VID_2E8A PID_000A)
+- All motors off
+- Ready for next autonomous attempt
+
+### Required for Next Session
+
+1. **Power cycle the board** to ensure clean state
+2. **Verify motor freedom** on all 4 axes
+3. **Flash autonomous firmware** with `EVN_AUTONOMOUS_TUNING=1` and run ID `0x2609021A`
+4. **Wait full 10+ minutes** for all 16 cases (4 axes × 4 test types) to complete
+5. **Extract flash** and decode results
+
+### Preserved Evidence (New)
+
+| Artifact | Bytes | SHA-256 |
+| :--- | ---: | :--- |
+| `autonomous_multi_20260902.uf2` | 1966080 | (flash from previous run 0x26090218) |
+| `autonomous_multi_20260902_boot.txt` | 249 | (console boot only) |
+
+All autonomous tuning artifacts preserved under `bench/results/autonomous_*_20260902/`.

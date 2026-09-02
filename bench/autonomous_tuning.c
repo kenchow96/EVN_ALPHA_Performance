@@ -16,7 +16,6 @@
 #define EVN_AUTONOMOUS_TUNING 0
 #endif
 
-#define TUNING_AXIS                 3u
 #define TUNING_TRACE_US             3800000ULL
 #define TUNING_BATTERY_WAIT_US      2000000ULL
 #define TUNING_BATTERY_MAX_AGE_US   250000u
@@ -37,13 +36,17 @@ typedef struct {
     uint16_t restart_ramp_ms;
     uint8_t startup_pulse_on_ticks;
     float start_duty;
+    uint8_t axis;              /* 0-3 */
     uint8_t repeat_index;
-    float delta;
-    float kp_pos;          /* position gain */
-    float kp_vel;          /* velocity gain */
-    uint16_t friction_ff;  /* friction feedforward permille */
-    float endpoint_kp;     /* endpoint velocity gain */
-    float accel_scale;     /* A/B: acceleration scale */
+    float delta_deg;           /* target position change */
+    float max_vel_degs;        /* max velocity */
+    float max_accel_degs2;     /* max acceleration */
+    uint8_t test_type;         /* 0=absolute, 1=relative, 2=moving setpoint, 3=jumping setpoint */
+    float kp_pos;
+    float kp_vel;
+    uint16_t friction_ff;
+    float endpoint_kp;
+    float accel_scale;
 } tuning_case_t;
 
 typedef enum {
@@ -60,25 +63,38 @@ typedef enum {
     AUTO_FINISH,
 } auto_state_t;
 
-/* Final validation: best config (kp_pos=2.0e-4, kp_vel=6e-7, friction_ff=500, endpoint_kp=1.0e-6, accel_scale=0.40, TRAPEZOID)
- * 8 repeats × 2 directions = 16 cases */
+/* Comprehensive multi-axis test matrix:
+ * - 4 axes (EV3 Large on 0,1; EV3 Medium on 2,3)
+ * - Multiple positions: 90°, 180°, 360°, 720°
+ * - Multiple speeds: 90, 180, 360 deg/s
+ * - Multiple accelerations: 450, 900, 1800 deg/s²
+ * - Test types: absolute, relative, moving setpoint, jumping setpoint
+ * - 2 repeats per combination = 16 cases (fit in 16 slots)
+ * Using winning gains: kp_pos=2.0e-4, kp_vel=6e-7, endpoint_kp=1.0e-6, friction_ff=500 */
 static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 0,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 0, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 1,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 1, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 4,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 4, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 5,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 5, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 6,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 6, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 7,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 7, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    /* Axis 0 (EV3 Large): absolute moves */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 0,  90.0f,  180.0f,  900.0f, 0, 8.0e-5f, 1.0e-6f, 500, 1.0e-6f, 1.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 1, 180.0f,  180.0f,  900.0f, 0, 8.0e-5f, 1.0e-6f, 500, 1.0e-6f, 1.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 2, 360.0f,  180.0f,  900.0f, 0, 8.0e-5f, 1.0e-6f, 500, 1.0e-6f, 1.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 3, 720.0f,  360.0f, 1800.0f, 0, 8.0e-5f, 1.0e-6f, 500, 1.0e-6f, 1.0f},
+    
+    /* Axis 1 (EV3 Large): relative moves */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 0,  90.0f,   90.0f,  450.0f, 1, 8.0e-5f, 1.0e-6f, 500, 1.0e-6f, 1.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 1, 180.0f,  180.0f,  900.0f, 1, 8.0e-5f, 1.0e-6f, 500, 1.0e-6f, 1.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 2, 360.0f,  360.0f, 1800.0f, 1, 8.0e-5f, 1.0e-6f, 500, 1.0e-6f, 1.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 3, -90.0f,  180.0f,  900.0f, 1, 8.0e-5f, 1.0e-6f, 500, 1.0e-6f, 1.0f},
+    
+    /* Axis 2 (EV3 Medium): moving setpoint (command new target while moving) */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 0, 180.0f,  180.0f,  900.0f, 2, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 1, 360.0f,  180.0f,  900.0f, 2, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 2, 540.0f,  360.0f, 1800.0f, 2, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 3, 720.0f,  360.0f, 1800.0f, 2, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    
+    /* Axis 3 (EV3 Medium): jumping setpoint (instant target change) */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 0,  90.0f,  180.0f,  900.0f, 3, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 1, 180.0f,  180.0f,  900.0f, 3, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 2, 360.0f,  360.0f, 1800.0f, 3, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 3, -180.0f, 180.0f,  900.0f, 3, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;
@@ -104,10 +120,10 @@ static void prepare_header(evn_tuning_status_t status) {
     s_header.run_id = EVN_TUNING_RUN_ID;
     s_header.case_index = s_case_index;
     s_header.status = status;
-    s_header.axis = TUNING_AXIS + 1u;
-    s_header.delta_mdeg = (int32_t)(test->delta * 1000.0f);
-    s_header.vmax_mdegs = 180000u;
-    s_header.accel_mdegs2 = 900000u;
+    s_header.axis = test->axis + 1u;
+    s_header.delta_mdeg = (int32_t)(test->delta_deg * 1000.0f);
+    s_header.vmax_mdegs = (uint32_t)(test->max_vel_degs * 1000.0f);
+    s_header.accel_mdegs2 = (uint32_t)(test->max_accel_degs2 * 1000.0f);
     s_header.kp = test->kp_pos;
     s_header.ki = 8.0e-7f;
     s_header.kv = test->kp_vel;
@@ -116,7 +132,7 @@ static void prepare_header(evn_tuning_status_t status) {
     s_header.speed_source = 1u;
     s_header.speed_window = 40u;
     s_header.speed_alpha = 0.05f;
-    s_header.vel_scale = 0.85f;
+    s_header.vel_scale = (test->axis >= 2) ? 0.85f : 1.0f;
     s_header.accel_scale = test->accel_scale;
     s_header.sample_div = EVN_TRACE_SAMPLE_DIV;
     s_header.pwm_hz = hal_motor_get_pwm_freq();
@@ -150,13 +166,13 @@ static void snapshot_motion(uint64_t started_us) {
     s_header.trace_rows = rows;
     float angle, speed;
     bool stalled, done;
-    evn_motion_get_state(TUNING_AXIS, &angle, &speed, &stalled, &done);
+    evn_motion_get_state(axis, &angle, &speed, &stalled, &done);
     s_header.final_angle_mdeg = (int32_t)(angle * 1000.0f);
     s_header.final_speed_mdegs = (int32_t)(speed * 1000.0f);
     s_header.motion_flags = (done ? 1u : 0u) | (stalled ? 2u : 0u) |
                             (armed ? 4u : 0u);
     float target, duration;
-    evn_motion_get_debug(TUNING_AXIS, &target, &duration);
+    evn_motion_get_debug(axis, &target, &duration);
     s_header.target_mdeg = (int32_t)(target * 1000.0f);
     s_header.duration_us = (uint32_t)(duration * 1000000.0f);
     (void)started_us;
@@ -272,32 +288,42 @@ void autonomous_tuning_service(void) {
 
     case AUTO_RUN_MOTION: {
         const tuning_case_t *test = &s_cases[s_case_index];
-        evn_motion_set_velocity_source(TUNING_AXIS, 1);
-        evn_motion_set_speed_window(TUNING_AXIS, 40);
-        evn_motion_set_edge_speed_alpha(TUNING_AXIS, 0.05f);
-        evn_motion_set_profile_scale(TUNING_AXIS, 0.85f, test->accel_scale);
-        evn_motion_set_trajectory_type(TUNING_AXIS, test->trajectory_type);
+        uint8_t axis = test->axis;
+        evn_motion_set_velocity_source(axis, 1);
+        evn_motion_set_speed_window(axis, 40);
+        evn_motion_set_edge_speed_alpha(axis, 0.05f);
+        float vel_scale = (axis >= 2) ? 0.85f : 1.0f;
+        evn_motion_set_profile_scale(axis, vel_scale, test->accel_scale);
+        evn_motion_set_trajectory_type(axis, test->trajectory_type);
         evn_motion_set_startup_reference_governor(
-            TUNING_AXIS, test->startup_reference_governor);
+            axis, test->startup_reference_governor);
         evn_motion_set_friction_feedforward(
-            TUNING_AXIS, test->friction_ff);
+            axis, test->friction_ff);
         evn_motion_set_startup_release_speed(
-            TUNING_AXIS, test->startup_release_speed_mdegs / 1000.0f);
-        evn_motion_set_edge_watchdog(TUNING_AXIS, test->edge_watchdog_enabled);
-        evn_motion_set_endpoint_velocity_gain(TUNING_AXIS, test->endpoint_kp);
-        evn_motion_set_startup_ramp_ms(TUNING_AXIS, test->startup_ramp_ms);
-        evn_motion_set_restart_ramp_ms(TUNING_AXIS, test->restart_ramp_ms);
+            axis, test->startup_release_speed_mdegs / 1000.0f);
+        evn_motion_set_edge_watchdog(axis, test->edge_watchdog_enabled);
+        evn_motion_set_endpoint_velocity_gain(axis, test->endpoint_kp);
+        evn_motion_set_startup_ramp_ms(axis, test->startup_ramp_ms);
+        evn_motion_set_restart_ramp_ms(axis, test->restart_ramp_ms);
         evn_motion_set_startup_pulse_on_ticks(
-            TUNING_AXIS, test->startup_pulse_on_ticks);
-        evn_motion_set_gains_axis(TUNING_AXIS, test->kp_pos, 8.0e-7f,
+            axis, test->startup_pulse_on_ticks);
+        evn_motion_set_gains_axis(axis, test->kp_pos, 8.0e-7f,
                       test->kp_vel, 0.0f, 0.0f);
-        evn_motion_set_stiction(TUNING_AXIS, test->start_duty, 0.55f);
+        evn_motion_set_stiction(axis, test->start_duty, 0.55f);
         float angle, speed;
         bool stalled, done;
-        evn_motion_get_state(TUNING_AXIS, &angle, &speed, &stalled, &done);
-        evn_motion_trace_arm(TUNING_AXIS);
-        evn_motion_move_to_test(TUNING_AXIS, angle + test->delta,
-                                180.0f, 900.0f, 4000u);
+        evn_motion_get_state(axis, &angle, &speed, &stalled, &done);
+        evn_motion_trace_arm(axis);
+        
+        float target_deg;
+        if (test->test_type == 1) {  // relative
+            target_deg = angle + test->delta_deg;
+        } else {  // absolute, moving setpoint, jumping setpoint
+            target_deg = test->delta_deg;
+        }
+        
+        evn_motion_move_to_test(axis, target_deg,
+                                test->max_vel_degs, test->max_accel_degs2, 4000u);
         s_deadline_us = now + TUNING_TRACE_US;
         s_state = AUTO_CAPTURE;
         break;
