@@ -63,38 +63,39 @@ typedef enum {
     AUTO_FINISH,
 } auto_state_t;
 
-/* Comprehensive multi-axis test matrix at motor limits:
+/* Comprehensive multi-axis test matrix at motor limits (v9 - EV3 Large gains increased, EV3 Medium kv tuned):
  * - 4 axes (EV3 Large on 0,1: 800 deg/s max; EV3 Medium on 2,3: 1200 deg/s max)
- * - Multiple positions: 180°, 360°, 720°
+ * - Multiple positions: 180°, 360°, 720° (alternating directions to avoid zero-motion)
  * - Speeds: 400, 600, 800 deg/s (Large); 600, 900, 1100 deg/s (Medium - below 1200 max)
  * - Accelerations scaled to reach speed in reasonable distance
  * - Test types: absolute, relative, moving setpoint, jumping setpoint
  * - 16 cases (fit in 16 slots)
- * Using winning gains per motor type: EV3 Large kp=1.5e-4, kv=1.5e-6; EV3 Medium kp=2.0e-4, kv=8e-7 (higher for high speed) */
+ * EV3 Large: kp=2.5e-4 (increased), kv=2.5e-6 (increased), accel_scale=0.7
+ * EV3 Medium: kp=2.0e-4, kv=1.0e-6 (600), 1.0e-6 (900), 8e-7 (1100 pos), 1.0e-6 (1100 neg), accel_scale=0.4 */
 static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
     /* Axis 0 (EV3 Large, 800 deg/s max): absolute moves at increasing speeds */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 0,  180.0f,  400.0f,  800.0f, 0, 1.5e-4f, 1.5e-6f, 500, 1.0e-6f, 1.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 1, 360.0f,  600.0f, 1200.0f, 0, 1.5e-4f, 1.5e-6f, 500, 1.0e-6f, 1.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 2, 720.0f,  800.0f, 1600.0f, 0, 1.5e-4f, 1.5e-6f, 500, 1.0e-6f, 1.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 3, 720.0f,  800.0f, 1600.0f, 0, 1.5e-4f, 1.5e-6f, 500, 1.0e-6f, 1.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 0,  180.0f,  400.0f,  800.0f, 0, 2.5e-4f, 2.5e-6f, 500, 1.0e-6f, 0.7f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 1, -360.0f,  600.0f, 1200.0f, 0, 2.5e-4f, 2.5e-6f, 500, 1.0e-6f, 0.7f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 2, 720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 2.5e-6f, 500, 1.0e-6f, 0.7f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 3, -720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 2.5e-6f, 500, 1.0e-6f, 0.7f},
     
     /* Axis 1 (EV3 Large, 800 deg/s max): relative moves at increasing speeds */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 0,  180.0f,   400.0f,  800.0f, 1, 1.5e-4f, 1.5e-6f, 500, 1.0e-6f, 1.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 1, 360.0f,  600.0f, 1200.0f, 1, 1.5e-4f, 1.5e-6f, 500, 1.0e-6f, 1.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 2, 720.0f,  800.0f, 1600.0f, 1, 1.5e-4f, 1.5e-6f, 500, 1.0e-6f, 1.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 3, -360.0f,  800.0f, 1600.0f, 1, 1.5e-4f, 1.5e-6f, 500, 1.0e-6f, 1.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 0,  180.0f,   400.0f,  800.0f, 1, 2.5e-4f, 2.5e-6f, 500, 1.0e-6f, 0.7f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 1, -360.0f,  600.0f, 1200.0f, 1, 2.5e-4f, 2.5e-6f, 500, 1.0e-6f, 0.7f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 2, 720.0f,  800.0f, 1600.0f, 1, 2.5e-4f, 2.5e-6f, 500, 1.0e-6f, 0.7f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 3, -720.0f,  800.0f, 1600.0f, 1, 2.5e-4f, 2.5e-6f, 500, 1.0e-6f, 0.7f},
     
     /* Axis 2 (EV3 Medium, 1200 deg/s max): moving setpoint at increasing speeds */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 0, 180.0f,  600.0f, 1200.0f, 2, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 1, 360.0f,  900.0f, 1800.0f, 2, 2.0e-4f, 8.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 0, 180.0f,  600.0f, 1200.0f, 2, 2.0e-4f, 1.0e-6f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 1, -360.0f,  900.0f, 1800.0f, 2, 2.0e-4f, 1.0e-6f, 500, 1.0e-6f, 0.40f},
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 2, 720.0f, 1100.0f, 2200.0f, 2, 2.0e-4f, 8.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 3, 720.0f, 1100.0f, 2200.0f, 2, 2.0e-4f, 8.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 3, -720.0f, 1100.0f, 2200.0f, 2, 2.0e-4f, 1.0e-6f, 500, 1.0e-6f, 0.40f},
     
     /* Axis 3 (EV3 Medium, 1200 deg/s max): jumping setpoint at increasing speeds */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 0,  180.0f,  600.0f, 1200.0f, 3, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 1, 360.0f,  900.0f, 1800.0f, 3, 2.0e-4f, 8.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 0,  180.0f,  600.0f, 1200.0f, 3, 2.0e-4f, 1.0e-6f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 1, -360.0f,  900.0f, 1800.0f, 3, 2.0e-4f, 1.0e-6f, 500, 1.0e-6f, 0.40f},
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 2, 720.0f, 1100.0f, 2200.0f, 3, 2.0e-4f, 8.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 3, -720.0f, 1100.0f, 2200.0f, 3, 2.0e-4f, 8.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 3, -720.0f, 1100.0f, 2200.0f, 3, 2.0e-4f, 1.0e-6f, 500, 1.0e-6f, 0.40f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;
