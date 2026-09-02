@@ -1,23 +1,15 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, pulse result):** Commit `3febafa` batches each
-> trace into one aligned flash program and adds watchdog/resume. Its fresh-ID
-> rerun passed: automatic BOOTSEL, verified UF2, 16/16 commit CRCs, 16/16 trace
-> CRCs, battery >=7.247 V, cells >=3.615 V, age <=437 us, zero missed ticks.
-> RT-05 is closed. Reject startup-floor pulse density below continuous 4/4:
-> 2/4 reduced mean acceleration to 1238 deg/s2 but failed duty smoothness in
-> 4/4 cases; 3/4 regressed error/overshoot; 1/4 never broke friction. Keep
-> continuous startup floor, 0.65 start, W40/K5, 0.55 hold,
-> governor, trapezoid, 0.5x friction, 10 deg/s release, base endpoint gain, and
-> edge watchdog. Each case erases its fixed
-> slot while coasted, requires a battery sample age <=250 ms (pack >=6.5 V,
-> cells >=3.0 V), runs with the 4 s
-> Core 1 auto-coast, logs 760 trace rows, aborts on any missed RT tick, writes
-> one trace block under lockout, and commits the CRC header last. **Board is now
-> safely in ROM BOOTSEL with motors off.** Preserve all prior UF2s. Next stop
-> tuning M3 heuristics, consolidate proven defaults, and run the same profile
-> gate on M4. Phase 8 remains blocked until
-> all four axes pass `tools/motion_metrics.py` and beat the measured baseline.
+> **RESUME POINT (2026-09-02, M4 profile gate):** The full handoff is
+> [RESUME.md](RESUME.md). Commit `efd5736` promotes the accepted M3 setup to
+> EV3 Medium defaults and applies it unchanged to M4. Eight bidirectional
+> repeats produced 16/16 CRC-valid traces with safe battery, 999-1001 us Core 1
+> timing, zero missed ticks, and smooth duty, but no 12/12 profile pass: max
+> and RMS tracking error failed 16/16; best cases reached 10/12. Commit
+> `09d6f79` restores the default build to non-autonomous mode. **The board is
+> safely in ROM BOOTSEL with motors off.** Keep the accepted startup heuristics
+> fixed; next run only a narrow Medium feedback/profile A/B. Phase 8 remains
+> blocked until all four axes pass `tools/motion_metrics.py` and beat baseline.
 
 Every assumption made during development that is **not** marked `[GROUND TRUTH]` in the specs and has **not** been independently verified against hardware. **Review and confirm/refute each before we build dependent phases on top.** Each entry: the assumption, where it's baked in, why we made it, and how to falsify it.
 
