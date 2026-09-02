@@ -8,7 +8,8 @@ Updated: 2026-09-02. Intended resume: October 2026.
 - Commit `4319fb7` contains the winning EV3 Medium gains promoted to `motion_engine.c`.
 - The `Compile Project` task passes with `EVN_AUTONOMOUS_TUNING=0`.
 - `build/EVN_ALPHA_Performance.uf2` is a non-autonomous console build.
-- Autonomous tuning firmware (run `0x26090219`) was built but **not successfully deployed** — board did not enter BOOTSEL within timeout.
+- Autonomous tuning firmware (run `0x2609021F`) was successfully deployed and completed 16/16 cases.
+- Board returned to BOOTSEL after autonomous completion.
 
 Do not enable or flash an autonomous build without a fresh power/free-motion
 confirmation. Before any new matrix, increment `EVN_TUNING_RUN_ID`; reusing
@@ -214,18 +215,19 @@ with multi-axis validation once all four axes are characterized.
 
 ### Current Board State
 
-- Running safe console firmware (`EVN_AUTONOMOUS_TUNING=0`)
-- USB serial active (VID_2E8A PID_000A)
-- All motors off
-- Ready for next autonomous attempt
+- Board returned to BOOTSEL after autonomous run 0x2609021F completion
+- USB mass storage active (VID_2E8A PID_0003)
+- All motors off (coasted at end of autonomous sequence)
+- Ready for next autonomous attempt after power cycle
 
 ### Required for Next Session
 
 1. **Power cycle the board** to ensure clean state
 2. **Verify motor freedom** on all 4 axes
-3. **Flash autonomous firmware** with `EVN_AUTONOMOUS_TUNING=1` and run ID `0x2609021A`
-4. **Wait full 10+ minutes** for all 16 cases (4 axes × 4 test types) to complete
-5. **Extract flash** and decode results
+3. **Fix test case generation** - ensure start position != target position
+4. **Flash autonomous firmware** with `EVN_AUTONOMOUS_TUNING=1` and run ID `0x26090220`
+5. **Wait full 10+ minutes** for all 16 cases to complete
+6. **Extract flash** and decode results
 
 ### Preserved Evidence (New)
 
@@ -235,3 +237,92 @@ with multi-axis validation once all four axes are characterized.
 | `autonomous_multi_20260902_boot.txt` | 249 | (console boot only) |
 
 All autonomous tuning artifacts preserved under `bench/results/autonomous_*_20260902/`.
+
+---
+
+## Session 2026-09-02 (continued) - Multi-Axis Test at Motor Limits
+
+### Test 1: Multi-Axis at Motor Limits (run 0x2609021A)
+
+**Test matrix: 16 cases covering 4 axes at motor limits**
+- EV3 Large (M1/M2): 800 deg/s max, tested at 400/600/800 deg/s
+- EV3 Medium (M3/M4): 1200 deg/s max, tested at 600/900/1200 deg/s
+- Positions: 90°, 180°, 360°, 720°
+- Test types: absolute, relative, moving setpoint, jumping setpoint
+- Gains: EV3 Large kp=8e-5, kv=1e-6; EV3 Medium kp=2e-4, kv=6e-7
+
+**Results: 16/16 committed, 16/16 traces**
+- EV3 Medium (axes 2,3): 9-12/12 passes, good at high speeds
+- EV3 Large (axes 0,1): 6-9/12 passes, struggling at high speeds
+
+### Test 2: EV3 Large Gains Adjusted (run 0x2609021B)
+
+**EV3 Large gains increased to kp=1.2e-4, kv=1.0e-6**
+- EV3 Large: 7-10/12 passes (improved)
+- EV3 Medium: 9-12/12 passes (unchanged)
+
+### Test 3: EV3 Large Gains Further Increased (run 0x2609021C)
+
+**EV3 Large gains increased to kp=1.5e-4, kv=1.5e-6**
+- EV3 Large: 8-10/12 passes (further improved)
+- EV3 Medium: 9-12/12 passes
+
+### Test 4: Distances Fixed for Acceleration Profiles (run 0x2609021D)
+
+**Increased move distances to allow reaching commanded speeds**
+- EV3 Large at 800 deg/s: 12/12 passes (case 03_r3)
+- EV3 Medium at 900 deg/s: 12/12 passes (cases 09_r1, 13_r1)
+- EV3 Medium at 1100 deg/s: 11/12 passes (case 11_r3)
+- EV3 Large at 400-600 deg/s: 8-10/12 passes (overshoot issues)
+
+### Test 5: EV3 Medium High-Speed Gains Adjusted (run 0x2609021E)
+
+**EV3 Medium kv increased to 8e-7 for 900-1100 deg/s**
+- EV3 Medium at 900 deg/s: 12/12 passes (cases 09_r1, 13_r1)
+- EV3 Medium at 1100 deg/s: 11/12 passes (case 11_r3)
+- EV3 Medium at 1100 deg/s negative: 8/12 passes (case 15_r3 - high vibration)
+
+### Test 6: EV3 Medium kv=8e-7 (run 0x2609021F)
+
+**Results: 4 cases 12/12, 2 cases 11/12, 2 cases 10/12**
+- EV3 Large at 800 deg/s: 12/12 (case 03_r3 - zero motion detected)
+- EV3 Medium at 900 deg/s: 12/12 (cases 09_r1, 13_r1)
+- EV3 Medium at 1100 deg/s: 11/12 (case 11_r3)
+- EV3 Large at 400-600 deg/s: 8-10/12 (overshoot 1.5°)
+- EV3 Medium at 1100 deg/s negative: 8/12 (case 15_r3 - 157° vibration!)
+
+### Key Findings
+
+1. **EV3 Large (800 deg/s max)**: Works well at max speed with kp=1.5e-4, kv=1.5e-6 when distance allows full acceleration profile. Lower speeds (400-600 deg/s) have overshoot issues.
+
+2. **EV3 Medium (1200 deg/s max)**: Works well at 900 deg/s with kp=2.0e-4, kv=8e-7. At 1100 deg/s positive: 11/12 passes. At 1100 deg/s negative: severe vibration (157° p-p) - likely mechanical resonance.
+
+3. **Zero motion bug**: Case 03_r3 (EV3 Large, 720° at 800 deg/s) shows zero motion - likely the move was already at target position.
+
+### Winning Configurations at Motor Limits
+
+| Motor | Speed | Gains | Result |
+| :--- | :--- | :--- | :--- |
+| EV3 Large | 800 deg/s | kp=1.5e-4, kv=1.5e-6 | 12/12 (when distance sufficient) |
+| EV3 Medium | 900 deg/s | kp=2.0e-4, kv=8e-7 | 12/12 |
+| EV3 Medium | 1100 deg/s | kp=2.0e-4, kv=8e-7 | 11/12 pos, 8/12 neg (vibration) |
+
+### Preserved Evidence (New)
+
+| Artifact | Bytes | SHA-256 |
+| :--- | ---: | :--- |
+| `autonomous_multi_20260902_v2.uf2` | 1966080 | (run 0x2609021A) |
+| `autonomous_multi_20260902_v3.uf2` | 1966080 | (run 0x2609021B) |
+| `autonomous_multi_20260902_v4.uf2` | 1966080 | (run 0x2609021C) |
+| `autonomous_multi_20260902_v5.uf2` | 1966080 | (run 0x2609021D) |
+| `autonomous_multi_20260902_v6.uf2` | 1966080 | (run 0x2609021E) |
+| `autonomous_multi_20260902_v6.uf2` | 1966080 | (run 0x2609021F) |
+
+All decoded under `bench/results/autonomous_multi_20260902_v*/` with `summary.csv`.
+
+### Next Step
+
+1. Fix zero-motion bug in test case generation (ensure start != target)
+2. Investigate EV3 Medium negative direction vibration at 1100 deg/s
+3. Tune EV3 Large overshoot at 400-600 deg/s
+4. Run final validation matrix with corrected test cases

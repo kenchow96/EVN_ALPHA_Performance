@@ -12,6 +12,24 @@
  * LEGO), which were generated from experimental data (philohome.com motor
  * comparison + Pybricks measurements).
  *
+ * Motor specifications at 9V (from philohome.com/motors/motorcomp.htm):
+ * ┌─────────────────┬──────────┬──────────┬──────────┬──────────┬──────────┐
+ * │ Motor           │ No-load  │ No-load  │ Stall    │ Stall    │ Rated    │
+ * │                 │ Speed    │ Current  │ Torque   │ Current  │ Max Speed│
+ * ├─────────────────┼──────────┼──────────┼──────────┼──────────┼──────────┤
+ * │ EV3 Large       │ 175 rpm  │ 60 mA    │ 43 N·cm  │ 1.8 A    │ 800 deg/s│
+ * │ EV3 Medium      │ 260 rpm  │ 80 mA    │ 15 N·cm  │ 780 mA   │ 1200 deg/s│
+ * │ NXT             │ 170 rpm  │ 60 mA    │ 50 N·cm  │ 2.0 A    │ 800 deg/s│
+ * └─────────────────┴──────────┴──────────┴──────────┴──────────┴──────────┘
+ *
+ * Conversions:
+ *   175 rpm = 1050 deg/s (EV3 Large no-load)
+ *   260 rpm = 1560 deg/s (EV3 Medium no-load)
+ *   170 rpm = 1020 deg/s (NXT no-load)
+ *   43 N·cm = 430 mN·m = 430,000 µN·m (EV3 Large stall torque)
+ *   15 N·cm = 150 mN·m = 150,000 µN·m (EV3 Medium stall torque)
+ *   50 N·cm = 500 mN·m = 500,000 µN·m (NXT stall torque)
+ *
  * Units (Pybricks internal, integer math):
  *   angle  : millidegrees (mdeg)
  *   speed  : mdeg/s
