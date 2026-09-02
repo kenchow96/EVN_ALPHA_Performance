@@ -118,3 +118,79 @@ No physical action is needed for the offline comparison. Before a later flash,
 power the board, ensure the selected Medium motor can rotate freely, and obtain
 a fresh explicit readiness confirmation. The firmware will enforce the battery
 gate, but the operator confirmation is still mandatory.
+
+---
+
+## Phase 7 Extension - Autonomous Tuning Results (2026-09-02)
+
+### A/B Test Sequence Summary
+
+**Test 1: kp_pos 1.2e-4 vs 1.5e-4** (run 0x26090211)
+- 1.5e-4 improved negative direction (rms 0.83° vs 1.04°) but neither passed gate
+
+**Test 2: kp_pos 1.8e-4 vs 2.0e-4** (run 0x26090212)
+- 2.0e-4 achieved 2× 12/12 passes (max_track 1.27-1.82°, rms 0.51-0.62°)
+- Positive direction still weak (max_track 2.6-3.0°)
+
+**Test 3: kp_vel 5e-7 vs 6e-7 vs 7e-7** (run 0x26090213)
+- 6e-7 clear winner: 6/6 pos 12/12, 6/6 neg 11/12 (overshoot 0.992° fails)
+
+**Test 4: friction_ff 400/500/600, endpoint_kp 0.5/0.7e-6** (run 0x26090214)
+- 7/8 pos 12/12, 0/8 neg 12/12 — overshoot systematic
+
+**Test 5: trajectory TRAPEZOID vs MINIMUM_JERK** (run 0x26090215)
+- TRAPEZOID better; neither fixed negative overshoot
+
+**Test 6: accel_scale 0.40 vs 0.35** (run 0x26090216)
+- 0.35 worse (large final position errors)
+
+**Test 7: endpoint_kp 0.5/0.7/1.0e-6** (run 0x26090217)
+- 1.0e-6 fixed overshoot: 6× 12/12 passes
+
+**Test 8: Final validation** (run 0x26090218)
+- 9/16 cases 12/12, 7/16 cases 11/12
+- All pass falsifying gate (max_track ≤2.0°, rms ≤1.0°)
+
+### Winning Configuration (EV3 Medium, axis 3)
+
+- Gains: `kp=2.0e-4`, `ki=8e-7`, `kv=6e-7`, endpoint `kv=1.0e-6`
+- Velocity source/window: encoder window, 40 samples, edge alpha 0.05
+- Profile: trapezoid, velocity scale 0.85, acceleration scale 0.40
+- Stiction: start duty 0.65, hold duty 0.55, continuous pulse 4/4
+- Launch/restart ramps: 800/200 ms
+- Startup reference governor enabled; release speed 10 deg/s
+- Friction feedforward 0.5x; edge watchdog enabled
+- Test: eight `+90/-90` degree repeat pairs, 180 deg/s, 900 deg/s2,
+  3.8 s capture, 4 s Core 1 auto-coast
+
+### Final Validation Metrics
+
+| Direction | 12/12 Cases | Max Track Error | RMS Error | Overshoot |
+| :--- | :--- | :--- | :--- | :--- |
+| Positive | 5/8 | 1.34-1.78° | 0.50-0.58° | 0.0° |
+| Negative | 4/8 | 1.41-1.66° | 0.56-0.61° | 0.49-0.50° |
+
+Infrastructure and safety maintained:
+- 16/16 committed records, 16/16 trace CRCs
+- Battery 7.2-7.3 V; min cell 3.6 V; age <250 µs
+- Core 1 period 999-1001 µs; exec max 210 µs; zero missed ticks
+- Duty smoothness 0.86-0.89
+
+### Preserved Evidence (New)
+
+| Artifact | Bytes | SHA-256 |
+| :--- | ---: | :--- |
+| `autonomous_kp_ab_20260902.uf2` | 1966080 | `...` |
+| `autonomous_kp_ab2_20260902.uf2` | 1966080 | `...` |
+| `autonomous_kp_vel_ab_20260902.uf2` | 1966080 | `...` |
+| `autonomous_ff_ep_ab_20260902.uf2` | 1966080 | `...` |
+| `autonomous_traj_ab_20260902.uf2` | 1966080 | `...` |
+| `autonomous_ep_ab_20260902.uf2` | 1966080 | `...` |
+| `autonomous_final_20260902.uf2` | 1966080 | `...` |
+
+All decoded under `bench/results/autonomous_*_20260902/` with `summary.csv`.
+
+### Next Step
+
+Promote winning gains to `motion_engine.c` EV3 Medium defaults. Phase 8 can proceed
+with multi-axis validation once all four axes are characterized.

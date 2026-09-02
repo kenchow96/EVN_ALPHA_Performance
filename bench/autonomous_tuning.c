@@ -39,6 +39,11 @@ typedef struct {
     float start_duty;
     uint8_t repeat_index;
     float delta;
+    float kp_pos;          /* position gain */
+    float kp_vel;          /* velocity gain */
+    uint16_t friction_ff;  /* friction feedforward permille */
+    float endpoint_kp;     /* endpoint velocity gain */
+    float accel_scale;     /* A/B: acceleration scale */
 } tuning_case_t;
 
 typedef enum {
@@ -55,23 +60,25 @@ typedef enum {
     AUTO_FINISH,
 } auto_state_t;
 
+/* Final validation: best config (kp_pos=2.0e-4, kp_vel=6e-7, friction_ff=500, endpoint_kp=1.0e-6, accel_scale=0.40, TRAPEZOID)
+ * 8 repeats × 2 directions = 16 cases */
 static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 0,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 0, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 1,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 1, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 2,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 2, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 3,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 3, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 4,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 4, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 5,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 5, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 6,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 6, -90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 7,  90.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 0.5e-6f, 800, 200, 4, 0.65f, 7, -90.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 0,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 0, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 1,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 1, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 4,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 4, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 5,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 5, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 6,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 6, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 7,  90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 7, -90.0f, 2.0e-4f, 6.0e-7f, 500, 1.0e-6f, 0.40f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;
@@ -101,27 +108,27 @@ static void prepare_header(evn_tuning_status_t status) {
     s_header.delta_mdeg = (int32_t)(test->delta * 1000.0f);
     s_header.vmax_mdegs = 180000u;
     s_header.accel_mdegs2 = 900000u;
-    s_header.kp = 1.2e-4f;
+    s_header.kp = test->kp_pos;
     s_header.ki = 8.0e-7f;
-    s_header.kv = 5.0e-7f;
+    s_header.kv = test->kp_vel;
     s_header.start_duty = test->start_duty;
     s_header.hold_duty = 0.55f;
     s_header.speed_source = 1u;
     s_header.speed_window = 40u;
     s_header.speed_alpha = 0.05f;
     s_header.vel_scale = 0.85f;
-    s_header.accel_scale = 0.40f;
+    s_header.accel_scale = test->accel_scale;
     s_header.sample_div = EVN_TRACE_SAMPLE_DIV;
     s_header.pwm_hz = hal_motor_get_pwm_freq();
     s_header.trajectory_type = test->trajectory_type;
     s_header.repeat_index = test->repeat_index;
     s_header.startup_reference_governor = test->startup_reference_governor;
     s_header.friction_feedforward_permille =
-        test->friction_feedforward_permille;
+        test->friction_ff;
     s_header.startup_release_speed_mdegs =
         test->startup_release_speed_mdegs;
     s_header.edge_watchdog_enabled = test->edge_watchdog_enabled;
-    s_header.endpoint_kp_vel = test->endpoint_kp_vel;
+    s_header.endpoint_kp_vel = test->endpoint_kp;
     s_header.startup_ramp_ms = test->startup_ramp_ms;
     s_header.restart_ramp_ms = test->restart_ramp_ms;
     s_header.startup_pulse_on_ticks = test->startup_pulse_on_ticks;
@@ -268,22 +275,22 @@ void autonomous_tuning_service(void) {
         evn_motion_set_velocity_source(TUNING_AXIS, 1);
         evn_motion_set_speed_window(TUNING_AXIS, 40);
         evn_motion_set_edge_speed_alpha(TUNING_AXIS, 0.05f);
-        evn_motion_set_profile_scale(TUNING_AXIS, 0.85f, 0.40f);
+        evn_motion_set_profile_scale(TUNING_AXIS, 0.85f, test->accel_scale);
         evn_motion_set_trajectory_type(TUNING_AXIS, test->trajectory_type);
         evn_motion_set_startup_reference_governor(
             TUNING_AXIS, test->startup_reference_governor);
         evn_motion_set_friction_feedforward(
-            TUNING_AXIS, test->friction_feedforward_permille);
+            TUNING_AXIS, test->friction_ff);
         evn_motion_set_startup_release_speed(
             TUNING_AXIS, test->startup_release_speed_mdegs / 1000.0f);
         evn_motion_set_edge_watchdog(TUNING_AXIS, test->edge_watchdog_enabled);
-        evn_motion_set_endpoint_velocity_gain(TUNING_AXIS, test->endpoint_kp_vel);
+        evn_motion_set_endpoint_velocity_gain(TUNING_AXIS, test->endpoint_kp);
         evn_motion_set_startup_ramp_ms(TUNING_AXIS, test->startup_ramp_ms);
         evn_motion_set_restart_ramp_ms(TUNING_AXIS, test->restart_ramp_ms);
         evn_motion_set_startup_pulse_on_ticks(
             TUNING_AXIS, test->startup_pulse_on_ticks);
-        evn_motion_set_gains_axis(TUNING_AXIS, 1.2e-4f, 8.0e-7f,
-                      5.0e-7f, 0.0f, 0.0f);
+        evn_motion_set_gains_axis(TUNING_AXIS, test->kp_pos, 8.0e-7f,
+                      test->kp_vel, 0.0f, 0.0f);
         evn_motion_set_stiction(TUNING_AXIS, test->start_duty, 0.55f);
         float angle, speed;
         bool stalled, done;
