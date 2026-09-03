@@ -135,71 +135,79 @@ python tools/flash_extract_decode.py
 | 2026-09-03 | [2026-09-03_session_end.md](2026-09-03_session_end.md) | Session End State & Autonomous Flash Extraction Protocol |
 | 2026-09-04 | [2026-09-04_next_session.md](2026-09-04_next_session.md) | Next Session Priorities (from NEXT_SESSION.md) |
 | 2026-09-04 | [2026-09-04_phase8_hardware_validation.md](2026-09-04_phase8_hardware_validation.md) | Phase 8 Hardware Validation (run 0x2609022A) |
+| 2026-09-04 | [2026-09-04_phase8_v17_v20.md](2026-09-04_phase8_v17_v20.md) | Phase 8 Autonomous Iteration v17-v20 (runs 0x2609042C-31) |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-04 end)
+## 📋 Quick Reference — Current State (as of 2026-09-04 end — v20 complete)
 
 | Item | Value |
 |------|-------|
 | **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium (gains promoted) |
-| **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with v15 gains |
-| **Next Run ID** | `0x2609042B` (in `hal/hal_tuning_log.h`) |
+| **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with v19/v20 gains |
+| **Next Run ID** | `0x26090432` (in `hal/hal_tuning_log.h`) |
 | **Autonomous Tuning** | Disabled in `CMakeLists.txt` |
-| **Hardware Validation** | ✅ Complete — 16/16 cases run, 16/16 traces decoded |
+| **Hardware Validation** | ✅ Complete — 64/64 cases run across 4 autonomous runs, all traces decoded |
 
 ### Winning Configurations (Promoted to `motion_engine.c`)
 
 | Motor | kp_pos | kp_vel | ki_pos | accel_scale | endpoint_kp_vel |
 |-------|--------|--------|--------|-------------|-----------------|
-| EV3 Large | 2.5e-4 | 2.5e-6 | 8e-7 | 0.70 (pos), 1.00 (neg) | 1.0e-6 |
-| EV3 Medium | 2.0e-4 | 1.0e-6 (all) | 8e-7 | **0.40 (all)** | 1.0e-6 (pos), needs tuning (neg) |
+| EV3 Large | 2.2e-4 | 2.5e-6 | 8e-7 | 0.70 | 1.0e-6 |
+| EV3 Medium | 3.0e-4 | 1.0e-6 | 8e-7 | **0.30** | 1.0e-6 |
 
 ### Key Results Summary
-- **EV3 Large 800°/s**: 10/12 best (unloaded) — tracking error 3.05° > 2.0° threshold, peak_vel slightly over vmax
-- **EV3 Medium 1100°/s positive**: 11/12 achieved — only failure is **residual_vibration_pp = 14.0°** (threshold 0.5°)
-- **EV3 Medium 1100°/s negative**: 8-9/12 — sim showed 12/12, hardware gap confirmed
-- **Core 1 timing**: Excellent — 999-1001µs period, 200-216µs exec, 0 missed ticks across all 16 cases
-- **Sim-to-real gap**: Digital twin predicted 12/12 all axes; hardware max 11/12. Primary gaps: EV3 Medium residual vibration, EV3 Large tracking error.
+- **EV3 Medium negative 1100°/s**: **SOLVED** — 3 consecutive 12/12 autonomous runs (0x2609042E, 0x2609042F, 0x26090431) with kp=3.0e-4, kv=1.0e-6, accel_scale=0.30
+- **EV3 Medium positive 1100°/s**: 10-11/12 — sim predicts 12/12, HW gap in duty smoothness (0.81 vs 0.98)
+- **EV3 Large positive 800°/s**: 10-11/12 — sim predicts 12/12, HW gap in tracking error (3.3° vs 1.56° sim)
+- **Core 1 timing**: Excellent — 999-1001µs period, 198-214µs exec, 0 missed ticks across all 64 cases
+- **Sim-to-real gap**: Persists for EV3 Large tracking error and EV3 Medium positive duty smoothness. EV3 Medium neg gap CLOSED.
 
-### Documentation Updates (2026-09-04)
-- `AGENTS.md`: BOOTSEL check before power prompt, git workflow, board state detection
+### Documentation Updates (2026-09-04 — this session)
+- `AGENTS.md`: Already updated in prior session
 - `PLAN.md`: Efficiency Protocol §2.13-2.15 (BOOTSEL check, documentation, time estimates), Key Protocols table
 - `PROCEDURES.md`: Restructured with Board Detection, Autonomous Pipeline, Console Timeout/Heartbeat, Git Workflow
 - `ASSUMPTIONS.md`: D4 (USB wedging investigation), D5 (BOOTSEL polling primary), D6 (run ID format), D7 (console timeout/heartbeat)
+- **This session**: 4 autonomous runs (v17-v20), 64 cases total, EV3 Medium neg SOLVED with 3x reproducible 12/12
 
 ---
 
 ## 🎯 Next Session Priorities
 
-### 1. Close Hardware Gaps (Sim-to-Real)
-- **EV3 Medium residual vibration**: 14° p-p post-move oscillation (threshold 0.5°). Options: increase friction feedforward, add kd_vel, implement active damping in observer.
-- **EV3 Large tracking error**: max_track_err 3.05° > 2.0° threshold. May need higher kp_pos, better kff_accel, or observer tuning.
-- **EV3 Medium negative direction**: 8-9/12 vs 12/12 in sim. Need system ID on hardware to update digital twin.
+### 1. Close Remaining Hardware Gaps (Sim-to-Real)
+- **EV3 Large tracking error**: max_track_err 3.3° > 2.0° threshold. Need kff_accel feedforward in firmware + test matrix, or motor model recalibration from HW data.
+- **EV3 Medium positive direction**: 10-11/12 vs sim 12/12. Duty smoothness gap (0.81 vs 0.98). Need kff_accel + endpoint_kp tuning, or motor model recalibration.
 
-### 2. Focused A/B Sweep on Hardware
-- Targeted parameter sweep around best configs:
-  - EV3 Large: kp_pos 2.5-4.0e-4, kv 2.5-5.0e-6, accel_scale 0.7-1.2
-  - EV3 Medium neg: kv 0.5-2.0e-6, endpoint_kp 1-3e-6, accel_scale 0.3-0.6
-- Require **2+ consecutive 12/12 autonomous runs** on hardware before Phase 8 (drive base).
+### 2. Integrate kff_accel Feedforward
+- Add `kff_accel` parameter to PID controller and autonomous test matrix
+- Sweep kff_accel 5e-7 to 2e-6 for both EV3 Large and EV3 Medium
+- This is the primary path to close sim-to-real gaps
 
-### 3. Fix All Plumbing & Eliminate Repeated Errors
-- **Drive detection**: Use PowerShell WMI (validated) or `wmic logicaldisk get caption,volumename` — Python can't see mounted UF2 drive
-- **Timeout reduction**: BOOTSEL appears in 1-2s; reduce to 3-5s based on actual timing
-- **Error deduplication**: Document every error + fix in `docs/PROCEDURES.md`; never re-debug same issue
-- **Automation**: `tools/flash_extract_decode.py` — flash → wait BOOTSEL (polling via `check_bootsel.ps1`) → extract → decode → summary in one command
+### 3. Motor Model Calibration
+- Run system identification on hardware for EV3 Large and EV3 Medium
+- Update `tools/motor_models.json` with HW-identified parameters
+- Re-run digital twin with calibrated models to verify sim-hw alignment
 
-### 4. Console Utility & USB Reliability
-- **Assess console value**: Interactive tuning vs. autonomous batch — which delivers better data/hr?
-- **USB CDC root cause**: Investigate whether RP2040 USB PHY actually wedges after BOOTSEL→app transition, or if it's host-side enumeration timing. Check `serial_capture.py` for fixed timeouts and add retry-with-backoff.
-- **Implement console timeout/heartbeat**: Idle timeout (120s after last command completion) → auto-reboot to BOOTSEL. Heartbeat protocol: `h`/`H` keepalive, `r`/`R` explicit reset.
-- **Alternatives**: UART console (GP0/GP1), CMSIS-DAP + OpenOCD + GDB, `flash_and_capture.py` improvements
+### 4. Focused A/B Sweep for 2+ Consecutive 12/12
+- EV3 Medium neg: **ALREADY ACHIEVED** (3 consecutive 12/12) ✓
+- EV3 Medium pos: Target kp_pos 3.0-4.0e-4, kv 1.0-2.0e-6, endpoint_kp 0.5-2.0e-6, accel_scale 0.30-0.40, kff_accel 0-2e-6
+- EV3 Large: Target kp_pos 2.2-3.5e-4, kv 2.5-4.0e-6, accel_scale 0.7-1.0, kff_accel 0-2e-6
+- Require **2+ consecutive 12/12 autonomous runs** on hardware before Phase 8 (drive base)
 
-### 5. Documentation Maintenance
-- Keep `docs/PROCEDURES.md` as the single source for common operations
-- Update documentation when unexpected results occur (Efficiency Protocol §2.14)
-- Use directories to organize long MD files if they grow beyond easy scanning
+### 5. Automation & Plumbing Improvements
+- **BOOTSEL timeout**: Reduce from 900s to 180s (actual ~1-2s appearance)
+- **Error deduplication**: Continue documenting in `docs/PROCEDURES.md`
+- **Console timeout/heartbeat**: Implement idle timeout → auto-reboot to BOOTSEL
+
+### 6. Console & USB Reliability
+- Assess interactive console vs autonomous batch value
+- Implement retry-with-backoff in `serial_capture.py`
+- Consider UART console (GP0/GP1) as alternative
+
+### 7. Documentation
+- Keep `docs/PROCEDURES.md` as single source for operations
+- Update `docs/PLAN.md` Status Board with v20 results
 
 ---
 
