@@ -36,7 +36,7 @@ def find_port():
             return p.device
     return None
 
-def wait_for_port_open(baud, timeout_s=25.0, stable_s=0.75, settle_s=1.0):
+def wait_for_port_open(baud, timeout_s=8.0, stable_s=0.3, settle_s=0.3):
     """Wait for stable enumeration, then return a validated held handle+bytes.
 
     Picotool can return while the old COM instance is still disappearing. Wait
@@ -74,7 +74,7 @@ def wait_for_port_open(baud, timeout_s=25.0, stable_s=0.75, settle_s=1.0):
                     ser.close()
                 stable_port = None
                 stable_since = 0.0
-        time.sleep(0.1)
+        time.sleep(0.05)  # Faster polling
     return None
 
 def flash(uf2):
@@ -147,7 +147,7 @@ def main():
             return 1
         # Picotool can return before Windows removes the pre-reset COM object.
         # Do not open anything during that stale-instance window.
-        time.sleep(2.0)
+        time.sleep(0.5)
 
     opened = wait_for_port_open(args.baud)
     if opened is None:

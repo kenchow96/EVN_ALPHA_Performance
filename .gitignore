@@ -5,5 +5,16 @@ build
 bench/results/
 !bench/RESULTS.md
 
+# test trace outputs (transient, generated during testing)
+test_trace*.csv
+test_trace*.txt
+
 __pycache__/
 *.pyc
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~

@@ -41,34 +41,102 @@ picotool save -r 0x10F00000 0x10FF0000 -f "$outputDir\tuning.uf2"
 
 ---
 
-## 3. BOOTSEL Detection Protocol (Validated 2026-09-03)
+## 3. Autonomous Tuning Pipeline
+
+### 3.1 One-Command Automation (Recommended)
+
+**Problem**: Manual flash → wait → extract → decode → summarize is error-prone and slow.
+
+**Solution**: `tools/flash_extract_decode.py` automates the entire pipeline:
+1. Builds autonomous firmware (toggles CMakeLists.txt `EVN_AUTONOMOUS_TUNING=1`)
+2. Flashes via picotool
+3. Waits for BOOTSEL drive (uses PowerShell WMI event with VolumeName filtering)
+4. Extracts tuning flash region via `picotool save`
+5. Decodes with `decode_tuning_flash.py`
+6. Prints summary table
+7. Restores console build (`EVN_AUTONOMOUS_TUNING=0`)
+
+```powershell
+# Full autonomous run + extraction + decode + summary
+python tools/flash_extract_decode.py
+
+# Custom output directory
+python tools/flash_extract_decode.py --output-dir bench/results/my_run
+
+# Skip build (use existing UF2)
+python tools/flash_extract_decode.py --no-build
+
+# Don't restore console build after
+python tools/flash_extract_decode.py --no-restore
+
+# Custom BOOTSEL timeout
+python tools/flash_extract_decode.py --timeout 180
+```
+
+**Output**: Creates timestamped directory under `bench/results/` with:
+- `tuning.uf2` — raw extracted flash
+- `summary.csv` — machine-readable results
+- `flash_records.json` — full headers + metrics
+- Summary table printed to console
+
+### 3.2 Manual BOOTSEL Detection (Fallback)
 
 **Problem**: `picotool info` often fails to detect BOOTSEL even when Windows sees the UF2 drive.
 
-**Solution**: Use PowerShell WMI event subscription to detect drive insertion.
+**Solution**: Use PowerShell WMI event subscription with VolumeName filtering for RP2040 specifically.
 
 ```powershell
-# Start listener BEFORE flashing autonomous firmware
+# Terminal 1: Start listener (save as tools/wait_bootsel.ps1)
 $Query = "SELECT * FROM Win32_VolumeChangeEvent WHERE EventType = 2"
-Register-CimIndicationEvent -Query $Query -SourceIdentifier "DriveInsertedEvent" -Action {
+$action = {
     $DriveLetter = $EventArgs.NewEvent.DriveName
-    Write-Host "[INSERTED] Drive $DriveLetter detected at $(Get-Date)" -ForegroundColor Green
+    $vol = Get-WmiObject -Query "SELECT * FROM Win32_LogicalDisk WHERE DeviceID = '$DriveLetter'"
+    if ($vol.VolumeName -eq 'RP2350' -or $vol.VolumeName -eq 'RPI-RP2') {
+        Write-Host "[BOOTSEL DETECTED] Drive $DriveLetter at $(Get-Date)" -ForegroundColor Green
+        $global:BootSelDrive = $DriveLetter
+        Unregister-Event -SourceIdentifier "BootSelDriveEvent" -Force
+    }
 }
-Write-Host "Listening for drive insertions... Press Ctrl+C to stop."
-while ($true) { Start-Sleep -Seconds 1 }
+Register-CimIndicationEvent -Query $Query -SourceIdentifier "BootSelDriveEvent" -Action $action
+Write-Host "Listening for RP2040 BOOTSEL drive... Press Ctrl+C to stop."
+$global:BootSelDrive = $null
+while ($global:BootSelDrive -eq $null) { Start-Sleep -Milliseconds 500 }
+Write-Host "Drive found: $global:BootSelDrive"
 ```
 
-**Then flash autonomous firmware**. When it completes, the listener will print the drive letter (e.g., `D:`).
-
-**Extract flash**:
+**Usage**:
 ```powershell
-picotool save -r 0x10F00000 0x10FF0000 -f "bench\results\...\tuning.uf2"
+# Terminal 1: Start listener
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/wait_bootsel.ps1
+
+# Terminal 2: Build autonomous (EVN_AUTONOMOUS_TUNING=1) → Compile Project task
+# Terminal 2: Flash autonomous
+picotool load -f build\EVN_ALPHA_Performance.uf2 -x
+
+# Terminal 1 will print: [BOOTSEL DETECTED] Drive D: at ...
+# Drive found: D:
+```
+
+**Extract flash** (after drive detected):
+```powershell
+# Create output directory first!
+$dir = "bench\results\autonomous_multi_YYYYMMDD_vXX"
+New-Item -ItemType Directory -Path $dir -Force | Out-Null
+picotool save -r 0x10F00000 0x10FF0000 -f "$dir\tuning.uf2"
 # No -d needed if only one RP2040
 ```
 
 **Decode**:
 ```powershell
-python tools/decode_tuning_flash.py "bench\results\...\tuning.uf2" --output "bench\results\..."
+python tools/decode_tuning_flash.py "$dir\tuning.uf2" --output "$dir"
+```
+
+**Restore console build**:
+```powershell
+# Set EVN_AUTONOMOUS_TUNING=0 in CMakeLists.txt → Compile Project task
+# Power cycle board (disconnect USB, wait 5s, reconnect)
+# Flash console firmware
+picotool load -f build\EVN_ALPHA_Performance.uf2 -x
 ```
 
 ---
@@ -94,6 +162,8 @@ target_compile_definitions(EVN_ALPHA_Performance PRIVATE
     ...
 )
 ```
+
+> **Note**: The automation script (`flash_extract_decode.py`) handles this toggle automatically.
 
 ---
 
@@ -149,44 +219,7 @@ Never leave motors driven or braked when a test ends.
 
 ---
 
-## 9. Flash Extraction Quick Reference
-
-```powershell
-# 1. Create output directory
-$dir = "bench\results\autonomous_multi_YYYYMMDD_vXX"
-New-Item -ItemType Directory -Path $dir -Force | Out-Null
-
-# 2. Start PowerShell listener (in separate terminal)
-# $Query = "SELECT * FROM Win32_VolumeChangeEvent WHERE EventType = 2"
-# Register-CimIndicationEvent ...
-
-# 3. Build autonomous (EVN_AUTONOMOUS_TUNING=1)
-# Compile Project task
-
-# 4. Flash autonomous
-picotool load -f build\EVN_ALPHA_Performance.uf2 -x
-
-# 5. Wait for listener to report drive (e.g., D:)
-# 6. Extract flash
-picotool save -r 0x10F00000 0x10FF0000 -f "$dir\tuning.uf2"
-
-# 7. Decode
-python tools/decode_tuning_flash.py "$dir\tuning.uf2" --output "$dir"
-
-# 8. Build console (EVN_AUTONOMOUS_TUNING=0)
-# Compile Project task
-
-# 9. Power cycle board (disconnect USB, wait 5s, reconnect)
-
-# 10. Flash console
-picotool load -f build\EVN_ALPHA_Performance.uf2 -x
-
-# 11. Verify console banner
-```
-
----
-
-## 10. Key File Locations
+## 9. Key File Locations
 
 | Purpose | File |
 |---------|------|
@@ -194,13 +227,15 @@ picotool load -f build\EVN_ALPHA_Performance.uf2 -x
 | Autonomous toggle | `CMakeLists.txt` (EVN_AUTONOMOUS_TUNING) |
 | Test matrix | `bench/autonomous_tuning.c` (s_cases array) |
 | Decode script | `tools/decode_tuning_flash.py` |
+| Automation script | `tools/flash_extract_decode.py` |
+| BOOTSEL listener | `tools/wait_bootsel.ps1` |
 | Results | `bench/results/autonomous_multi_*/summary.csv` |
 | Flash records | `bench/results/autonomous_multi_*/flash_records.json` |
-| Session log | `docs/RESUME.md` |
+| Session logs | `docs/resume/*.md` |
 
 ---
 
-## 11. Common Commands
+## 10. Common Commands
 
 ```powershell
 # Check board state
@@ -217,4 +252,39 @@ git status
 
 # View diff
 git diff motion/motion_engine.c
+
+# Full autonomous pipeline (build + flash + wait + extract + decode + summary)
+python tools/flash_extract_decode.py
+
+# Quick capture from running board
+python tools/serial_capture.py --port COM7 --time 5 --send "c" --expect "COAST"
 ```
+
+---
+
+## 11. Timeout Reductions (2026-09-03)
+
+**Problem**: `flash_and_capture.py` had excessive timeouts (2.0s post-flash sleep, 25s port wait, 0.75s stability, 1.0s settle) that slowed down the flash-capture cycle.
+
+**Solution**: Reduced timeouts based on actual observed recovery timing (BOOTSEL drive appears within 1-2 seconds after autonomous firmware completes).
+
+**Changes in `tools/flash_and_capture.py`**:
+```python
+# Before
+time.sleep(2.0)                    # Post-flash wait
+wait_for_port_open(baud, timeout_s=25.0, stable_s=0.75, settle_s=1.0)
+
+# After (reduced)
+time.sleep(0.5)                    # Post-flash wait
+wait_for_port_open(baud, timeout_s=8.0, stable_s=0.3, settle_s=0.3)
+```
+
+**Rationale**:
+- Picotool flash + reboot: ~0.5s observed
+- BOOTSEL drive detection: ~1-2s after autonomous firmware completes
+- COM port re-enumeration: ~1-3s after flash
+- Port stability: 0.3s is sufficient (was 0.75s)
+- Settle time: 0.3s is sufficient (was 1.0s)
+- Polling interval: 0.05s (was 0.1s) for faster detection
+
+**Total timeout reduction**: ~28s → ~9s (68% faster)

@@ -1,0 +1,1 @@
+Get-WmiObject Win32_LogicalDisk | Where-Object {$_.VolumeName -eq 'RPI-RP2' -or $_.VolumeName -eq 'RP2350'} | Select-Object DeviceID, VolumeName
