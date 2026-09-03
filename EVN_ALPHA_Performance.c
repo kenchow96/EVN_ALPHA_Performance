@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "pico/stdio.h"
+#include "pico/bootrom.h"
 #include "hardware/clocks.h"
 #include "hal/hal_led.h"
 #include "hal/hal_button.h"
@@ -288,9 +289,16 @@ static void dump_service(void) {
  *   c            -> coast all (safety)
  *   g kp ki kv kd kff   -> set gains (floats)
  *   o ssl st neg ratio  -> set observer stall params (ints)
+ *   h            -> heartbeat (keep console alive, responds H + status)
+ *   R            -> reset to BOOTSEL mode (responds R + reboots)
  */
 static char s_cmd[96];
 static int  s_cmd_len = 0;
+
+/* Console idle timeout: reboot to BOOTSEL after this many seconds of no
+ * completed commands. Timeout starts after command COMPLETES (not when received). */
+#define CONSOLE_IDLE_TIMEOUT_US 120000000ULL  // 120 seconds
+static uint64_t s_last_command_done = 0;
 
 static void handle_command(void) {
     s_cmd[s_cmd_len] = '\0';
@@ -460,15 +468,37 @@ static void handle_command(void) {
         } else con_printf("?? usage: j motor samples_2_to_%d\n", PID_SPEED_WINDOW);
         break;
     }
-    case 'h': {
-        int ax; float vel_scale, accel_scale;
-        if (sscanf(p + 1, "%d %f %f", &ax, &vel_scale, &accel_scale) == 3 &&
-            ax >= 1 && ax <= 4 && vel_scale >= 0.1f && vel_scale <= 1.0f &&
-            accel_scale >= 0.1f && accel_scale <= 1.0f) {
-            evn_motion_set_profile_scale((uint8_t)(ax - 1), vel_scale, accel_scale);
-            con_printf(">> M%d profile scale vel=%g accel=%g\n", ax,
-                       (double)vel_scale, (double)accel_scale);
-        } else con_printf("?? usage: h motor vel_scale accel_scale\n");
+    case 'h': {  /* heartbeat - keep console alive, respond with status */
+        int ax;
+        if (sscanf(p + 1, "%d", &ax) == 1 && ax >= 1 && ax <= 4) {
+            // Per-axis heartbeat (legacy support)
+            float ang, spd; bool stall, done;
+            evn_motion_get_state((uint8_t)(ax - 1), &ang, &spd, &stall, &done);
+            con_printf("H M%d: %7.1f deg  %6.1f d/s  %s%s\n", ax,
+                   (double)ang, (double)spd, stall ? "STALL " : "", done ? "done" : "moving");
+        } else {
+            // Full heartbeat response
+            con_printf("H alive\n");
+            evn_core1_status_t cs;
+            if (evn_core1_get_status(&cs)) {
+                con_printf("Core1: %u ticks, period %u-%u us, exec max %u us, missed %u\n",
+                           (unsigned)cs.tick_count, (unsigned)cs.period_min_us,
+                           (unsigned)cs.period_max_us, (unsigned)cs.exec_max_us,
+                           (unsigned)cs.missed_tick_count);
+            }
+            evn_battery_state_t batt;
+            if (hal_battery_get(&batt)) {
+                con_printf("Battery: %.3f V (cells %.3f / %.3f)\n",
+                           (double)batt.vbatt_mv/1000.0, (double)batt.vcell1_mv/1000.0, (double)batt.vcell2_mv/1000.0);
+            }
+        }
+        break;
+    }
+    case 'R': {  /* explicit reset to BOOTSEL */
+        con_printf("R rebooting to BOOTSEL...\n");
+        cdc_service();  // flush TX
+        busy_wait_ms(100);
+        reset_usb_boot(0, 0);
         break;
     }
     case 's': {  /* s <motor 1-4> <enc_sign +/-1> <motor_dir +/-1> */
@@ -482,6 +512,9 @@ static void handle_command(void) {
     }
     default: con_printf("?? unknown cmd '%c'\n", p[0]); break;
     }
+    
+    /* Update last command done timestamp after successful command execution */
+    s_last_command_done = time_us_64();
 }
 
 static void poll_serial(void) {
@@ -533,12 +566,26 @@ int main(void) {
     uint64_t next_batt = time_us_64();
     uint64_t next_report = time_us_64();
 
+    /* Initialize last command done time to now (start of console) */
+    s_last_command_done = time_us_64();
+
     /* test state machine: OUT (to +360) -> RETURN (to 0) -> DONE (latched).
      * Driven by the 'r' command via s_state. */
     enum { ST_OUT = 0, ST_RETURN = 1, ST_DONE = 3 };
 
     while (true) {
         uint64_t now = time_us_64();
+
+        /* Console idle timeout: reboot to BOOTSEL if no commands completed
+         * within CONSOLE_IDLE_TIMEOUT_US (120s). This allows autonomous
+         * handoff without power cycling. */
+        if (now - s_last_command_done >= CONSOLE_IDLE_TIMEOUT_US) {
+            con_printf("\n>> console idle timeout (%lus) - rebooting to BOOTSEL\n",
+                       CONSOLE_IDLE_TIMEOUT_US / 1000000ULL);
+            cdc_service();  // flush TX
+            busy_wait_ms(100);
+            reset_usb_boot(0, 0);
+        }
 
         cdc_service();
         poll_serial();   // host-driven commands (run/tune/coast)

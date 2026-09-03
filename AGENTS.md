@@ -117,10 +117,26 @@ Typical workflow: `Compile Project` → verify zero errors → `Run Project` (or
 
 - Always rebuild after code changes before deploying.
 - Before every automated motor run, require and log a fresh battery sample (age <= 250 ms), pack >= 6.5 V, and each cell >= 3.0 V.
-- **Before any flash/deploy**, explicitly ask the user to confirm the EVN board is powered on. Do not flash unprompted.
+- **Before any flash/deploy**, check if the board is already in BOOTSEL (UF2) mode using `tools/check_bootsel.ps1`. If detected, assume the user has already set everything up and proceed. Only explicitly ask the user to confirm the EVN board is powered on if the board cannot be detected.
 - **HITL rule**: Before any hardware-in-the-loop test requiring the user's visual or physical feedback (LED state, button press, motor movement, marker placement), explicitly prompt the user to prepare and confirm readiness before and after the test.
 - **Motor safety**: At the end of EVERY motor test, leave all motors in COAST state (`hal_motor_coast_all()` / `evn_motion_coast(i)`). Never leave a motor driven or braked when a test ends.
 - The current firmware toggles the user LED (GP25) on each debounced press of the user button (GP24) — this is the canonical "board is alive" smoke test.
+
+## Board State Detection
+
+- **Primary**: Use `tools/check_bootsel.ps1` to detect if board is in BOOTSEL mode (UF2 drive mounted). This is a simple polling check — fast and reliable.
+- **Secondary**: `tools/wait_bootsel.ps1` uses WMI event subscription for state-change detection. This is timing-dependent and should only be used as a fallback, initialized *before* any other scripts run so it has time to capture the event.
+- **Avoid**: `picotool info` for BOOTSEL detection — it often fails even when Windows sees the UF2 drive.
+- **Board powered check**: If neither tool detects the board, ask the user to confirm the board is powered on and connected via USB.
+
+## Git Workflow
+
+- **Always commit** at every verified checkpoint (Status Board update, assumption closure, phase completion).
+- **Descriptive commit messages**: Include phase, run ID, and key result (e.g., "Phase 8: run 0x2609022A - hardware validation 16/16 traces decoded").
+- **Branch strategy**: Work on `main` directly for this project; no feature branches needed.
+- **Pre-commit checks**: Run `Compile Project` task and verify zero errors before committing.
+- **Key files to track**: `docs/PLAN.md` (Status Board), `docs/ASSUMPTIONS.md`, `docs/resume/*.md`, `hal/hal_tuning_log.h` (run ID), `CMakeLists.txt` (build config), source files under `hal/`, `motion/`, `pio/`.
+- **Do not commit**: `build/` directory, `*.uf2` files, `bench/results/*` (large binary artifacts), `tools/_wait_bootsel.ps1` (temp file).
 
 ## Adding New Subsystems
 

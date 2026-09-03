@@ -1,15 +1,12 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-02, M4 profile gate):** The full handoff is
-> [RESUME.md](RESUME.md). Commit `efd5736` promotes the accepted M3 setup to
-> EV3 Medium defaults and applies it unchanged to M4. Eight bidirectional
-> repeats produced 16/16 CRC-valid traces with safe battery, 999-1001 us Core 1
-> timing, zero missed ticks, and smooth duty, but no 12/12 profile pass: max
-> and RMS tracking error failed 16/16; best cases reached 10/12. Commit
-> `09d6f79` restores the default build to non-autonomous mode. **The board is
-> safely in ROM BOOTSEL with motors off.** Keep the accepted startup heuristics
-> fixed; next run only a narrow Medium feedback/profile A/B. Phase 8 remains
-> blocked until all four axes pass `tools/motion_metrics.py` and beat baseline.
+> **RESUME POINT (2026-09-04, Hardware Validation Complete):** Digital Twin Phase 1 complete — simulation achieves 12/12 on all 4 axes. Hardware validation (run 0x2609022A) completed 16/16 cases with 16/16 traces decoded. Key findings:
+> - EV3 Medium positive: 11/12 (failure: residual_vibration_pp=14° > 0.5° threshold)
+> - EV3 Large positive: 10/12 (failures: max_track_err=3.05° > 2.0°, peak_vel slightly over vmax)
+> - EV3 Medium negative: 8-9/12 (sim predicted 12/12 — sim-to-real gap confirmed)
+> - Core 1 timing excellent: 999-1001µs period, 0 missed ticks across all cases
+> - Board: Console firmware (EVN_AUTONOMOUS_TUNING=0), USB CDC functional
+> - Next: Focused A/B sweep to close sim-to-real gaps; require 2+ consecutive 12/12 on hardware before Phase 8.
 
 Every assumption made during development that is **not** marked `[GROUND TRUTH]` in the specs and has **not** been independently verified against hardware. **Review and confirm/refute each before we build dependent phases on top.** Each entry: the assumption, where it's baked in, why we made it, and how to falsify it.
 
@@ -58,14 +55,18 @@ Legend: ✅ confirmed · ❓ needs confirmation · ⚠️ known-deviation (accep
 | D1 | The RP2040 is the **only** USB-CDC device (VID `0x2E8A`) on the dev machine, so `serial_capture.py` auto-detect is unambiguous | `tools/serial_capture.py` | Single-board dev setup | Multiple RP2040s plugged in → wrong port | ⚠️ known limitation |
 | D2 | Build stays on `PICO_BOARD pico` + flash overrides; a custom board header is deferred to Phase 9 | `CMakeLists.txt` | Custom header broke USB enumeration | Phase 9 board-header rework with correct TinyUSB defaults | ⚠️ deferred |
 | D3 | Boot **LED heartbeat (3×)** is sufficient liveness signal without a console | `EVN_ALPHA_Performance.c` | Convenient diagnostic | — | ✅ working |
+| D4 | **USB CDC is NOT wedging** after BOOTSEL→app transition; the issue is port enumeration timing in `serial_capture.py` (fixed timeout, no retry logic) | `tools/serial_capture.py` | Observed PermissionError 13, but may be host-side | Add retry-with-backoff to serial_capture; test power-cycle vs. wait-only recovery | ❓ needs investigation |
+| D5 | **BOOTSEL detection via `check_bootsel.ps1` polling** is reliable and fast; WMI event subscription (`wait_bootsel.ps1`) is timing-dependent fallback | `tools/check_bootsel.ps1`, `tools/wait_bootsel.ps1` | Empirical: polling works; WMI misses events if not initialized early | Compare both methods across 10+ flash cycles | ✅ polling confirmed |
+| D6 | **Run ID format** `0xYYMMDDNN` (year, month, day, sequence) in `hal/hal_tuning_log.h`; auto-increment per autonomous run | `hal/hal_tuning_log.h` `EVN_TUNING_RUN_ID` | Convention established 2026-09-02 | Check git history for run ID sequence | ✅ documented |
+| D7 | **Console firmware idle timeout** (120s after last command completion) + heartbeat protocol (`h`/`H`, `r`/`R`) will prevent USB CDC issues and enable autonomous handoff | `EVN_ALPHA_Performance.c` (planned) | Console blocks waiting for input | Implement and test autonomous→console→autonomous cycles | ❓ not implemented |
 
 ---
 
-## Before Phase 7 (Motion Engine) we must close:
+## Before Phase 8 (Drive Base) we must close:
 
+- **Sim-to-real gaps** — EV3 Medium residual vibration (14° p-p), EV3 Large tracking error (3.05° > 2.0°), EV3 Medium negative direction (8-9/12 vs 12/12 sim)
 - **A6 / A5** — confirm encoder counts-per-revolution matches motor datasheet CPR (drives PID gain units) and no FIFO overflow at max RPM.
-- **C3 / C4** — run all 4 motors, confirm each FWD physically matches its encoder count sign; set per-motor `hal_motor_set_direction`/`hal_encoder_set_sign` accordingly and record in NVM later.
-- **B2 / B5** — Phase 1 lands the DWT harness + Core 1; measure loop latency and verify cache integrity under dual-core load.
-- **A1** — confirm 200 MHz stability under combined full load (all motors + I2C + PIO running).
+- **D4** — verify USB CDC root cause (wedging vs. enumeration timing) and fix `serial_capture.py`
+- **D7** — implement console idle timeout + heartbeat protocol for autonomous handoff
 
 Everything else is either confirmed ✅ or an accepted, monitored deviation ⚠️.

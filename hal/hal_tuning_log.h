@@ -5,7 +5,17 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define EVN_TUNING_RUN_ID             0x2609022Au
+/**
+ * Run ID Format: 0xYYMMDDNN
+ * - YY = Year (26 = 2026)
+ * - MM = Month (09 = September)
+ * - DD = Day (04 = 4th)
+ * - NN = Sequence number for that day (2A, 2B, 2C... in hex)
+ * 
+ * Example: 0x2609042B = 2026-09-04, run #43 (0x2B = 43 decimal)
+ * Increment for each autonomous run. Reusing a run ID causes firmware to skip completed cases.
+ */
+#define EVN_TUNING_RUN_ID             0x2609042Bu
 #define EVN_TUNING_SCHEMA_VERSION     1u
 #define EVN_TUNING_CASE_COUNT         16u
 #define EVN_TUNING_FLASH_BASE_OFFSET  0x00F00000u

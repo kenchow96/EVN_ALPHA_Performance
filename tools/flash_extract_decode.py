@@ -58,11 +58,48 @@ def run_cmd(cmd, cwd=None, capture=True, timeout=60, check=True, shell=False):
         return -1, "", "timeout"
 
 
-def wait_for_bootsel_drive(timeout_s=60):
-    """Wait for BOOTSEL drive to appear using PowerShell WMI event subscription.
+def wait_for_bootsel_drive(timeout_s=180):
+    """Wait for BOOTSEL drive to appear using polling with check_bootsel.ps1 (primary).
+    Falls back to WMI event subscription if needed.
     Returns the drive letter (e.g., 'D:') or None on timeout."""
     
     print(f"[flash_extract] Waiting for BOOTSEL drive (timeout {timeout_s}s)...")
+    print(f"[flash_extract] Expected autonomous run time: ~12 min (16 cases × 45s) + overhead")
+    print(f"[flash_extract] Using polling (check_bootsel.ps1) as primary detection method")
+    
+    # Primary method: polling with check_bootsel.ps1
+    start_time = time.time()
+    check_script = REPO_ROOT / "tools" / "check_bootsel.ps1"
+    
+    while time.time() - start_time < timeout_s:
+        try:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(check_script)],
+                capture_output=True, text=True, timeout=10
+            )
+            output = result.stdout.strip()
+            if output and ":" in output and len(output) <= 3:
+                # Found drive letter like "D:"
+                print(f"[flash_extract] BOOTSEL drive detected via polling: {output}")
+                return output
+        except subprocess.TimeoutExpired:
+            pass
+        
+        time.sleep(1.0)  # Poll every second
+    
+    # Fallback: WMI event subscription (wait_bootsel.ps1)
+    print("[flash_extract] Polling timeout, trying WMI event subscription as fallback...")
+    return wait_for_bootsel_wmi(timeout_s - int(time.time() - start_time))
+
+
+def wait_for_bootsel_wmi(timeout_s):
+    """Wait for BOOTSEL drive using WMI event subscription (fallback).
+    Must be initialized early to catch the event."""
+    
+    if timeout_s <= 0:
+        timeout_s = 30
+    
+    print(f"[flash_extract] Waiting for BOOTSEL drive via WMI (timeout {timeout_s}s)...")
     
     # PowerShell script to wait for drive insertion
     ps_script = f"""
@@ -256,7 +293,7 @@ def main():
     ap.add_argument("--output-dir", default=None, help="Output directory (default: bench/results/auto_YYYYMMDD_HHMMSS)")
     ap.add_argument("--no-build", action="store_true", help="Skip build step (use existing UF2)")
     ap.add_argument("--no-restore", action="store_true", help="Don't restore console build after")
-    ap.add_argument("--timeout", type=int, default=120, help="BOOTSEL wait timeout (seconds)")
+    ap.add_argument("--timeout", type=int, default=180, help="BOOTSEL wait timeout (seconds). Default 180s = 3 min for 16-case run (~12 min autonomous + overhead)")
     args = ap.parse_args()
     
     # Determine output directory
@@ -267,6 +304,8 @@ def main():
         output_dir = RESULTS_DIR / f"autonomous_auto_{timestamp}"
     
     print(f"[flash_extract] Output directory: {output_dir}")
+    print(f"[flash_extract] Autonomous run time estimate: ~12 min (16 cases × 45s) + flash/extract overhead ~3 min = ~15 min total")
+    print(f"[flash_extract] BOOTSEL detection timeout: {args.timeout}s (adjust with --timeout)")
     output_dir.mkdir(parents=True, exist_ok=True)
     
     try:

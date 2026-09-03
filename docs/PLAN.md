@@ -41,6 +41,15 @@ All results stored as CSV in `bench/results/` with a one-line summary appended t
 12. **Start a fresh agent session when context becomes inefficient.** First
     coast hardware, commit verified work, update the Status Board and
     `ASSUMPTIONS.md` resume point, and leave one exact continuation command.
+13. **Before any flash/deploy, check BOOTSEL first**: Use `tools/check_bootsel.ps1`
+    to detect if board is in BOOTSEL mode. If detected, proceed; only prompt
+    user for power confirmation if board cannot be detected.
+14. **Document common operations**: If a file is read to understand a workflow,
+    document that workflow in `docs/PROCEDURES.md` so it doesn't need to be
+    re-read. Only re-read if results are unexpected, then update the docs.
+15. **Autonomous runs include time estimates**: Each autonomous tuning run
+    should declare an expected duration so timeouts can be set realistically.
+    Typical: 16 cases × 45s ≈ 12 min + flash/extract overhead ≈ 15 min total.
 
 ## 3. Target Repository Structure
 
@@ -176,3 +185,22 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 2. State deliverable + falsifying check (Efficiency Protocol §2.1) before touching code.
 3. Implement → one focused validation → HITL confirmation if the phase lists one → update Status Board → commit.
 4. Report only new facts: changed files, validation output, HITL result, commit hash.
+
+## 9. Key Protocols (Condensed Reference)
+
+| Protocol | Rule | Reference |
+|----------|------|-----------|
+| **Efficiency** | State deliverable + falsifying check first | §2.1 |
+| **Efficiency** | Batch reads; read context once | §2.2 |
+| **Efficiency** | One focused validation per edit | §2.3 |
+| **Efficiency** | 3 patches same bug → rewrite | §2.10 |
+| **Flash/Verify** | Always use `flash_and_capture.py` (or `flash_extract_decode.py`) | §2.11 |
+| **HITL** | Ask user to confirm board powered before flash | `AGENTS.md` |
+| **HITL** | Batch physical asks; prompt before/after | `AGENTS.md` |
+| **Motor Safety** | Always coast at end of every test | `AGENTS.md` |
+| **Battery Gate** | Fresh sample ≤250ms, pack ≥6.5V, cells ≥3.0V | `AGENTS.md` |
+| **Assumptions** | Verify hardware capability before coding | §2.9 |
+| **Session Handoff** | Coast → commit → update Status Board → leave next command | §2.12 |
+| **Board Detection** | Check BOOTSEL first via `check_bootsel.ps1` | `AGENTS.md` Board State Detection |
+| **Documentation** | Document common ops in `PROCEDURES.md`; update when unexpected | §2.14 |
+| **Time Estimates** | Declare autonomous run duration for realistic timeouts | §2.15 |
