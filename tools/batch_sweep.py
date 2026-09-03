@@ -271,6 +271,12 @@ def run_simulation_worker(args: tuple) -> dict:
     sim = Simulator(sweep_config.motor, sweep_config.models_json)
     
     # Set gains
+    # Convert integer parameters
+    vel_window = int(config_dict.get('vel_window', 40))
+    startup_ramp_ticks = int(config_dict.get('startup_ramp_ticks', 200))
+    restart_ramp_ticks = int(config_dict.get('restart_ramp_ticks', 200))
+    startup_pulse_on_ticks = int(config_dict.get('startup_pulse_on_ticks', 4))
+    
     sim.set_gains(
         kp_pos=config_dict.get('kp_pos', 2.0e-4),
         ki_pos=config_dict.get('ki_pos', 8.0e-7),
@@ -284,10 +290,10 @@ def run_simulation_worker(args: tuple) -> dict:
         min_duty=config_dict.get('min_duty', 0.12),
         start_duty=config_dict.get('start_duty', 0.12),
         startup_release_speed_mdegs=config_dict.get('startup_release_speed_mdegs', 0.0),
-        startup_ramp_ticks=config_dict.get('startup_ramp_ticks', 200),
-        restart_ramp_ticks=config_dict.get('restart_ramp_ticks', 200),
-        startup_pulse_on_ticks=config_dict.get('startup_pulse_on_ticks', 4),
-        vel_window=config_dict.get('vel_window', 40)
+        startup_ramp_ticks=startup_ramp_ticks,
+        restart_ramp_ticks=restart_ramp_ticks,
+        startup_pulse_on_ticks=startup_pulse_on_ticks,
+        vel_window=vel_window
     )
     
     # Feedforward
