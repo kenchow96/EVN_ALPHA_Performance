@@ -63,37 +63,39 @@ typedef enum {
     AUTO_FINISH,
 } auto_state_t;
 
-/* Focused tuning matrix for Phase 8 perfection (v12):
- * Target: 12/12 passes on EV3 Large 800 deg/s and EV3 Medium 1100 deg/s negative
- * - 8 cases: EV3 Large (axes 0,1) at 800 deg/s - sweep kp/kv/accel_scale
- * - 8 cases: EV3 Medium (axes 2,3) at 1100 deg/s negative - sweep kv/accel_scale/endpoint_kp
+/* Focused tuning matrix for Phase 8 perfection (v19):
+ * Target: 12/12 passes on all 4 axes at speed
+ * - EV3 Large (axes 0,1): 800 deg/s - sweep kp_pos/kv/endpoint_kp/accel_scale to close tracking gap
+ * - EV3 Medium NEG (axis 2): 1100 deg/s - ACCEL_SCALE=0.30/0.35 validated 12/12 (not 0.40!)
+ * - EV3 Medium POS (axis 3): 1100 deg/s - sweep kp_pos/kv/endpoint_kp/accel_scale to close duty gap
  * All moves: 720° distance, alternating directions, absolute moves
- * EV3 Large base: kp=2.5e-4, kv=2.5e-6, accel_scale=0.7
- * EV3 Medium base: kp=2.0e-4, kv=1.0e-6 (neg), accel_scale=0.4, endpoint_kp=1.0e-6 */
+ * EV3 Medium NEG validated: kp=3.0e-4, kv=1.0e-6/1.2e-6, accel_scale=0.30/0.35 (12/12 HW)
+ * EV3 Medium POS: kp=3.0e-4, kv=1.2e-6, endpoint_kp=1.0e-6, accel_scale=0.35 (11/12 HW, 12/12 sim)
+ * EV3 Large: kp=2.2e-4/2.5e-4, kv=2.5e-6/3.0e-6, accel_scale=0.7, endpoint_kp=1.0e-6 (11/12 HW, 12/12 sim) */
 static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
-    /* Axis 0 (EV3 Large, 800 deg/s max): sweep kp_pos at 800 deg/s */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 0,  720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 1, -720.0f,  800.0f, 1600.0f, 0, 3.0e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 2,  720.0f,  800.0f, 1600.0f, 0, 3.5e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 3, -720.0f,  800.0f, 1600.0f, 0, 4.0e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f},
+    /* Axis 0 (EV3 Large, 800 deg/s max): sweep kp_pos and kv */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 0,  720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 1, -720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 2,  720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 3.0e-6f, 500, 1.0e-6f, 0.70f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 3, -720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 2.5e-6f, 500, 1.0e-6f, 0.85f},
     
-    /* Axis 1 (EV3 Large, 800 deg/s max): sweep kv and accel_scale at 800 deg/s */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 0,  720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 3.0e-6f, 500, 1.0e-6f, 0.70f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 1, -720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 3.5e-6f, 500, 1.0e-6f, 0.70f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 2,  720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 2.5e-6f, 500, 1.0e-6f, 0.85f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 3, -720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 2.5e-6f, 500, 1.0e-6f, 1.00f},
+    /* Axis 1 (EV3 Large, 800 deg/s max): sweep kv and endpoint_kp and accel_scale */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 0,  720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 1, -720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 3.0e-6f, 500, 1.0e-6f, 0.70f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 2,  720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 2.5e-6f, 500, 5.0e-7f, 0.70f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 3, -720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 3.0e-6f, 500, 1.0e-6f, 0.70f},
     
-    /* Axis 2 (EV3 Medium, 1200 deg/s max): sweep kv at 1100 deg/s negative */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.0e-4f, 8.0e-7f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.0e-4f, 1.0e-6f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.0e-4f, 1.2e-6f, 500, 1.0e-6f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.0e-4f, 1.5e-6f, 500, 1.0e-6f, 0.40f},
+    /* Axis 2 (EV3 Medium, 1200 deg/s max): NEG direction - VALIDATED 12/12 at accel_scale=0.30/0.35 */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 0, -720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.0e-6f, 500, 1.0e-6f, 0.30f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 1,  720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.2e-6f, 500, 1.0e-6f, 0.35f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 2, -720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.0e-6f, 500, 5.0e-7f, 0.30f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 3,  720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.2e-6f, 500, 2.0e-6f, 0.35f},
     
-    /* Axis 3 (EV3 Medium, 1200 deg/s max): sweep accel_scale and endpoint_kp at 1100 deg/s negative */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.0e-4f, 1.0e-6f, 500, 1.0e-6f, 0.30f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.0e-4f, 1.0e-6f, 500, 1.0e-6f, 0.50f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.0e-4f, 1.0e-6f, 500, 5.0e-7f, 0.40f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.0e-4f, 1.0e-6f, 500, 2.0e-6f, 0.40f},
+    /* Axis 3 (EV3 Medium, 1200 deg/s max): POS direction - sweep kp_pos/kv/endpoint_kp/accel_scale */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.0e-6f, 500, 1.0e-6f, 0.35f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.2e-6f, 500, 1.0e-6f, 0.35f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 2, -720.0f, 1100.0f, 2200.0f, 0, 3.5e-4f, 1.2e-6f, 500, 1.0e-6f, 0.35f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.5e-6f, 500, 1.0e-6f, 0.35f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;
