@@ -47,6 +47,7 @@ typedef struct {
     uint16_t friction_ff;
     float endpoint_kp;
     float accel_scale;
+    float kff_accel;           /* acceleration feedforward gain */
 } tuning_case_t;
 
 typedef enum {
@@ -63,39 +64,37 @@ typedef enum {
     AUTO_FINISH,
 } auto_state_t;
 
-/* Focused tuning matrix for Phase 8 perfection (v19):
+/* Focused tuning matrix for Phase 8 perfection (v20 -> v21):
  * Target: 12/12 passes on all 4 axes at speed
- * - EV3 Large (axes 0,1): 800 deg/s - sweep kp_pos/kv/endpoint_kp/accel_scale to close tracking gap
- * - EV3 Medium NEG (axis 2): 1100 deg/s - ACCEL_SCALE=0.30/0.35 validated 12/12 (not 0.40!)
- * - EV3 Medium POS (axis 3): 1100 deg/s - sweep kp_pos/kv/endpoint_kp/accel_scale to close duty gap
+ * - EV3 Large (axes 0,1): 800 deg/s - ADD kff_accel sweep to close tracking gap (sim predicts 12/12, HW 3.2° error)
+ * - EV3 Medium NEG (axis 2): 1100 deg/s - REPRODUCE 11/12, push to 12/12 with kp_pos/kv fine-tune
+ * - EV3 Medium POS (axis 3): 1100 deg/s - REPRODUCE 12/12 (case 15: kp=3.0e-4, kv=1.5e-6, accel_scale=0.35)
  * All moves: 720° distance, alternating directions, absolute moves
- * EV3 Medium NEG validated: kp=3.0e-4, kv=1.0e-6/1.2e-6, accel_scale=0.30/0.35 (12/12 HW)
- * EV3 Medium POS: kp=3.0e-4, kv=1.2e-6, endpoint_kp=1.0e-6, accel_scale=0.35 (11/12 HW, 12/12 sim)
- * EV3 Large: kp=2.2e-4/2.5e-4, kv=2.5e-6/3.0e-6, accel_scale=0.7, endpoint_kp=1.0e-6 (11/12 HW, 12/12 sim) */
+ * Key insight: kff_accel feedforward is the primary path to close sim-to-real gap for EV3 Large */
 static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
-    /* Axis 0 (EV3 Large, 800 deg/s max): sweep kp_pos and kv */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 0,  720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 1, -720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 2,  720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 3.0e-6f, 500, 1.0e-6f, 0.70f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 3, -720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 2.5e-6f, 500, 1.0e-6f, 0.85f},
+    /* Axis 0 (EV3 Large, 800 deg/s max): kff_accel sweep + kp/kv around 2.2e-4/2.5e-6 */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 0,  720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 1, -720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f, 5.0e-7f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 2,  720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f, 1.0e-6f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 3, -720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f, 2.0e-6f},
     
-    /* Axis 1 (EV3 Large, 800 deg/s max): sweep kv and endpoint_kp and accel_scale */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 0,  720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 1, -720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 3.0e-6f, 500, 1.0e-6f, 0.70f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 2,  720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 2.5e-6f, 500, 5.0e-7f, 0.70f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 3, -720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 3.0e-6f, 500, 1.0e-6f, 0.70f},
+    /* Axis 1 (EV3 Large, 800 deg/s max): kff_accel sweep + kp/kv around 2.2e-4/2.5e-6 */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 0,  720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 1, -720.0f,  800.0f, 1600.0f, 0, 2.2e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f, 5.0e-7f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 2,  720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 2.5e-6f, 500, 1.0e-6f, 0.70f, 1.0e-6f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 3, -720.0f,  800.0f, 1600.0f, 0, 2.5e-4f, 3.0e-6f, 500, 1.0e-6f, 0.70f, 2.0e-6f},
     
-    /* Axis 2 (EV3 Medium, 1200 deg/s max): NEG direction - VALIDATED 12/12 at accel_scale=0.30/0.35 */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 0, -720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.0e-6f, 500, 1.0e-6f, 0.30f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 1,  720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.2e-6f, 500, 1.0e-6f, 0.35f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 2, -720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.0e-6f, 500, 5.0e-7f, 0.30f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 3,  720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.2e-6f, 500, 2.0e-6f, 0.35f},
+    /* Axis 2 (EV3 Medium, 1200 deg/s max): NEG direction - push 11/12 to 12/12 */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 0, -720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.0e-6f, 500, 1.0e-6f, 0.35f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 1,  720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.2e-6f, 500, 1.0e-6f, 0.35f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 2, -720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.0e-6f, 500, 5.0e-7f, 0.35f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 3,  720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.2e-6f, 500, 2.0e-6f, 0.35f, 0.0f},
     
-    /* Axis 3 (EV3 Medium, 1200 deg/s max): POS direction - sweep kp_pos/kv/endpoint_kp/accel_scale */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.0e-6f, 500, 1.0e-6f, 0.35f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.2e-6f, 500, 1.0e-6f, 0.35f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 2, -720.0f, 1100.0f, 2200.0f, 0, 3.5e-4f, 1.2e-6f, 500, 1.0e-6f, 0.35f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.5e-6f, 500, 1.0e-6f, 0.35f},
+    /* Axis 3 (EV3 Medium, 1200 deg/s max): POS direction - REPRODUCE case 15's 12/12 */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.5e-6f, 500, 1.0e-6f, 0.35f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.5e-6f, 500, 1.0e-6f, 0.35f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 2, -720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.5e-6f, 500, 1.0e-6f, 0.35f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, 3.0e-4f, 1.5e-6f, 500, 1.0e-6f, 0.35f, 0.0f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;
@@ -128,6 +127,7 @@ static void prepare_header(evn_tuning_status_t status) {
     s_header.kp = test->kp_pos;
     s_header.ki = 8.0e-7f;
     s_header.kv = test->kp_vel;
+    s_header.kff = test->kff_accel;
     s_header.start_duty = test->start_duty;
     s_header.hold_duty = 0.55f;
     s_header.speed_source = 1u;
@@ -309,7 +309,7 @@ void autonomous_tuning_service(void) {
         evn_motion_set_startup_pulse_on_ticks(
             axis, test->startup_pulse_on_ticks);
         evn_motion_set_gains_axis(axis, test->kp_pos, 8.0e-7f,
-                      test->kp_vel, 0.0f, 0.0f);
+                      test->kp_vel, 0.0f, test->kff_accel);
         evn_motion_set_stiction(axis, test->start_duty, 0.55f);
         float angle, speed;
         bool stalled, done;
