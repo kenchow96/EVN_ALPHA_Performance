@@ -52,18 +52,18 @@ static const evn_motor_model_t model_ev3_medium = {
     .d_current_d_speed = -197440,
     .d_angle_d_current = 1568301,
     .d_speed_d_current = 12886,
-    .d_current_d_current = -5095199,
+    .d_current_d_current = 4000000,
     .d_angle_d_voltage = 2220112,
-    .d_speed_d_voltage = 9410,
-    .d_current_d_voltage = 209263,
+    .d_speed_d_voltage = 5000,
+    .d_current_d_voltage = 100000,
     .d_angle_d_torque = -399652,
     .d_speed_d_torque = -2034,
     .d_current_d_torque = 546357,
     .d_voltage_d_torque = 49219,
     .d_torque_d_voltage = 7806,
     .d_torque_d_speed = 7365,
-    .d_torque_d_acceleration = 9355,
-    .torque_friction = 24593,
+    .d_torque_d_acceleration = 20000,
+    .torque_friction = 3000,
 };
 
 static const evn_motor_model_t model_nxt = {
