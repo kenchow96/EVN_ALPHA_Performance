@@ -142,10 +142,11 @@ python tools/flash_extract_decode.py
 | 2026-09-04 | [2026-09-04_phase8_all_axes_12_12.md](2026-09-04_phase8_all_axes_12_12.md) | Phase 8 ALL AXES 12/12 BREAKTHROUGH (run 0x26090437) |
 | 2026-09-04 | [2026-09-04_phase8_final_validation.md](2026-09-04_phase8_final_validation.md) | Phase 8 Final Validation — Run-to-Run Variation (run 0x26090438) |
 | 2026-09-04 | [2026-09-04_dashboard_development.md](2026-09-04_dashboard_development.md) | Phase 8 Dashboard Development — GUI Dashboard with real telemetry, BOOTSEL auto-flash, dark mode |
+| 2026-09-04 | [2026-09-04_dashboard_fixes.md](2026-09-04_dashboard_fixes.md) | Phase 8 Dashboard Fixes — Serial crash fixes, dark mode rewrite, button styling (run 0x26090439) |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-04 end — run 0x26090438 complete + Dashboard Session)
+## 📋 Quick Reference — Current State (as of 2026-09-04 end — run 0x26090439 complete)
 
 | Item | Value |
 |------|-------|
@@ -155,7 +156,7 @@ python tools/flash_extract_decode.py
 | **Next Run ID** | `0x26090439` (in `hal/hal_tuning_log.h`) |
 | **Autonomous Tuning** | Disabled in `CMakeLists.txt` |
 | **Hardware Validation** | ✅ Complete — 144/144 cases run across 9 autonomous runs, all traces decoded |
-| **Dashboard** | Built (`tools/evn_dashboard.py`), firmware updated with L/E/I/y commands, **serial crashes under load**, dark mode partial, quit button color issue |
+| **Dashboard** | Built (`tools/evn_dashboard.py`), firmware updated with L/E/I/y commands, **serial crash fixes applied (thread lock, error handling)**, dark mode **rewritten with complete ttk style system**, Accent.TButton styling fixed, duplicate motor buttons removed. **Known issues remain** (see Next Session Priorities). |
 
 ### Winning Configurations (Promoted to `motion_engine.c`)
 
@@ -184,18 +185,25 @@ python tools/flash_extract_decode.py
 - **Run 0x26090435**: EV3 Medium NEG 12/12 VALIDATED with TWO configs (accel_scale 0.35 & 0.40). EV3 Medium POS 11/12 reproduced. EV3 Large 10/12. 16 cases.
 - **Run 0x26090436**: Higher EV3 Large gains, kd_vel for POS, reproduce NEG 12/12. EV3 Large 10-11/12. NEG 12/12 not reproduced. 16 cases.
 - **Run 0x26090437**: MAJOR BREAKTHROUGH - ALL FOUR AXES HAVE 12/12 CONFIGS! EV3 Large 12/12 (kp=4.0e-4), NEG 12/12 reproduced (2 configs), POS 12/12 (kd_vel=1.0e-6). 16 cases.
+- **Run 0x26090438**: Final validation run-to-run variation testing. 16 cases.
+- **Run 0x26090439**: Dashboard fixes — serial crash fixes (thread lock, error handling), dark mode complete rewrite (ttk style system), Accent.TButton styling fixed, duplicate motor buttons removed. Unit tests pass for all core fixes.
 
 ---
 
 ## 🎯 Next Session Priorities
 
 ### 0. Dashboard Fixes (CRITICAL - Blocking Dashboard Testing)
-- **Problem**: Dashboard crashes with serial errors (`WriteFile failed`, `PermissionError(13, 'The device does not recognize the command.', None, 22)`, `ClearCommError`) — likely USB CDC threading/buffer issues
-- **Problem**: Quit & Reboot button text white on white (Accent.TButton style not fully working)
-- **Problem**: Dark mode incomplete — LabelFrame backgrounds (battery, system controls, etc.) remain white
-- **Action**: Fix serial communication (threading, timeouts, buffer management), fix button styling, complete dark mode recursive widget update
-- **Deliverable**: Stable dashboard with all controls tested end-to-end
-- **Verify**: Connect, query all telemetry, move motors, control servos, scan I2C, toggle dark mode
+- **Problem**: Dashboard crashes after running for a bit (serial thread instability)
+- **Problem**: LED ON/OFF indicator incorrect when toggle button used — remove toggle button, indicator should parse actual console response
+- **Problem**: Quit & Reboot button rendering shows red border but button face is white with white text (Accent.TButton face color issue)
+- **Problem**: Dark mode buttons and tabs still white on white (some widgets not picking up theme)
+- **Problem**: Motor angle, speed, target always 0 — parsing may not match actual 'S' command output format
+- **Problem**: Servo pulse width shows 1,2,3,4 microseconds — display issue, should show actual pulse values
+- **Problem**: I2C scan single port returns "scanning port 16" only — need to show device addresses instead of device count
+- **Problem**: Closing app with window X doesn't return board to UF2 mode — on_closing should trigger reboot logic
+- **Action**: Test with actual board, fix all UI/parsing issues, complete dark mode, fix window close handler
+- **Deliverable**: Stable dashboard with all controls tested end-to-end on hardware
+- **Verify**: Connect, query all telemetry, move motors, control servos, scan I2C, toggle dark mode, close window → board in UF2
 
 ### 1. Motor Model Calibration (HIGHEST PRIORITY - Blocking Phase 8)
 - **Problem**: Run-to-run variation prevents consistent 12/12. Motor models in `tools/motor_models.json` don't match unloaded hardware.

@@ -43,7 +43,9 @@ class EVNDashboard:
         self.serial_port = None
         self.serial_thread = None
         self.serial_running = False
+        self.serial_lock = threading.Lock()  # Lock for serial port access
         self.serial_queue = queue.Queue()
+        self._shutting_down = False  # Flag to prevent reconnection during shutdown
         
         # Dashboard state - all real data from console
         self.battery_voltage = 0.0
@@ -85,29 +87,83 @@ class EVNDashboard:
         """Setup custom styles for modern minimalist look"""
         style = ttk.Style()
         
-        # Configure colors for modern look
-        style.configure('TFrame', background='#f8f9fa')
-        style.configure('TLabel', background='#f8f9fa', font=('Segoe UI', 9))
-        style.configure('TButton', font=('Segoe UI', 9), padding=6)
-        style.configure('Accent.TButton', font=('Segoe UI', 9, 'bold'), padding=8, foreground='white', background='#dc3545')
-        style.map('Accent.TButton', background=[('active', '#c82333'), ('pressed', '#bd2130')], foreground=[('active', 'white'), ('pressed', 'white')])
-        style.configure('Header.TLabel', font=('Segoe UI', 10, 'bold'))
-        style.configure('Status.TLabel', font=('Segoe UI', 9), foreground='#6c757d')
-        style.configure('Success.TLabel', foreground='#28a745')
-        style.configure('Warning.TLabel', foreground='#ffc107')
-        style.configure('Error.TLabel', foreground='#dc3545')
-        style.configure('Info.TLabel', foreground='#17a2b8')
+        # Store default light mode colors for later use
+        self._light_colors = {
+            'bg': '#f8f9fa',
+            'fg': '#212529',
+            'frame_bg': '#ffffff',
+            'accent_bg': '#0d6efd',
+            'accent_active': '#0b5ed7',
+            'text': '#212529',
+            'disabled_fg': '#6c757d',
+            'border': '#dee2e6',
+            'accent_red': '#dc3545',
+            'accent_red_active': '#c82333',
+            'accent_red_pressed': '#bd2130',
+        }
         
-        # Configure notebook - use full width
-        style.configure('TNotebook', background='#f8f9fa', tabposition='n')
-        style.configure('TNotebook.Tab', padding=[20, 8], font=('Segoe UI', 9))
+        self._dark_colors = {
+            'bg': '#1e1e1e',
+            'fg': '#d4d4d4',
+            'frame_bg': '#252526',
+            'accent_bg': '#0e639c',
+            'accent_active': '#1177bb',
+            'text': '#ffffff',
+            'disabled_fg': '#808080',
+            'border': '#3e3e42',
+            'accent_red': '#dc3545',
+            'accent_red_active': '#c82333',
+            'accent_red_pressed': '#bd2130',
+        }
         
-        # Configure labelframe
-        style.configure('TLabelframe', background='#f8f9fa')
-        style.configure('TLabelframe.Label', background='#f8f9fa', font=('Segoe UI', 9, 'bold'))
+        self._current_colors = self._light_colors.copy()
+        
+        self._apply_light_theme(style)
         
         # Add tag configurations for console output
         self.console_tags_configured = False
+    
+    def _apply_light_theme(self, style):
+        """Apply light theme colors to all styles"""
+        c = self._light_colors
+        style.configure('TFrame', background=c['bg'])
+        style.configure('TLabel', background=c['bg'], foreground=c['fg'], font=('Segoe UI', 9))
+        style.configure('TButton', font=('Segoe UI', 9), padding=6, background=c['frame_bg'], foreground=c['fg'])
+        style.map('TButton', 
+                 background=[('active', c['accent_bg']), ('pressed', c['accent_active'])],
+                 foreground=[('active', c['text']), ('pressed', c['text'])])
+        style.configure('Accent.TButton', font=('Segoe UI', 9, 'bold'), padding=8, 
+                       foreground='white', background=c['accent_red'])
+        style.map('Accent.TButton', 
+                 background=[('active', c['accent_red_active']), ('pressed', c['accent_red_pressed'])],
+                 foreground=[('active', 'white'), ('pressed', 'white')])
+        style.configure('Header.TLabel', font=('Segoe UI', 10, 'bold'), background=c['bg'], foreground=c['fg'])
+        style.configure('Status.TLabel', font=('Segoe UI', 9), foreground=c['disabled_fg'], background=c['bg'])
+        style.configure('Success.TLabel', foreground='#28a745', background=c['bg'])
+        style.configure('Warning.TLabel', foreground='#ffc107', background=c['bg'])
+        style.configure('Error.TLabel', foreground='#dc3545', background=c['bg'])
+        style.configure('Info.TLabel', foreground='#17a2b8', background=c['bg'])
+        
+        # Configure notebook
+        style.configure('TNotebook', background=c['bg'], tabposition='n')
+        style.configure('TNotebook.Tab', padding=[20, 8], font=('Segoe UI', 9), background=c['frame_bg'], foreground=c['fg'])
+        style.map('TNotebook.Tab', 
+                 background=[('selected', c['accent_bg']), ('active', '#e2e6ea')],
+                 foreground=[('selected', c['text']), ('active', c['fg'])])
+        
+        # Configure labelframe
+        style.configure('TLabelframe', background=c['bg'])
+        style.configure('TLabelframe.Label', background=c['bg'], foreground=c['fg'], font=('Segoe UI', 9, 'bold'))
+        
+        # Configure other ttk widgets
+        style.configure('TCombobox', fieldbackground=c['frame_bg'], background=c['frame_bg'], foreground=c['fg'])
+        style.configure('TEntry', fieldbackground=c['frame_bg'], foreground=c['fg'])
+        style.configure('TCheckbutton', background=c['bg'], foreground=c['fg'])
+        style.configure('TSpinbox', fieldbackground=c['frame_bg'], foreground=c['fg'])
+        style.configure('TScale', background=c['bg'])
+        style.configure('Horizontal.TScale', background=c['bg'])
+        style.configure('Vertical.TScale', background=c['bg'])
+        style.configure('TScrollbar', background=c['frame_bg'], troughcolor=c['bg'], bordercolor=c['bg'], arrowcolor=c['fg'])
     
     def setup_ui(self):
         """Setup the user interface"""
@@ -340,12 +396,6 @@ class EVNDashboard:
                       command=lambda idx=i: self.hold_motor(idx))
             hold_btn.grid(row=0, column=4, padx=5)
             setattr(self, f'motor{i+1}_hold_btn', hold_btn)
-            
-            ttk.Button(control_frame, text="Coast", width=8,
-                      command=lambda idx=i: self.coast_motor(idx)).grid(row=0, column=3, padx=5)
-            
-            ttk.Button(control_frame, text="Hold", width=8,
-                      command=lambda idx=i: self.hold_motor(idx)).grid(row=0, column=4, padx=5)
             
             # Quick presets
             preset_frame = ttk.Frame(motor_frame)
@@ -727,8 +777,8 @@ class EVNDashboard:
     
     def _attempt_reconnect(self):
         """Attempt to reconnect to the board"""
-        if self.serial_running:
-            return  # Already connected
+        if self.serial_running or self._shutting_down:
+            return  # Already connected or shutting down
         
         self.log_to_console("Attempting to reconnect...")
         self.update_status("Attempting to reconnect...")
@@ -772,7 +822,14 @@ class EVNDashboard:
         
         try:
             baud = 115200  # Pico only runs at 115200
-            self.serial_port = serial.Serial(port, baudrate=baud, timeout=1)
+            
+            # Close any existing port first
+            with self.serial_lock:
+                if self.serial_port and self.serial_port.is_open:
+                    self.serial_port.close()
+                
+                self.serial_port = serial.Serial(port, baudrate=baud, timeout=1)
+            
             self.serial_running = True
             
             # Start serial reading thread
@@ -785,6 +842,7 @@ class EVNDashboard:
             # Update UI
             self.connect_btn.config(text="Disconnect")
             self.connection_status.config(text="● Connected", style='Success.TLabel')
+            self.status_connection.config(text="● Connected", foreground='#28a745')
             self.log_to_console(f"Connected to {port} at {baud} baud")
             self.update_status(f"Connected to {port}")
             
@@ -794,18 +852,30 @@ class EVNDashboard:
         except Exception as e:
             self.log_to_console(f"Failed to connect: {e}")
             messagebox.showerror("Connection Error", f"Failed to connect to {port}: {e}")
+            self.serial_running = False
     
     def disconnect_serial(self):
         """Disconnect from serial port and attempt to reconnect"""
+        # Signal threads to stop
         self.serial_running = False
         self.heartbeat_running = False
         
-        if self.serial_port and self.serial_port.is_open:
-            self.serial_port.close()
+        # Wait for serial thread to finish (with timeout)
+        if self.serial_thread and self.serial_thread.is_alive():
+            self.serial_thread.join(timeout=1.0)
+        
+        # Close serial port
+        with self.serial_lock:
+            if self.serial_port and self.serial_port.is_open:
+                try:
+                    self.serial_port.close()
+                except Exception as e:
+                    self.log_to_console(f"Error closing serial port: {e}")
         
         # Update UI
         self.connect_btn.config(text="Connect")
         self.connection_status.config(text="● Disconnected - Reconnecting...", style='Warning.TLabel')
+        self.status_connection.config(text="● Disconnected", foreground='#ffc107')
         self.log_to_console("Disconnected from serial port - attempting reconnect...")
         self.update_status("Disconnected - attempting reconnect...")
         
@@ -815,27 +885,43 @@ class EVNDashboard:
     def serial_read_loop(self):
         """Background thread to read from serial port"""
         buffer = ""
-        while self.serial_running and self.serial_port and self.serial_port.is_open:
+        while self.serial_running:
             try:
-                if self.serial_port.in_waiting:
-                    data = self.serial_port.read(self.serial_port.in_waiting).decode('utf-8', errors='ignore')
-                    buffer += data
-                    
-                    # Process complete lines
-                    while '\n' in buffer:
-                        line, buffer = buffer.split('\n', 1)
-                        line = line.strip()
-                        if line:
-                            self.serial_queue.put(('output', line))
+                with self.serial_lock:
+                    if not self.serial_port or not self.serial_port.is_open:
+                        break
+                    if self.serial_port.in_waiting:
+                        data = self.serial_port.read(self.serial_port.in_waiting).decode('utf-8', errors='ignore')
+                        buffer += data
+                    else:
+                        # No data available, sleep briefly
+                        time.sleep(0.01)
+                        continue
                 
-                time.sleep(0.01)  # 10ms delay to prevent hogging CPU
+                # Process complete lines outside the lock
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    line = line.strip()
+                    if line:
+                        self.serial_queue.put(('output', line))
+                        
+            except serial.SerialException as e:
+                if self.serial_running and not self._shutting_down:
+                    self.serial_queue.put(('error', f"Serial error: {e}"))
+                break
+            except OSError as e:
+                # Handle Windows-specific errors (WriteFile failed, ClearCommError, etc.)
+                if self.serial_running and not self._shutting_down:
+                    self.serial_queue.put(('error', f"OS error: {e}"))
+                break
             except Exception as e:
-                if self.serial_running:
+                if self.serial_running and not self._shutting_down:
                     self.serial_queue.put(('error', f"Serial read error: {e}"))
                 break
         
         # Signal thread end
-        self.serial_queue.put(('disconnected', None))
+        if self.serial_running:
+            self.serial_queue.put(('disconnected', None))
     
     def process_serial_queue(self):
         """Process messages from serial queue and parse telemetry"""
@@ -942,11 +1028,31 @@ class EVNDashboard:
             messagebox.showwarning("Warning", "Not connected to serial port")
     
     def send_console_command_raw(self, command):
-        """Send raw command to serial port"""
-        if self.serial_port and self.serial_port.is_open:
+        """Send raw command to serial port with thread safety"""
+        if not self.serial_running:
+            self.log_to_console(f"Cannot send '{command}': not connected", 'warning')
+            return
+        
+        with self.serial_lock:
+            if not self.serial_port or not self.serial_port.is_open:
+                self.log_to_console(f"Cannot send '{command}': port not open", 'warning')
+                return
+            
             try:
                 self.serial_port.write((command + '\r\n').encode('utf-8'))
                 self.log_to_console(f"> {command}", 'command')
+            except serial.SerialException as e:
+                self.log_to_console(f"Serial send error: {e}", 'error')
+                # Signal disconnection
+                if self.serial_running:
+                    self.serial_queue.put(('error', f"Serial send failed: {e}"))
+                    self.serial_queue.put(('disconnected', None))
+            except OSError as e:
+                # Handle Windows-specific errors
+                self.log_to_console(f"OS send error: {e}", 'error')
+                if self.serial_running:
+                    self.serial_queue.put(('error', f"OS send failed: {e}"))
+                    self.serial_queue.put(('disconnected', None))
             except Exception as e:
                 self.log_to_console(f"Send error: {e}", 'error')
     
@@ -1252,111 +1358,82 @@ class EVNDashboard:
         else:
             self.final_quit()
     
+    def _apply_dark_theme(self, style):
+        """Apply dark theme colors to all styles"""
+        c = self._dark_colors
+        style.configure('TFrame', background=c['bg'])
+        style.configure('TLabel', background=c['bg'], foreground=c['fg'], font=('Segoe UI', 9))
+        style.configure('TButton', font=('Segoe UI', 9), padding=6, background=c['frame_bg'], foreground=c['fg'])
+        style.map('TButton', 
+                 background=[('active', c['accent_bg']), ('pressed', c['accent_active'])],
+                 foreground=[('active', c['text']), ('pressed', c['text'])])
+        style.configure('Accent.TButton', font=('Segoe UI', 9, 'bold'), padding=8, 
+                       foreground='white', background=c['accent_red'])
+        style.map('Accent.TButton', 
+                 background=[('active', c['accent_red_active']), ('pressed', c['accent_red_pressed'])],
+                 foreground=[('active', 'white'), ('pressed', 'white')])
+        style.configure('Header.TLabel', font=('Segoe UI', 10, 'bold'), background=c['bg'], foreground=c['fg'])
+        style.configure('Status.TLabel', font=('Segoe UI', 9), foreground=c['disabled_fg'], background=c['bg'])
+        style.configure('Success.TLabel', foreground='#28a745', background=c['bg'])
+        style.configure('Warning.TLabel', foreground='#ffc107', background=c['bg'])
+        style.configure('Error.TLabel', foreground='#dc3545', background=c['bg'])
+        style.configure('Info.TLabel', foreground='#17a2b8', background=c['bg'])
+        
+        # Configure notebook
+        style.configure('TNotebook', background=c['bg'], tabposition='n')
+        style.configure('TNotebook.Tab', padding=[20, 8], font=('Segoe UI', 9), background=c['frame_bg'], foreground=c['fg'])
+        style.map('TNotebook.Tab', 
+                 background=[('selected', c['accent_bg']), ('active', '#3e3e42')],
+                 foreground=[('selected', c['text']), ('active', c['fg'])])
+        
+        # Configure labelframe
+        style.configure('TLabelframe', background=c['bg'])
+        style.configure('TLabelframe.Label', background=c['bg'], foreground=c['fg'], font=('Segoe UI', 9, 'bold'))
+        
+        # Configure other ttk widgets
+        style.configure('TCombobox', fieldbackground=c['frame_bg'], background=c['frame_bg'], foreground=c['fg'])
+        style.configure('TEntry', fieldbackground=c['frame_bg'], foreground=c['fg'])
+        style.configure('TCheckbutton', background=c['bg'], foreground=c['fg'])
+        style.configure('TSpinbox', fieldbackground=c['frame_bg'], foreground=c['fg'])
+        style.configure('TScale', background=c['bg'])
+        style.configure('Horizontal.TScale', background=c['bg'])
+        style.configure('Vertical.TScale', background=c['bg'])
+        style.configure('TScrollbar', background=c['frame_bg'], troughcolor=c['bg'], bordercolor=c['bg'], arrowcolor=c['fg'])
+    
     def toggle_dark_mode(self):
         """Toggle dark/light mode for the dashboard"""
         is_dark = self.dark_mode_var.get()
-        if is_dark:
-            # Dark mode colors
-            bg_color = '#1e1e1e'
-            fg_color = '#d4d4d4'
-            frame_bg = '#252526'
-            accent_bg = '#0e639c'
-            accent_active = '#1177bb'
-            text_color = '#ffffff'
-            disabled_fg = '#808080'
-            border_color = '#3e3e42'
-        else:
-            # Light mode colors (default)
-            bg_color = '#f8f9fa'
-            fg_color = '#212529'
-            frame_bg = '#ffffff'
-            accent_bg = '#0d6efd'
-            accent_active = '#0b5ed7'
-            text_color = '#212529'
-            disabled_fg = '#6c757d'
-            border_color = '#dee2e6'
-        
         style = ttk.Style()
         
-        # Configure base styles
-        style.configure('TFrame', background=bg_color)
-        style.configure('TLabel', background=bg_color, foreground=fg_color)
-        style.configure('TLabelFrame', background=bg_color)
-        style.configure('TLabelFrame.Label', background=bg_color, foreground=fg_color)
-        style.configure('TButton', background=frame_bg, foreground=fg_color)
-        style.map('TButton', 
-                 background=[('active', accent_bg), ('pressed', accent_active)],
-                 foreground=[('active', text_color), ('pressed', text_color)])
-        style.configure('TNotebook', background=bg_color, borderwidth=0)
-        style.configure('TNotebook.Tab', background=frame_bg, foreground=fg_color, padding=[20, 8])
-        style.map('TNotebook.Tab', 
-                 background=[('selected', accent_bg), ('active', '#e2e6ea')],
-                 foreground=[('selected', text_color), ('active', fg_color)])
-        style.configure('TCombobox', fieldbackground=frame_bg, background=frame_bg, foreground=fg_color)
-        style.configure('TEntry', fieldbackground=frame_bg, foreground=fg_color)
-        style.configure('TCheckbutton', background=bg_color, foreground=fg_color)
-        style.configure('TSpinbox', fieldbackground=frame_bg, foreground=fg_color)
-        style.configure('TScale', background=bg_color)
-        style.configure('Horizontal.TScale', background=bg_color)
-        style.configure('Vertical.TScale', background=bg_color)
-        style.configure('TScrollbar', background=frame_bg, troughcolor=bg_color, bordercolor=bg_color, arrowcolor=fg_color)
+        if is_dark:
+            self._apply_dark_theme(style)
+            self._current_colors = self._dark_colors.copy()
+        else:
+            self._apply_light_theme(style)
+            self._current_colors = self._light_colors.copy()
         
-        # Status styles
-        style.configure('Status.TLabel', background=bg_color, foreground=disabled_fg)
-        style.configure('Success.TLabel', foreground='#28a745')
-        style.configure('Warning.TLabel', foreground='#ffc107')
-        style.configure('Error.TLabel', foreground='#dc3545')
-        style.configure('Info.TLabel', foreground='#17a2b8')
-        style.configure('Header.TLabel', background=bg_color, foreground=fg_color, font=('Segoe UI', 10, 'bold'))
+        # Update root window background
+        self.root.configure(background=self._current_colors['bg'])
         
-        # Accent button
-        style.configure('Accent.TButton', font=('Segoe UI', 9, 'bold'), padding=8, 
-                       foreground='white', background='#dc3545')
-        style.map('Accent.TButton', 
-                 background=[('active', '#c82333'), ('pressed', '#bd2130')],
-                 foreground=[('active', 'white'), ('pressed', 'white')])
-        
-        # Update status bar frame
+        # Update status bar frame and labels
         self.status_bar_frame.configure(style='TFrame')
-        self.status_bar.configure(background=frame_bg, foreground=fg_color)
-        self.status_connection.configure(background=frame_bg)
-        
-        # Update root window
-        self.root.configure(background=bg_color)
-        
-        # Update all frames recursively
-        self._update_widget_colors(self.root, bg_color, fg_color, frame_bg, disabled_fg)
+        self.status_bar.configure(style='TLabel')
+        self.status_connection.configure(style='TLabel')
         
         # Update console output colors
         if hasattr(self, 'console_output'):
-            self.console_output.configure(bg=frame_bg, fg=fg_color, insertbackground=fg_color)
+            self.console_output.configure(bg=self._current_colors['frame_bg'], 
+                                          fg=self._current_colors['fg'], 
+                                          insertbackground=self._current_colors['fg'])
         
         # Update I2C results
         if hasattr(self, 'i2c_results'):
-            self.i2c_results.configure(bg=frame_bg, fg=fg_color, insertbackground=fg_color)
-    
-    def _update_widget_colors(self, widget, bg_color, fg_color, frame_bg, disabled_fg):
-        """Recursively update widget colors for dark mode"""
-        try:
-            widget_class = widget.winfo_class()
-            if widget_class in ('Frame', 'Labelframe', 'TFrame', 'TLabelframe'):
-                widget.configure(background=bg_color)
-            elif widget_class in ('Label', 'TLabel'):
-                widget.configure(background=bg_color, foreground=fg_color)
-            elif widget_class in ('Button', 'TButton'):
-                widget.configure(background=frame_bg, foreground=fg_color)
-            elif widget_class in ('Entry', 'TEntry'):
-                widget.configure(background=frame_bg, foreground=fg_color, insertbackground=fg_color)
-            elif widget_class in ('Text', 'ScrolledText'):
-                widget.configure(background=frame_bg, foreground=fg_color, insertbackground=fg_color)
-            elif widget_class in ('Canvas',):
-                widget.configure(background=bg_color)
-        except:
-            pass
+            self.i2c_results.configure(bg=self._current_colors['frame_bg'], 
+                                       fg=self._current_colors['fg'], 
+                                       insertbackground=self._current_colors['fg'])
         
-        # Recurse into children
-        for child in widget.winfo_children():
-            self._update_widget_colors(child, bg_color, fg_color, frame_bg, disabled_fg)
+        # Force update all widgets by updating the style
+        self.root.update_idletasks()
     
     def quit_and_reboot(self):
         """Quit application and reboot board to UF2 mode"""
@@ -1372,6 +1449,7 @@ class EVNDashboard:
     
     def final_quit(self):
         """Final cleanup and quit"""
+        self._shutting_down = True  # Prevent any reconnection attempts
         self.disconnect_serial()
         self.root.quit()
         self.root.destroy()
