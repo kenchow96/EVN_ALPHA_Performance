@@ -144,21 +144,24 @@ python tools/flash_extract_decode.py
 | 2026-09-04 | [2026-09-04_dashboard_development.md](2026-09-04_dashboard_development.md) | Phase 8 Dashboard Development — GUI Dashboard with real telemetry, BOOTSEL auto-flash, dark mode |
 | 2026-09-04 | [2026-09-04_dashboard_fixes.md](2026-09-04_dashboard_fixes.md) | Phase 8 Dashboard Fixes — Serial crash fixes, dark mode rewrite, button styling (run 0x26090439) |
 | 2026-09-04 | [2026-09-04_motor_model_calibration.md](2026-09-04_motor_model_calibration.md) | Phase 8 Motor Model Calibration — Fixed EV3 Medium unloaded model, sysid run 0x2609043A |
+| 2026-09-04 | [2026-09-04_phase8_stiction_fix.md](2026-09-04_phase8_stiction_fix.md) | Phase 8 Stiction Break Fix — Lowered velocity threshold, added pos-error activation, symmetric EV3 Medium gains (run 0x2609043B) |
+| 2026-09-04 | [2026-09-04_phase8_stiction_hitl_test.md](2026-09-04_phase8_stiction_hitl_test.md) | Phase 8 Stiction Break Fix — HITL Verification (run 0x2609043B) |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-04 end — motor model calibration session complete, run 0x2609043A)
+## 📋 Quick Reference — Current State (as of 2026-09-04 — stiction break fix session complete, run 0x2609043B)
 
 | Item | Value |
 |------|-------|
 | **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
-| **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (new motors, no wheels) |
-| **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with v26 gains |
-| **Next Run ID** | `0x2609043A` (in `hal/hal_tuning_log.h`) |
+| **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (new motor on port 4 per user) |
+| **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with stiction fix |
+| **Next Run ID** | `0x2609043B` (in `hal/hal_tuning_log.h`) |
 | **Autonomous Tuning** | Disabled in `CMakeLists.txt` |
 | **Hardware Validation** | ✅ Complete — 160/160 cases run across 10 autonomous runs, all traces decoded |
 | **Motor Model Calibration** | ✅ Complete — EV3 Medium model fixed for unloaded operation, sim 12/12 both directions |
-| **Dashboard** | Built (`tools/evn_dashboard.py`), firmware updated with L/E/I/y commands, **serial crash fixes applied (thread lock, error handling)**, dark mode **rewritten with complete ttk style system**, Accent.TButton styling fixed, duplicate motor buttons removed. **Known issues remain** (see Next Session Priorities). |
+| **Stiction Break Fix** | ✅ **HITL VERIFIED** — Both EV3 Medium motors break stiction and complete ±30° moves (4/4 moves done) |
+| **Dashboard** | Built (`tools/evn_dashboard.py`). **Root causes CONFIRMED 2026-09-04 via firmware console audit — 10 bugs with exact fixes in Priority 1 below**, incl. CRITICAL servo write-to-0µs bug (`E n 0` is a WRITE, not a query), motor regex vs `tgt=` padding, and ttk native theme ignoring all button/tab colors. Nemotron's earlier guesses superseded. |
 
 ### Winning Configurations (Promoted to `motion_engine.c`)
 
@@ -166,7 +169,7 @@ python tools/flash_extract_decode.py
 |-------|--------|--------|--------|--------|-----------|-------------|-----------------|
 | EV3 Large | **4.0e-4** | **5.0e-6** | 8e-7 | **0** | 0 | 0.70 | 1.0e-6 |
 | EV3 Medium NEG | **2.5e-4** | **1.0e-6** | 8e-7 | **0** | 0 | **0.35** | **2.0e-6** |
-| EV3 Medium POS | **2.5e-4** | **1.0e-6** | 8e-7 | **1.0e-6** | 0 | **0.35** | **2.5e-6** |
+| EV3 Medium POS | **2.5e-4** | **1.0e-6** | 8e-7 | **0** | 0 | **0.35** | **2.0e-6** |
 
 ### Key Results Summary
 - **EV3 Large (axes 0,1)**: **12/12 ACHIEVED** with kp=4.0e-4, kv=5.0e-6 (2 configs: cases 4,7). Max track error ~3.4° (above 2.0° threshold but 12/12 passes acceptance). First 12/12 for EV3 Large!
@@ -176,6 +179,7 @@ python tools/flash_extract_decode.py
 - **Core 1 timing**: Excellent — 999-1001µs period, 194-211µs exec, 0 missed ticks across all 128 cases.
 - **Sim-to-real gap**: EV3 Large tracking error ~3.4° (acceptance passes). EV3 Medium NEG CLOSED (12/12, <2°). EV3 Medium POS CLOSED (12/12 with kd_vel=1.0e-6).
 - **Run-to-run variation**: Some identical configs got 6-8/12 instead of 12/12 - need 2+ consecutive 12/12 runs.
+- **Stiction Break Fix VERIFIED on hardware**: Velocity threshold 5000→1000, pos-error activation works. Both EV3 Medium axes complete ±30° trapezoidal moves (4/4 moves done, 0 missed Core 1 ticks). Hardware test PASSED.
 
 ### Documentation Updates (2026-09-04 — this session)
 - `AGENTS.md`: Already updated in prior session
@@ -195,26 +199,102 @@ python tools/flash_extract_decode.py
 
 ## 🎯 Next Session Priorities
 
-### 0. Fix Stiction Break Logic — HIGHEST PRIORITY (Blocking 12/12 on EV3 Medium)
-- **Root Cause**: PID stiction break requires `abs_vel_ref > 5000` (5 deg/s) to activate `startup_duty` ramp. Trapezoidal trajectories start at vref=0, so threshold isn't met until ~5ms later — motor never gets startup boost to overcome static friction.
-- **Evidence**: Hardware traces show EV3 Medium (M3/M4) stuck at start position with duty only 10-30%, encoder static while reference moves.
-- **Action 1 (Firmware - pid.c)**: Lower stiction break velocity threshold from 5000 to 1000 (1 deg/s) OR add position-error-based activation when `pos_err > deadzone` and `abs_vel_ref < 1000`.
-- **Action 2 (autonomous_tuning.c)**: For EV3 Medium cases (axes 2,3), increase `startup_duty` from 0.65 to 0.80, reduce `startup_release_speed_mdegs` from 10000 to 2000, use symmetric gains (kd_vel=0, endpoint_kp_vel=2.0e-6) for both directions.
-- **Falsifying Check**: Simulate with modified stiction logic → confirm motor moves at trajectory start.
-- **Verify**: Re-run autonomous → target 12/12 on all 4 axes, 2+ consecutive runs.
+### 0. HITL Test Stiction Break Fix — **HITL VERIFIED ✅** (was blocking 12/12 on EV3 Medium)
+- **Status**: Code changes **COMMITTED** (pid.c, simulate_motor.py, autonomous_tuning.c). Firmware **FLASHED** to board. **HITL TEST PASSED**.
+- **Changes Made**:
+  - Firmware (pid.c): Velocity threshold 5000→1000 mdeg/s, added `pos_err_starting` activation when `pos_err > deadzone` && `abs_vel_ref < 1000` && `abs_speed < 1000` && `displacement < 100`
+  - Simulation (simulate_motor.py): Synced with firmware
+  - Autonomous Tuning (autonomous_tuning.c): EV3 Medium (axes 2,3) → `startup_duty` 0.65→0.80, `startup_release_speed_mdegs` 10000→2000, symmetric gains: `kd_vel=0`, `endpoint_kp_vel=2.0e-6` both directions
+- **Falsifying Check Done**: Simulation runs correctly with new logic
+- **Verify (HITL)**: **COMPLETED** — Both EV3 Medium axes (2,3) tested with ±30° moves (4/4 moves completed, no stiction stall)
+- **Next**: Enable `EVN_AUTONOMOUS_TUNING=1`, run autonomous → target 12/12 on all 4 axes, 2+ consecutive runs
 
-### 1. Dashboard Fixes (CRITICAL - Blocking Dashboard Testing)
-- **Problem**: Dashboard crashes after running for a bit (serial thread instability)
-- **Problem**: LED ON/OFF indicator incorrect when toggle button used — remove toggle button, indicator should parse actual console response
-- **Problem**: Quit & Reboot button rendering shows red border but button face is white with white text (Accent.TButton face color issue)
-- **Problem**: Dark mode buttons and tabs still white on white (some widgets not picking up theme)
-- **Problem**: Motor angle, speed, target always 0 — parsing may not match actual 'S' command output format
-- **Problem**: Servo pulse width shows 1,2,3,4 microseconds — display issue, should show actual pulse values
-- **Problem**: I2C scan single port returns "scanning port 16" only — need to show device addresses instead of device count
-- **Problem**: Closing app with window X doesn't return board to UF2 mode — on_closing should trigger reboot logic
-- **Action**: Test with actual board, fix all UI/parsing issues, complete dark mode, fix window close handler
-- **Deliverable**: Stable dashboard with all controls tested end-to-end on hardware
-- **Verify**: Connect, query all telemetry, move motors, control servos, scan I2C, toggle dark mode, close window → board in UF2
+### 1. Dashboard Fixes — CONFIRMED ROOT CAUSES (firmware console audit, 2026-09-04)
+
+Audit method: every console command handler in `EVN_ALPHA_Performance.c` (lines 305–585) read and matched against `tools/evn_dashboard.py` parsers. **Nemotron's guesses are superseded** — root causes below are confirmed against firmware source. Fix in priority order; each fix is independent.
+
+#### Firmware console ground truth (EVN_ALPHA_Performance.c)
+
+| Cmd | Exact firmware output | Dashboard implication |
+|---|---|---|
+| `h` | `H alive` + `Core1: ...` + `Battery: %.3f V (cells %.3f / %.3f)` | Battery regex OK ✓ |
+| `S` | `M%d: %7.1f deg  %6.1f d/s  tgt=%5.0f  %s%s` (`STALL ` + `done`/`moving`) + Core1 line | **`tgt=` is SPACE-PADDED** → Bug B |
+| `s` (lowercase) | Sets encoder/motor signs — NOT status | Quick button sends wrong case → Bug G |
+| `E n us` | `>> Servo %d pulse=%lu us` — **WRITE ONLY, no query mode exists** | `E n 0` drives servo to 0 µs → Bug A |
+| `L 0/1/2` | `>> LED ON` / `>> LED OFF` / `>> LED TOGGLE` — **no query exists** | Toggle state unknowable → Bug H |
+| `I` | `Scanning all 16 I2C ports...` → `Port N: M device(s)` → `  0xNN` | Parses OK |
+| `I n` | `Scanning I2C port N...` → `  Found: 0xNN` per device — **NO summary line** | Empty port shows only "Scanning..." → Bug I |
+| `y` | `BUTTON: PRESSED` / `BUTTON: RELEASED` | OK ✓ |
+| `R` | `R rebooting to BOOTSEL...` then `reset_usb_boot(0,0)` | Works; not called on window close → Bug F |
+| `c` | Coasts ALL motors (no per-motor coast exists) | Relabel button "Coast All" |
+| `M n d` | RELATIVE move | Dashboard delta-from-cache OK (≤500 ms stale) |
+| (idle 120 s) | Auto-reboot to BOOTSEL (`CONSOLE_IDLE_TIMEOUT_US`) | Heartbeat must keep firing; also means Bug F self-heals after 120 s |
+
+#### Bug A — SERVO WRITE-AS-QUERY, HARDWARE-ACTIVE (fix first)
+`send_periodic_queries()` sends `E {i+1} 0` every 2 s "to query". Firmware `E` has no query mode: `E n 0` calls `hal_servo_write_us(n-1, 0)` — **all 4 servos are commanded to 0 µs every 2 seconds** while the dashboard is connected.
+- **Fix**: Delete the entire `_last_servo_query` block from `send_periodic_queries()`. Track pulses locally — the echo parser (`>> Servo N pulse=M us`) already works for dashboard-initiated sets. Initialize display to 1500 µs (firmware default at `hal_servo_init`).
+- **Note**: The reported "1,2,3,4 µs" display is NOT reproducible from current code (expected symptom of this bug is "0 us"). Treat exact numbers as unverified; the write-to-0 is certain. Re-observe after fix.
+
+#### Bug B — Motor telemetry always 0 (regex vs firmware padding)
+Firmware prints `tgt=%5.0f` → `tgt=   90`. Dashboard regex has `tgt=([-\d.]+)` — `[-\d.]+` cannot match the spaces, so **every M-line fails to parse** and angles/speeds/targets stay 0.0 forever.
+- **Fix** in `parse_console_output()`: `r'M(\d):\s+(-?[\d.]+)\s+deg\s+(-?[\d.]+)\s+d/s\s+tgt=\s*(-?[\d.]+)'` (the `\s*` after `tgt=` is the fix).
+
+#### Bug C — Crashes: Tkinter calls from non-main threads
+Tkinter is not thread-safe. Two confirmed violators: (1) `startup_sequence()` runs in a raw thread and calls `log_to_console()`/`update_status()` directly (also via `_flash_firmware`/`_wait_for_cdc_port`); (2) `heartbeat_loop` thread → `send_console_command_raw()` → `log_to_console()`. Either causes intermittent crashes "after running for a bit".
+- **Fix**: Marshal to the main thread at the top of both methods:
+  ```python
+  def log_to_console(self, message, tag=None):
+      if threading.current_thread() is not threading.main_thread():
+          self.root.after(0, lambda m=message, t=tag: self.log_to_console(m, t))
+          return
+      # ...existing body...
+  ```
+  Same pattern for `update_status()`.
+- **Also**: `final_quit()` must cancel pending after-ids — `update_gui`'s 100 ms self-reschedule and `_reconnect_timer` fire on a destroyed root → TclError on exit. Store the ids (`self._update_gui_id = self.root.after(100, self.update_gui)`) and `after_cancel` them in `final_quit()`; guard `_start_reconnect_timer()` with `if self._shutting_down: return`.
+
+#### Bug D — Accent.TButton white-on-white + dark mode not applying (wrong ttk theme)
+Windows native theme (`vista`/`xpnative`) **ignores** `background`/`foreground` on `TButton` and `TNotebook.Tab` — every `style.configure`/`style.map` for button faces and tabs is a no-op. This is the single root cause of both the invisible Quit button text and dark mode "white on white".
+- **Fix**: One line at the top of `setup_styles()`: `style.theme_use('clam')`. `clam` honors all the existing color configuration. (Nemotron rewrote colors repeatedly without touching the theme — that's why nothing changed.)
+
+#### Bug E — BOOTSEL check parses a drive letter as a COM port
+`check_bootsel.ps1` returns a **drive letter** (e.g. `D:`), not a COM port. `check_bootsel_mode()` does `port_var.set("D:")` and reports "BOOTSEL detected on port D:".
+- **Fix**: Treat output as drive letter; never set the port combo. On BOOTSEL detection → `_flash_firmware()` → `_wait_for_cdc_port()` (the startup path already does this correctly by accident of truthiness).
+- **Also**: Harden `_find_cdc_port()` — match `port.vid == 0x2E8A` (Raspberry Pi) instead of substring guesses that can grab the wrong USB-serial device.
+
+#### Bug F — Window X close doesn't reboot to UF2
+`on_closing()` → `final_quit()` never sends `R`. Only the Quit & Reboot button does.
+- **Fix**: In `on_closing()`, ask "Reboot board to UF2 before exit?"; if yes, `send_console_command_raw("R")` then `self.root.after(1000, self.final_quit)` (reuse `quit_and_reboot`'s path). Not a brick risk — firmware auto-reboots to BOOTSEL after 120 s of console silence.
+
+#### Bug G — Quick command "Status (S)" sends lowercase 's'
+Firmware lowercase `s` = set encoder/motor signs → prints `?? usage: s motor enc_sign motor_dir`.
+- **Fix**: Change the quick button lambda to send `"S"` (uppercase).
+
+#### Bug H — LED toggle indicator
+Firmware has no LED query; `>> LED TOGGLE` reveals nothing, and the GP24 button also toggles the LED, so the indicator can drift regardless.
+- **Fix**: Remove the TOGGLE button (per original note). Indicator updates only from `>> LED ON`/`>> LED OFF` echoes. Document: indicator reflects last dashboard command only. (If true state is ever needed, firmware must add a query — flag for firmware owner, not the dashboard.)
+
+#### Bug I — I2C parse nits
+`i2c_scanning_match` (`Scanning (?:all \d+ |)I2C ports?\.?`) prefix-matches `Scanning I2C port 16...` too, so the port-specific branch is dead code (harmless — same clear+print behavior). Device lines (`  Found: 0xNN`) DO parse correctly. Single-port scans print **no summary line** — on an empty port only "Scanning I2C port N..." appears (expected, not a bug).
+- **Fix**: Anchor the all-ports regex (`^Scanning all`). If "scanning port 16 only" was observed WITH the battery present, verify on hardware — port 16 should list `0x6B` (BQ25887); probe is 1-byte read, 1 ms/address.
+
+#### Bug J — Console spam / duplicate heartbeat
+Every periodic query is logged (`> h`, `> S` every 500 ms) and each log calls `update_idletasks()` → UI churn. Two heartbeats run concurrently (`heartbeat_loop` 5 s + periodic `h` 2 s).
+- **Fix**: Add a `quiet=False` param to `send_console_command_raw()`; use `quiet=True` for all periodic sends. Remove one heartbeat (keep the 2 s periodic `h`, delete `heartbeat_loop`).
+
+#### Remaining unverified (need hardware)
+- `hold_motor` sends `M n 0` (relative 0) — expected to retarget+hold via endpoint PID; verify.
+- `coast_motor` coasts ALL motors (firmware has no per-motor coast) — relabel "Coast All" or request firmware per-motor coast.
+- Servo "1,2,3,4 µs" display — not reproducible from current code; re-observe after Bug A fix.
+
+#### Verification checklist (HITL, in order)
+1. Connect → battery voltage populates within 2 s (h response).
+2. Motors tab: angles/speeds/targets go nonzero after a move (Bug B).
+3. Servos: set 1000/2000 µs, display follows; **no servo motion while idle** (Bug A).
+4. Dark mode: all buttons/tabs/frames restyle; Quit & Reboot shows red face + white text (Bug D).
+5. I2C: scan port 16 → `0x6B` listed (Bug I).
+6. Close via X with reboot → board enumerates as RPI-RP2 drive (Bug F).
+7. Idle connected 10 min → no crash (Bug C).
+8. Coast all motors at end (`c`) — motor safety rule.
 
 ### 2. Phase 8 (Drive Base) — BLOCKED
 - Cannot proceed until 2+ consecutive 12/12 runs on all 4 axes.

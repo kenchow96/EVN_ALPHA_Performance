@@ -15,7 +15,7 @@
  * Example: 0x2609042B = 2026-09-04, run #43 (0x2B = 43 decimal)
  * Increment for each autonomous run. Reusing a run ID causes firmware to skip completed cases.
  */
-#define EVN_TUNING_RUN_ID             0x26090439u
+#define EVN_TUNING_RUN_ID             0x2609043Bu
 #define EVN_TUNING_SCHEMA_VERSION     1u
 #define EVN_TUNING_CASE_COUNT         16u
 #define EVN_TUNING_FLASH_BASE_OFFSET  0x00F00000u
