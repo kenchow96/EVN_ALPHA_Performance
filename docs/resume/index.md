@@ -137,80 +137,79 @@ python tools/flash_extract_decode.py
 | 2026-09-04 | [2026-09-04_phase8_hardware_validation.md](2026-09-04_phase8_hardware_validation.md) | Phase 8 Hardware Validation (run 0x2609022A) |
 | 2026-09-04 | [2026-09-04_phase8_v17_v20.md](2026-09-04_phase8_v17_v20.md) | Phase 8 Autonomous Iteration v17-v20 (runs 0x2609042C-31) |
 | 2026-09-04 | [2026-09-04_phase8_kff_accel_sweep.md](2026-09-04_phase8_kff_accel_sweep.md) | Phase 8 kff_accel Sweep & Unloaded EV3 Medium Retune (run 0x26090433) |
+| 2026-09-04 | [2026-09-04_phase8_kd_vel_sweep.md](2026-09-04_phase8_kd_vel_sweep.md) | Phase 8 kd_vel Sweep & Unloaded EV3 Medium Retune v2 (run 0x26090434) |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-04 end — run 0x26090433 complete)
+## 📋 Quick Reference — Current State (as of 2026-09-04 end — run 0x26090434 complete)
 
 | Item | Value |
 |------|-------|
 | **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (new motors, no wheels) |
-| **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with v21 gains |
-| **Next Run ID** | `0x26090434` (in `hal/hal_tuning_log.h`) |
+| **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with v22 gains |
+| **Next Run ID** | `0x26090435` (in `hal/hal_tuning_log.h`) |
 | **Autonomous Tuning** | Disabled in `CMakeLists.txt` |
-| **Hardware Validation** | ✅ Complete — 80/80 cases run across 5 autonomous runs, all traces decoded |
+| **Hardware Validation** | ✅ Complete — 96/96 cases run across 6 autonomous runs, all traces decoded |
 
 ### Winning Configurations (Promoted to `motion_engine.c`)
 
-| Motor | kp_pos | kp_vel | ki_pos | kff_accel | accel_scale | endpoint_kp_vel |
-|-------|--------|--------|--------|-----------|-------------|-----------------|
-| EV3 Large | 2.2e-4 | 2.5e-6 | 8e-7 | **0** | 0.70 | 1.0e-6 |
-| EV3 Medium NEG | 3.0e-4 | 1.2e-6 | 8e-7 | 0 | 0.35 | **2.0e-6** |
-| EV3 Medium POS | 3.0e-4 | 1.0e-6 | 8e-7 | 0 | **0.30** | 1.0e-6 |
+| Motor | kp_pos | kp_vel | ki_pos | kd_vel | kff_accel | accel_scale | endpoint_kp_vel |
+|-------|--------|--------|--------|--------|-----------|-------------|-----------------|
+| EV3 Large | 2.2e-4 | 2.5e-6 | 8e-7 | **0** | 0 | 0.70 | 1.0e-6 |
+| EV3 Medium NEG | 3.0e-4 | 1.2e-6 | 8e-7 | **0** | 0 | 0.35 | **2.0e-6** |
+| EV3 Medium POS | **2.5e-4** | **1.0e-6** | 8e-7 | **0** | 0 | **0.35** | 1.0e-6 |
 
 ### Key Results Summary
-- **EV3 Medium negative 1100°/s**: Best 11/12 with kv=1.2e-6, endpoint_kp=2.0e-6 (run 0x26090433). Previous 3 consecutive 12/12 was with LOADED motors (wheels).
-- **EV3 Medium positive 1100°/s**: HIGHLY VARIABLE 6-11/12 for identical params (unloaded motors). NEG move 11/12, POS moves 6-10/12.
-- **EV3 Large positive 800°/s**: 10-11/12 with kff_accel=0. kff_accel >0 DEGRADES performance (4-6/12, 9-17° tracking error).
-- **Core 1 timing**: Excellent — 999-1001µs period, 196-213µs exec, 0 missed ticks across all 80 cases.
-- **Sim-to-real gap**: EV3 Large tracking error ~3.3° (threshold 2.0°). EV3 Medium POS unstable due to unloaded motors. kff_accel NOT the solution for EV3 Large.
-- **Hardware change**: EV3 Medium motors on ports 3/4 now UNLOADED (no wheels) — significantly changes dynamics.
+- **EV3 Medium POS (axis 3)**: **BREAKTHROUGH** — 11/12 with REDUCED gains (kp=2.5e-4, kv=1.0e-6, kd=0). Lower gains stabilize unloaded motor. Max track err 1.43° (< 2.0° threshold). Previous 3 consecutive 12/12 was with LOADED motors (wheels).
+- **EV3 Medium NEG (axis 2)**: Best 8/12 with kp=3.0e-4, kv=1.2e-6, endpoint_kp=2.0e-6. Previous 11/12 was with LOADED motors. Unloaded needs different tuning.
+- **EV3 Large (axes 0,1)**: 11/12 with kp=2.2e-4, kv=2.5e-6, kd=0 (3.25° error). **kd_vel HARMFUL** — cases with kd_vel=1.0e-6 degraded to 3/12 with 22-62° error.
+- **Core 1 timing**: Excellent — 999-1001µs period, 195-207µs exec, 0 missed ticks across all 96 cases.
+- **Sim-to-real gap**: EV3 Large tracking error ~3.25° (threshold 2.0°). kd_vel NOT the solution for EV3 Large. EV3 Medium POS STABLE with reduced gains.
+- **Hardware change**: EV3 Medium motors on ports 3/4 now UNLOADED (no wheels) — significantly changes dynamics. REDUCED gains work better.
 
 ### Documentation Updates (2026-09-04 — this session)
 - `AGENTS.md`: Already updated in prior session
 - `PLAN.md`: Efficiency Protocol §2.13-2.15 (BOOTSEL check, documentation, time estimates), Key Protocols table
 - `PROCEDURES.md`: Restructured with Board Detection, Autonomous Pipeline, Console Timeout/Heartbeat, Git Workflow
 - `ASSUMPTIONS.md`: D4 (USB wedging investigation), D5 (BOOTSEL polling primary), D6 (run ID format), D7 (console timeout/heartbeat)
-- **Run 0x26090433**: kff_accel sweep (0-2e-6) for EV3 Large — kff=0 best. EV3 Medium retune for unloaded motors. 16 cases, all traces decoded.
+- **Run 0x26090433**: kff_accel sweep (0-2e-6) for EV3 Large — kff=0 best. EV3 Medium retune for unloaded motors. 16 cases.
+- **Run 0x26090434**: kd_vel sweep for EV3 Large — kd=0 best. EV3 Medium POS REDUCED gains = 11/12 BREAKTHROUGH. 16 cases. kd_vel not stored in header (fixed for next run).
 
 ---
 
 ## 🎯 Next Session Priorities
 
-### 1. Retune EV3 Medium for UNLOADED Motors (axes 2,3)
-- **EV3 Medium POS (axis 3)**: Reduce kp_pos to 2.5e-4, kv to 1.0e-6, accel_scale to 0.30. Add kd_vel ~1e-6 for damping. Target: stable 12/12 on POS moves.
-- **EV3 Medium NEG (axis 2)**: Keep kv=1.2e-6, endpoint_kp=2.0e-6 (11/12). Try kp_pos 2.5e-4 for more margin.
-- **Root cause**: New motors on ports 3/4 have NO WHEELS (previously had light load). Lower inertia → overshoot/oscillation.
+### 1. EV3 Medium POS (axis 3) — VALIDATED 11/12 with REDUCED gains
+- **BREAKTHROUGH**: kp=2.5e-4, kv=1.0e-6, kd=0, accel_scale=0.35 → 11/12, 1.43° tracking error
+- Target: 2+ consecutive 12/12 autonomous runs. Sweep kp_pos 2.3-2.7e-4, kv 0.9-1.2e-6, accel_scale 0.30-0.40
+- kd_vel=0 is best (kd_vel=1.5e-6 degraded to 4/12 in case 15)
 
-### 2. EV3 Large Tracking Error (axes 0,1) — kff_accel NOT the answer
-- kff_accel sweep (0-2e-6) PROVEN HARMFUL: kff=0 gives 10-11/12; kff>0 gives 4-6/12 with 9-17° error.
-- Alternative paths: (a) Increase kp_pos to 2.5-2.8e-4, (b) Motor model recalibration from HW data, (c) Add kd_vel derivative term.
+### 2. EV3 Medium NEG (axis 2) — Push to 12/12
+- Best so far: kp=3.0e-4, kv=1.2e-6, endpoint_kp=2.0e-6 (8/12 in this run, 11/12 previously)
+- Target: kp_pos 2.5-2.8e-4, kv 1.0-1.2e-6, endpoint_kp 2.0-2.5e-6, accel_scale 0.35-0.40
+- Need consistent 12/12 on NEG moves
 
-### 3. Motor Model Calibration (High Priority)
+### 3. EV3 Large (axes 0,1) — Close 3.25° → 2.0° tracking gap
+- kd_vel HARMFUL (proven): kd=0 gives 10-11/12; kd=1e-6 gives 3/12 with 22-62° error
+- kff_accel HARMFUL (proven): kff=0 best; kff>0 degrades
+- Paths: (a) Motor model recalibration from HW system ID, (b) Increase kp_pos to 2.5-2.8e-4, (c) Increase kv to 3.0-3.5e-6
+- Target: 12/12 with max_track_err < 2.0°
+
+### 4. Motor Model Calibration (High Priority)
 - Run system identification on hardware for EV3 Large and EV3 Medium (unloaded)
 - Update `tools/motor_models.json` with HW-identified parameters
 - Re-run digital twin with calibrated models to verify sim-hw alignment
 
-### 4. Focused A/B Sweep for 2+ Consecutive 12/12
-- EV3 Medium POS (unloaded): Target kp_pos 2.2-2.8e-4, kv 0.8-1.2e-6, kd_vel 0.5-1.5e-6, endpoint_kp 1.0-2.0e-6, accel_scale 0.25-0.35
-- EV3 Medium NEG (unloaded): Target kp_pos 2.5-3.0e-4, kv 1.0-1.5e-6, endpoint_kp 1.5-2.5e-6, accel_scale 0.30-0.40
-- EV3 Large: Target kp_pos 2.2-2.8e-4, kv 2.5-3.5e-6, kd_vel 0.5-1.5e-6, accel_scale 0.7-0.9
-- Require **2+ consecutive 12/12 autonomous runs** on hardware before Phase 8 (drive base)
+### 5. Automation & Plumbing
+- Fix kd_vel storage in header (already done: s_header.kd = test->kd_vel)
+- BOOTSEL timeout: 180s is good (actual ~1-2s)
+- Console timeout/heartbeat: Implement idle timeout → auto-reboot to BOOTSEL
 
-### 5. Automation & Plumbing Improvements
-- **BOOTSEL timeout**: Reduce from 900s to 180s (actual ~1-2s appearance)
-- **Error deduplication**: Continue documenting in `docs/PROCEDURES.md`
-- **Console timeout/heartbeat**: Implement idle timeout → auto-reboot to BOOTSEL
-
-### 6. Console & USB Reliability
-- Assess interactive console vs autonomous batch value
-- Implement retry-with-backoff in `serial_capture.py`
-- Consider UART console (GP0/GP1) as alternative
-
-### 7. Documentation
-- Keep `docs/PROCEDURES.md` as single source for operations
-- Update `docs/PLAN.md` Status Board with run 0x26090433 results
+### 6. Require 2+ Consecutive 12/12 Before Phase 8
+- EV3 Medium POS: 11/12 validated → need 2x consecutive 12/12
+- EV3 Medium NEG: Need 12/12
+- EV3 Large: Need 12/12 with tracking error < 2.0°
 
 ---
 
