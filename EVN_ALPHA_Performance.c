@@ -9,6 +9,7 @@
 #include "hal/hal_battery.h"
 #include "hal/hal_motor.h"
 #include "hal/hal_encoder.h"
+#include "hal/hal_servo.h"
 #include "motion/core1.h"
 #include "motion/motion_engine.h"
 #include "bench/bench_cycles.h"
@@ -353,6 +354,74 @@ static void handle_command(void) {
         else con_printf("?? usage: D start count\n");
         break;
     }
+    case 'L': {  /* LED control: L 0|1|2 (0=off, 1=on, 2=toggle) */
+        int v;
+        if (sscanf(p + 1, "%d", &v) == 1) {
+            if (v == 0) hal_led_set(false);
+            else if (v == 1) hal_led_set(true);
+            else if (v == 2) hal_led_toggle();
+            con_printf(">> LED %s\n", v == 0 ? "OFF" : (v == 1 ? "ON" : "TOGGLE"));
+        } else con_printf("?? usage: L 0|1|2\n");
+        break;
+    }
+    case 'E': {  /* Servo control: E <servo 1-4> <pulse_us>  OR  E <servo 1-4> a <angle> [dir] */
+        int sv;
+        if (sscanf(p + 1, "%d", &sv) == 1 && sv >= 1 && sv <= 4) {
+            char *rest = p + 1;
+            while (*rest && *rest != ' ') rest++;
+            while (*rest == ' ') rest++;
+            
+            if (*rest == 'a' || *rest == 'A') {
+                /* Angle mode: E servo a angle [dir] */
+                float angle; int dir = 0;
+                if (sscanf(rest + 1, "%f %d", &angle, &dir) >= 1) {
+                    hal_servo_write_angle((evn_servo_id_t)(sv - 1), angle, dir != 0);
+                    con_printf(">> Servo %d angle=%.1f dir=%d\n", sv, (double)angle, dir);
+                } else con_printf("?? usage: E servo a angle [dir]\n");
+            } else {
+                /* Pulse width mode: E servo pulse_us */
+                unsigned long us;
+                if (sscanf(rest, "%lu", &us) == 1) {
+                    hal_servo_write_us((evn_servo_id_t)(sv - 1), (uint16_t)us);
+                    con_printf(">> Servo %d pulse=%lu us\n", sv, us);
+                } else con_printf("?? usage: E servo pulse_us  OR  E servo a angle [dir]\n");
+            }
+        } else con_printf("?? usage: E servo pulse_us  OR  E servo a angle [dir]\n");
+        break;
+    }
+    case 'I': {  /* I2C scan: I [port 1-16] */
+        unsigned long port = 0;
+        if (sscanf(p + 1, "%lu", &port) == 1 && port >= 1 && port <= 16) {
+            evn_i2c_status_t st = hal_i2c_select_port((uint8_t)port);
+            if (st != EVN_I2C_OK) { con_printf("?? I2C select port %lu failed: %d\n", port, st); break; }
+            con_printf("Scanning I2C port %lu...\n", port);
+            for (uint8_t addr = 8; addr < 120; addr++) {
+                if (hal_i2c_probe(addr, 1000)) con_printf("  Found: 0x%02X\n", addr);
+            }
+            hal_i2c_deselect_all();
+        } else if (port == 0) {
+            /* Scan all ports */
+            con_printf("Scanning all 16 I2C ports...\n");
+            uint8_t counts[16]; uint8_t found[16][16];
+            hal_i2c_scan_all(counts, found);
+            for (int p = 0; p < 16; p++) {
+                if (counts[p] > 0) {
+                    con_printf("Port %d: %d device(s)\n", p + 1, counts[p]);
+                    for (int i = 0; i < 128; i++) {
+                        if (found[p][i >> 3] & (1 << (i & 7))) {
+                            con_printf("  0x%02X\n", i);
+                        }
+                    }
+                }
+            }
+        } else con_printf("?? usage: I [port 1-16]\n");
+        break;
+    }
+    case 'y': {  /* Button query: y */
+        bool pressed = hal_button_is_pressed();
+        con_printf("BUTTON: %s\n", pressed ? "PRESSED" : "RELEASED");
+        break;
+    }
     case 'p': s_report = !s_report; con_printf(">> 10Hz report %s\n", s_report ? "ON" : "OFF"); break;
     case 'b': {
         int ax; float start_duty, hold_duty;
@@ -551,6 +620,8 @@ int main(void) {
 
     hal_motor_init_mask(0xF);
     hal_encoder_init_mask(0xF);
+    hal_servo_init();
+    con_printf("servo_init: 4 channels\n");
     evn_motion_init(models, CPR, 0xF);
     con_printf("motion_init: 4 axes (M1/M2=EV3-L, M3/M4=EV3-M)\n");
 
@@ -560,7 +631,7 @@ int main(void) {
     print_battery();
     autonomous_tuning_init();
 
-    con_printf("\nEVN motion console. cmds: r=+360/0  q/Q=+-90  m/M=relative  X=profile  c=coast  g/G=gains  o=obs  f=ff  w=pwm  t/d=trace\n");
+    con_printf("\nEVN motion console. cmds: r=+360/0  q/Q=+-90  m/M=relative  X=profile  c=coast  g/G=gains  o=obs  f=ff  w=pwm  t/d=trace  L=LED  E=servo  I=i2c  y=button\n");
 
     uint64_t next_button = time_us_64();
     uint64_t next_batt = time_us_64();

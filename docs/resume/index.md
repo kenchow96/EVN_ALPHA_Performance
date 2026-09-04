@@ -140,19 +140,22 @@ python tools/flash_extract_decode.py
 | 2026-09-04 | [2026-09-04_phase8_kd_vel_sweep.md](2026-09-04_phase8_kd_vel_sweep.md) | Phase 8 kd_vel Sweep & Unloaded EV3 Medium Retune v2 (run 0x26090434) |
 | 2026-09-04 | [2026-09-04_phase8_neg_breakthrough.md](2026-09-04_phase8_neg_breakthrough.md) | Phase 8 EV3 Medium NEG 12/12 BREAKTHROUGH (run 0x26090435) |
 | 2026-09-04 | [2026-09-04_phase8_all_axes_12_12.md](2026-09-04_phase8_all_axes_12_12.md) | Phase 8 ALL AXES 12/12 BREAKTHROUGH (run 0x26090437) |
+| 2026-09-04 | [2026-09-04_phase8_final_validation.md](2026-09-04_phase8_final_validation.md) | Phase 8 Final Validation — Run-to-Run Variation (run 0x26090438) |
+| 2026-09-04 | [2026-09-04_dashboard_development.md](2026-09-04_dashboard_development.md) | Phase 8 Dashboard Development — GUI Dashboard with real telemetry, BOOTSEL auto-flash, dark mode |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-04 end — run 0x26090437 complete)
+## 📋 Quick Reference — Current State (as of 2026-09-04 end — run 0x26090438 complete + Dashboard Session)
 
 | Item | Value |
 |------|-------|
 | **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (new motors, no wheels) |
-| **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with v25 gains |
-| **Next Run ID** | `0x26090438` (in `hal/hal_tuning_log.h`) |
+| **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with v26 gains |
+| **Next Run ID** | `0x26090439` (in `hal/hal_tuning_log.h`) |
 | **Autonomous Tuning** | Disabled in `CMakeLists.txt` |
-| **Hardware Validation** | ✅ Complete — 128/128 cases run across 8 autonomous runs, all traces decoded |
+| **Hardware Validation** | ✅ Complete — 144/144 cases run across 9 autonomous runs, all traces decoded |
+| **Dashboard** | Built (`tools/evn_dashboard.py`), firmware updated with L/E/I/y commands, **serial crashes under load**, dark mode partial, quit button color issue |
 
 ### Winning Configurations (Promoted to `motion_engine.c`)
 
@@ -186,22 +189,29 @@ python tools/flash_extract_decode.py
 
 ## 🎯 Next Session Priorities
 
-### 1. REPRODUCE 12/12 FOR ALL 4 AXES (0x26090438)
-- **Goal**: Run EXACT SAME winning configs 4 times each axis for 2+ consecutive 12/12 runs
-- **EV3 Large (axes 0,1)**: kp=4.0e-4, kv=5.0e-6, kd=0, kff=0, endpoint_kp=1.0e-6, accel_scale=0.70
-- **EV3 Medium NEG (axis 2)**: kp=2.5e-4, kv=1.0e-6, kd=0, kff=0, endpoint_kp=2.0e-6, accel_scale=0.35
-- **EV3 Medium POS (axis 3)**: kp=2.5e-4, kv=1.0e-6, kd=1.0e-6, kff=0, endpoint_kp=2.5e-6, accel_scale=0.35
-- Run each axis config 4 times (16 cases total). Need 2+ consecutive 12/12 on ALL 4 axes.
+### 0. Dashboard Fixes (CRITICAL - Blocking Dashboard Testing)
+- **Problem**: Dashboard crashes with serial errors (`WriteFile failed`, `PermissionError(13, 'The device does not recognize the command.', None, 22)`, `ClearCommError`) — likely USB CDC threading/buffer issues
+- **Problem**: Quit & Reboot button text white on white (Accent.TButton style not fully working)
+- **Problem**: Dark mode incomplete — LabelFrame backgrounds (battery, system controls, etc.) remain white
+- **Action**: Fix serial communication (threading, timeouts, buffer management), fix button styling, complete dark mode recursive widget update
+- **Deliverable**: Stable dashboard with all controls tested end-to-end
+- **Verify**: Connect, query all telemetry, move motors, control servos, scan I2C, toggle dark mode
 
-### 2. Phase 8 (Drive Base) Preparation
-- Once 2+ consecutive 12/12 on all 4 axes achieved, begin Phase 8 drive base kinematics
-- Differential drive straight/turn primitives, encoder heading-hold
-- Floor runs with start/finish markers (batched HITL)
+### 1. Motor Model Calibration (HIGHEST PRIORITY - Blocking Phase 8)
+- **Problem**: Run-to-run variation prevents consistent 12/12. Motor models in `tools/motor_models.json` don't match unloaded hardware.
+- **Action**: Run system identification on hardware for EV3 Large and EV3 Medium (unloaded).
+- **Deliverable**: Updated `tools/motor_models.json` with HW-identified parameters.
+- **Verify**: Re-run digital twin with calibrated models → sim-hw alignment.
 
-### 3. Motor Model Calibration (High Priority)
-- Run system identification on hardware for EV3 Large and EV3 Medium (unloaded)
-- Update `tools/motor_models.json` with HW-identified parameters
-- Re-run digital twin with calibrated models to verify sim-hw alignment
+### 2. Phase 8 (Drive Base) — BLOCKED
+- Cannot proceed until 2+ consecutive 12/12 runs on all 4 axes.
+- Current best: 9-11/12 consistently, but run-to-run variation prevents 2+ consecutive 12/12.
+- Once motor models calibrated and 2+ consecutive 12/12 achieved → begin drive base kinematics.
+
+### 3. Alternative: Statistical Approach (Lower Priority)
+- Run 20+ consecutive autonomous runs with current winning configs.
+- Low probability of 2+ consecutive 12/12 given current variance (~10% per axis).
+- Only viable if motor model calibration fails or takes too long.
 
 ---
 
