@@ -60,9 +60,7 @@ class EVNDashboard:
         self.motor_targets = [0.0, 0.0, 0.0, 0.0]
         self.servo_pulses = [1500, 1500, 1500, 1500]  # Pulse width in microseconds
         
-        # Heartbeat
-        self.heartbeat_thread = None
-        self.heartbeat_running = False
+        # Heartbeat tracking for periodic queries (no separate thread)
         self.last_heartbeat_response = 0
         
         # Command tracking for parsing responses
@@ -86,6 +84,9 @@ class EVNDashboard:
     def setup_styles(self):
         """Setup custom styles for modern minimalist look"""
         style = ttk.Style()
+        
+        # Use 'clam' theme - Windows native theme ignores background/foreground on TButton/TNotebook.Tab
+        style.theme_use('clam')
         
         # Store default light mode colors for later use
         self._light_colors = {
@@ -266,9 +267,8 @@ class EVNDashboard:
                                      command=lambda: self.set_led(False))
         self.led_off_btn.pack(side=tk.LEFT, padx=5)
         
-        self.led_toggle_btn = ttk.Button(led_frame, text="TOGGLE", width=8,
-                                        command=self.toggle_led)
-        self.led_toggle_btn.pack(side=tk.LEFT, padx=5)
+        # No TOGGLE button - firmware has no LED query; GP24 button also toggles LED
+        # Indicator reflects last dashboard command only
         
         self.led_indicator = ttk.Label(led_frame, text="● OFF", 
                                       font=('Segoe UI', 10),
@@ -568,14 +568,19 @@ class EVNDashboard:
         ttk.Button(quick_frame, text="Heartbeat (H)", width=12,
                   command=lambda: self.send_console_command_raw("h")).pack(side=tk.LEFT, padx=2)
         ttk.Button(quick_frame, text="Status (S)", width=12,
-                  command=lambda: self.send_console_command_raw("s")).pack(side=tk.LEFT, padx=2)
+                  command=lambda: self.send_console_command_raw("S")).pack(side=tk.LEFT, padx=2)
         ttk.Button(quick_frame, text="Battery (B)", width=12,
                   command=lambda: self.send_console_command_raw("B")).pack(side=tk.LEFT, padx=2)
         ttk.Button(quick_frame, text="Coast All (c)", width=12,
                   command=lambda: self.send_console_command_raw("c")).pack(side=tk.LEFT, padx=2)
     
     def log_to_console(self, message, tag=None):
-        """Add message to console output"""
+        """Add message to console output - thread-safe"""
+        # Marshal to main thread if called from background thread
+        if threading.current_thread() is not threading.main_thread():
+            self.root.after(0, lambda m=message, t=tag: self.log_to_console(m, t))
+            return
+        
         # Configure tags on first use
         if not self.console_tags_configured:
             self.console_output.tag_config('command', foreground='#17a2b8', font=('Consolas', 9, 'bold'))
@@ -600,7 +605,12 @@ class EVNDashboard:
         self.log_to_console("Console cleared", "info")
     
     def update_status(self, message):
-        """Update status bar"""
+        """Update status bar - thread-safe"""
+        # Marshal to main thread if called from background thread
+        if threading.current_thread() is not threading.main_thread():
+            self.root.after(0, lambda m=message: self.update_status(m))
+            return
+        
         self.status_bar.config(text=message)
         self.root.update_idletasks()
     
@@ -626,11 +636,10 @@ class EVNDashboard:
                                    '-File', bootsel_script], 
                                   capture_output=True, text=True, cwd=project_root)
             if result.returncode == 0 and result.stdout.strip():
-                port = result.stdout.strip()
-                self.port_var.set(port)
-                self.log_to_console(f"BOOTSEL detected on port {port}")
-                messagebox.showinfo("BOOTSEL Detected", f"Board is in BOOTSEL mode on port {port}")
-                return port
+                drive = result.stdout.strip()  # check_bootsel.ps1 returns a drive letter (e.g., D:)
+                self.log_to_console(f"BOOTSEL detected on drive {drive}")
+                messagebox.showinfo("BOOTSEL Detected", f"Board is in BOOTSEL mode on drive {drive}")
+                return drive
             else:
                 self.log_to_console("BOOTSEL not detected")
                 messagebox.showinfo("BOOTSEL Check", "Board is not in BOOTSEL mode")
@@ -770,6 +779,8 @@ class EVNDashboard:
     
     def _start_reconnect_timer(self):
         """Start a periodic timer to attempt reconnection"""
+        if self._shutting_down:
+            return
         if hasattr(self, '_reconnect_timer') and self._reconnect_timer:
             self.root.after_cancel(self._reconnect_timer)
         # Try to reconnect every 5 seconds
@@ -836,18 +847,12 @@ class EVNDashboard:
             self.serial_thread = threading.Thread(target=self.serial_read_loop, daemon=True)
             self.serial_thread.start()
             
-            # Start heartbeat
-            self.start_heartbeat()
-            
             # Update UI
             self.connect_btn.config(text="Disconnect")
             self.connection_status.config(text="● Connected", style='Success.TLabel')
             self.status_connection.config(text="● Connected", foreground='#28a745')
             self.log_to_console(f"Connected to {port} at {baud} baud")
             self.update_status(f"Connected to {port}")
-            
-            # Send initial heartbeat to wake up console
-            self.send_heartbeat()
             
         except Exception as e:
             self.log_to_console(f"Failed to connect: {e}")
@@ -858,7 +863,6 @@ class EVNDashboard:
         """Disconnect from serial port and attempt to reconnect"""
         # Signal threads to stop
         self.serial_running = False
-        self.heartbeat_running = False
         
         # Wait for serial thread to finish (with timeout)
         if self.serial_thread and self.serial_thread.is_alive():
@@ -957,7 +961,8 @@ class EVNDashboard:
         
         # Parse motor status from 'S' command:
         # "M1:  12.3 deg   45.6 d/s  tgt=  90  moving"
-        motor_match = re.match(r'M(\d):\s+([-\d.]+)\s+deg\s+([-\d.]+)\s+d/s\s+tgt=([-\d.]+)\s+(\w+)?\s*(\w+)?', line)
+        # Note: tgt= is space-padded (%5.0f), so regex needs \s* after tgt=
+        motor_match = re.match(r'M(\d):\s+([-\d.]+)\s+deg\s+([-\d.]+)\s+d/s\s+tgt=\s*(-?[\d.]+)\s+(\w+)?\s*(\w+)?', line)
         if motor_match:
             motor_idx = int(motor_match.group(1)) - 1
             self.motor_angles[motor_idx] = float(motor_match.group(2))
@@ -1005,13 +1010,15 @@ class EVNDashboard:
             self.i2c_results.see(tk.END)
             return
         
-        i2c_scanning_match = re.match(r'Scanning (?:all \d+ |)I2C ports?\.?', line, re.IGNORECASE)
+        # Match "Scanning all N I2C ports..." - anchored to distinguish from single-port scan
+        i2c_scanning_match = re.match(r'^Scanning all \d+ I2C ports?\.?', line, re.IGNORECASE)
         if i2c_scanning_match:
             self.i2c_results.delete(1.0, tk.END)
             self.i2c_results.insert(tk.END, f"{line}\n")
             return
         
-        i2c_port_scanning_match = re.match(r'Scanning I2C port (\d+)\.?', line, re.IGNORECASE)
+        # Match "Scanning I2C port N..." - single port scan
+        i2c_port_scanning_match = re.match(r'^Scanning I2C port (\d+)\.?', line, re.IGNORECASE)
         if i2c_port_scanning_match:
             port = int(i2c_port_scanning_match.group(1))
             self.i2c_results.delete(1.0, tk.END)
@@ -1027,20 +1034,23 @@ class EVNDashboard:
         elif not self.serial_running:
             messagebox.showwarning("Warning", "Not connected to serial port")
     
-    def send_console_command_raw(self, command):
+    def send_console_command_raw(self, command, quiet=False):
         """Send raw command to serial port with thread safety"""
         if not self.serial_running:
-            self.log_to_console(f"Cannot send '{command}': not connected", 'warning')
+            if not quiet:
+                self.log_to_console(f"Cannot send '{command}': not connected", 'warning')
             return
         
         with self.serial_lock:
             if not self.serial_port or not self.serial_port.is_open:
-                self.log_to_console(f"Cannot send '{command}': port not open", 'warning')
+                if not quiet:
+                    self.log_to_console(f"Cannot send '{command}': port not open", 'warning')
                 return
             
             try:
                 self.serial_port.write((command + '\r\n').encode('utf-8'))
-                self.log_to_console(f"> {command}", 'command')
+                if not quiet:
+                    self.log_to_console(f"> {command}", 'command')
             except serial.SerialException as e:
                 self.log_to_console(f"Serial send error: {e}", 'error')
                 # Signal disconnection
@@ -1056,24 +1066,6 @@ class EVNDashboard:
             except Exception as e:
                 self.log_to_console(f"Send error: {e}", 'error')
     
-    # Heartbeat methods
-    def start_heartbeat(self):
-        """Start heartbeat thread to keep console alive"""
-        self.heartbeat_running = True
-        self.heartbeat_thread = threading.Thread(target=self.heartbeat_loop, daemon=True)
-        self.heartbeat_thread.start()
-    
-    def heartbeat_loop(self):
-        """Heartbeat loop - sends 'h' command every 5 seconds"""
-        while self.heartbeat_running:
-            time.sleep(5)
-            if self.heartbeat_running and self.serial_running:
-                self.send_heartbeat()
-    
-    def send_heartbeat(self):
-        """Send heartbeat command"""
-        self.send_console_command_raw("h")
-    
     # LED control methods
     def set_led(self, state):
         """Set LED state via console 'L' command: 0=off, 1=on, 2=toggle"""
@@ -1081,22 +1073,16 @@ class EVNDashboard:
         self.send_console_command_raw(f"L {cmd_val}")
         # Don't update local state immediately - wait for console response
     
-    def toggle_led(self):
-        """Toggle LED state via console 'L 2' command"""
-        self.send_console_command_raw("L 2")
-    
     def update_led_indicator(self):
         """Update LED indicator in UI"""
         if self.led_state:
             self.led_indicator.config(text="● ON", foreground='#28a745')
             self.led_on_btn.config(state='disabled')
             self.led_off_btn.config(state='normal')
-            self.led_toggle_btn.config(text="TOGGLE")
         else:
             self.led_indicator.config(text="● OFF", foreground='#6c757d')
             self.led_on_btn.config(state='normal')
             self.led_off_btn.config(state='disabled')
-            self.led_toggle_btn.config(text="TOGGLE")
     
     # Motor control methods
     def move_motor(self, motor_index):
@@ -1220,15 +1206,15 @@ class EVNDashboard:
             self.show_disconnected_state()
         
         # Schedule next update
-        self.root.after(100, self.update_gui)  # Update every 100ms
+        self._update_gui_id = self.root.after(100, self.update_gui)  # Update every 100ms
     
     def send_periodic_queries(self):
-        """Send periodic queries to get fresh telemetry"""
+        """Send periodic queries to get fresh telemetry (quiet=True to avoid console spam)"""
         current_time = time.time()
         
         # Send heartbeat (h) every 2 seconds - gets battery + core1 status
         if current_time - self.last_heartbeat_response > 2:
-            self.send_console_command_raw("h")
+            self.send_console_command_raw("h", quiet=True)
             self.last_heartbeat_response = current_time
         
         # Send status (S) every 500ms - gets motor angles, speeds, targets
@@ -1236,23 +1222,18 @@ class EVNDashboard:
         if not hasattr(self, '_last_status_query'):
             self._last_status_query = 0
         if current_time - self._last_status_query > 0.5:
-            self.send_console_command_raw("S")
+            self.send_console_command_raw("S", quiet=True)
             self._last_status_query = current_time
         
         # Send button query (y) every 1 second
         if not hasattr(self, '_last_button_query'):
             self._last_button_query = 0
         if current_time - self._last_button_query > 1:
-            self.send_console_command_raw("y")
+            self.send_console_command_raw("y", quiet=True)
             self._last_button_query = current_time
         
-        # Query servo pulses every 2 seconds
-        if not hasattr(self, '_last_servo_query'):
-            self._last_servo_query = 0
-        if current_time - self._last_servo_query > 2:
-            for i in range(4):
-                self.send_console_command_raw(f"E {i+1} 0")  # Query current pulse
-            self._last_servo_query = current_time
+        # Servo pulses are tracked locally via echo parser (">> Servo N pulse=M us")
+        # No periodic query needed - firmware E command has no query mode (E n 0 is a WRITE)
     
     def show_disconnected_state(self):
         """Show N/A for all sensor values when disconnected"""
@@ -1353,7 +1334,12 @@ class EVNDashboard:
     def on_closing(self):
         """Handle window close event"""
         if self.serial_running:
-            if messagebox.askyesno("Exit", "Board is still connected. Disconnect and exit?"):
+            if messagebox.askyesno("Exit", "Board is still connected. Reboot board to UF2 mode before exit?"):
+                self.log_to_console("Sending reboot to BOOTSEL command...")
+                self.send_console_command_raw("R")  # Reset to BOOTSEL
+                # Wait a bit for command to be sent
+                self.root.after(1000, self.final_quit)
+            else:
                 self.final_quit()
         else:
             self.final_quit()
@@ -1450,6 +1436,19 @@ class EVNDashboard:
     def final_quit(self):
         """Final cleanup and quit"""
         self._shutting_down = True  # Prevent any reconnection attempts
+        
+        # Cancel pending after-ids to prevent TclError on destroyed root
+        if hasattr(self, '_update_gui_id') and self._update_gui_id:
+            try:
+                self.root.after_cancel(self._update_gui_id)
+            except tk.TclError:
+                pass
+        if hasattr(self, '_reconnect_timer') and self._reconnect_timer:
+            try:
+                self.root.after_cancel(self._reconnect_timer)
+            except tk.TclError:
+                pass
+        
         self.disconnect_serial()
         self.root.quit()
         self.root.destroy()
