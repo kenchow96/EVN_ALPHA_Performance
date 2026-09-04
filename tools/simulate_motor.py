@@ -368,18 +368,22 @@ class PIDController:
 
         duty = (feedback_no_i + self.integrator) * voltage_scale + feedforward_duty
 
-        # Stiction break
+        # Stiction break (matching firmware update)
         abs_speed = fabs_f(vel_meas)
         displacement = pos_meas - self.motion_start_position
         if displacement < 0.0: displacement = -displacement
-        initial_starting = (abs_vel_ref > 5000.0 and
+        initial_starting = (abs_vel_ref > 1000.0 and
                            (displacement < 100.0 or
                             (self.startup_release_speed_mdegs > 0.0 and
                              displacement < 5000.0 and
                              abs_speed < self.startup_release_speed_mdegs)))
-        restarting = abs_vel_ref > 5000.0 and self.motion_stuck
-        starting = initial_starting or restarting
-        approaching = ae > self.deadzone_mdeg and abs_vel_ref < 5000.0 and abs_speed < 5000.0
+        pos_err_starting = (ae > self.deadzone_mdeg and
+                           abs_vel_ref < 1000.0 and
+                           abs_speed < 1000.0 and
+                           displacement < 100.0)
+        restarting = abs_vel_ref > 1000.0 and self.motion_stuck
+        starting = initial_starting or pos_err_starting or restarting
+        approaching = ae > self.deadzone_mdeg and abs_vel_ref < 1000.0 and abs_speed < 1000.0
 
         if starting or approaching:
             self.stick_ticks += 1

@@ -114,15 +114,27 @@ float evn_pid_update(evn_pid_t *p,
     float abs_speed = vel_meas < 0.0f ? -vel_meas : vel_meas;
     float displacement = pos_meas - p->motion_start_position;
     if (displacement < 0.0f) displacement = -displacement;
-    bool initial_starting = abs_vel_ref > 5000.0f &&
+    
+    /* Stiction break activates when:
+     * 1. Initial start: velocity reference exceeds threshold (1000 mdeg/s = 1 deg/s) 
+     *    AND motor hasn't moved much (displacement < 100 mdeg OR within release window)
+     * 2. Restart: velocity reference exceeds threshold AND motion was previously stuck
+     * 3. Position-error-based: large position error beyond deadzone with low velocity reference
+     *    This catches the case where trapezoidal trajectory starts at vref=0 but pos_err is large
+     */
+    bool initial_starting = abs_vel_ref > 1000.0f &&
                             (displacement < 100.0f ||
                              (p->startup_release_speed_mdegs > 0.0f &&
                               displacement < 5000.0f &&
                               abs_speed < p->startup_release_speed_mdegs));
-    bool restarting = abs_vel_ref > 5000.0f && p->motion_stuck;
-    bool starting = initial_starting || restarting;
+    bool pos_err_starting = ae > p->deadzone_mdeg &&
+                            abs_vel_ref < 1000.0f &&
+                            abs_speed < 1000.0f &&
+                            displacement < 100.0f;
+    bool restarting = abs_vel_ref > 1000.0f && p->motion_stuck;
+    bool starting = initial_starting || pos_err_starting || restarting;
     bool approaching = ae > p->deadzone_mdeg &&
-                       abs_vel_ref < 5000.0f && abs_speed < 5000.0f;
+                       abs_vel_ref < 1000.0f && abs_speed < 1000.0f;
     if (starting || approaching) {
         p->stick_ticks++;
     } else {

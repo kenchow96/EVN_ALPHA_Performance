@@ -86,16 +86,16 @@ static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 3, -720.0f,  800.0f, 1600.0f, 0, 4.0e-4f, 5.0e-6f, 500, 1.0e-6f, 0.70f, 0.0f, 0.0f},
     
     /* Axis 2 (EV3 Medium UNLOADED, 1200 deg/s max): NEG direction - REPRODUCE 12/12 */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 2, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
     
     /* Axis 3 (EV3 Medium UNLOADED, 1200 deg/s max): POS direction - REPRODUCE 12/12 */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.5e-6f, 0.35f, 0.0f, 1.0e-6f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.5e-6f, 0.35f, 0.0f, 1.0e-6f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.5e-6f, 0.35f, 0.0f, 1.0e-6f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.65f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.5e-6f, 0.35f, 0.0f, 1.0e-6f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;
