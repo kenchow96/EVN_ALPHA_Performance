@@ -143,19 +143,21 @@ python tools/flash_extract_decode.py
 | 2026-09-04 | [2026-09-04_phase8_final_validation.md](2026-09-04_phase8_final_validation.md) | Phase 8 Final Validation — Run-to-Run Variation (run 0x26090438) |
 | 2026-09-04 | [2026-09-04_dashboard_development.md](2026-09-04_dashboard_development.md) | Phase 8 Dashboard Development — GUI Dashboard with real telemetry, BOOTSEL auto-flash, dark mode |
 | 2026-09-04 | [2026-09-04_dashboard_fixes.md](2026-09-04_dashboard_fixes.md) | Phase 8 Dashboard Fixes — Serial crash fixes, dark mode rewrite, button styling (run 0x26090439) |
+| 2026-09-04 | [2026-09-04_motor_model_calibration.md](2026-09-04_motor_model_calibration.md) | Phase 8 Motor Model Calibration — Fixed EV3 Medium unloaded model, sysid run 0x2609043A |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-04 end — run 0x26090439 complete)
+## 📋 Quick Reference — Current State (as of 2026-09-04 end — motor model calibration session complete, run 0x2609043A)
 
 | Item | Value |
 |------|-------|
 | **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (new motors, no wheels) |
 | **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with v26 gains |
-| **Next Run ID** | `0x26090439` (in `hal/hal_tuning_log.h`) |
+| **Next Run ID** | `0x2609043A` (in `hal/hal_tuning_log.h`) |
 | **Autonomous Tuning** | Disabled in `CMakeLists.txt` |
-| **Hardware Validation** | ✅ Complete — 144/144 cases run across 9 autonomous runs, all traces decoded |
+| **Hardware Validation** | ✅ Complete — 160/160 cases run across 10 autonomous runs, all traces decoded |
+| **Motor Model Calibration** | ✅ Complete — EV3 Medium model fixed for unloaded operation, sim 12/12 both directions |
 | **Dashboard** | Built (`tools/evn_dashboard.py`), firmware updated with L/E/I/y commands, **serial crash fixes applied (thread lock, error handling)**, dark mode **rewritten with complete ttk style system**, Accent.TButton styling fixed, duplicate motor buttons removed. **Known issues remain** (see Next Session Priorities). |
 
 ### Winning Configurations (Promoted to `motion_engine.c`)
@@ -187,12 +189,21 @@ python tools/flash_extract_decode.py
 - **Run 0x26090437**: MAJOR BREAKTHROUGH - ALL FOUR AXES HAVE 12/12 CONFIGS! EV3 Large 12/12 (kp=4.0e-4), NEG 12/12 reproduced (2 configs), POS 12/12 (kd_vel=1.0e-6). 16 cases.
 - **Run 0x26090438**: Final validation run-to-run variation testing. 16 cases.
 - **Run 0x26090439**: Dashboard fixes — serial crash fixes (thread lock, error handling), dark mode complete rewrite (ttk style system), Accent.TButton styling fixed, duplicate motor buttons removed. Unit tests pass for all core fixes.
+- **Run 0x2609043A**: Motor Model Calibration — Fixed EV3 Medium unloaded model (critical bug: negative d_current_d_current), sim 12/12 both directions, autonomous run sysid_20260904_v2: 12/12 on EV3 Large M2 pos (case_04), identified hardware stiction root cause.
 
 ---
 
 ## 🎯 Next Session Priorities
 
-### 0. Dashboard Fixes (CRITICAL - Blocking Dashboard Testing)
+### 0. Fix Stiction Break Logic — HIGHEST PRIORITY (Blocking 12/12 on EV3 Medium)
+- **Root Cause**: PID stiction break requires `abs_vel_ref > 5000` (5 deg/s) to activate `startup_duty` ramp. Trapezoidal trajectories start at vref=0, so threshold isn't met until ~5ms later — motor never gets startup boost to overcome static friction.
+- **Evidence**: Hardware traces show EV3 Medium (M3/M4) stuck at start position with duty only 10-30%, encoder static while reference moves.
+- **Action 1 (Firmware - pid.c)**: Lower stiction break velocity threshold from 5000 to 1000 (1 deg/s) OR add position-error-based activation when `pos_err > deadzone` and `abs_vel_ref < 1000`.
+- **Action 2 (autonomous_tuning.c)**: For EV3 Medium cases (axes 2,3), increase `startup_duty` from 0.65 to 0.80, reduce `startup_release_speed_mdegs` from 10000 to 2000, use symmetric gains (kd_vel=0, endpoint_kp_vel=2.0e-6) for both directions.
+- **Falsifying Check**: Simulate with modified stiction logic → confirm motor moves at trajectory start.
+- **Verify**: Re-run autonomous → target 12/12 on all 4 axes, 2+ consecutive runs.
+
+### 1. Dashboard Fixes (CRITICAL - Blocking Dashboard Testing)
 - **Problem**: Dashboard crashes after running for a bit (serial thread instability)
 - **Problem**: LED ON/OFF indicator incorrect when toggle button used — remove toggle button, indicator should parse actual console response
 - **Problem**: Quit & Reboot button rendering shows red border but button face is white with white text (Accent.TButton face color issue)
@@ -205,21 +216,15 @@ python tools/flash_extract_decode.py
 - **Deliverable**: Stable dashboard with all controls tested end-to-end on hardware
 - **Verify**: Connect, query all telemetry, move motors, control servos, scan I2C, toggle dark mode, close window → board in UF2
 
-### 1. Motor Model Calibration (HIGHEST PRIORITY - Blocking Phase 8)
-- **Problem**: Run-to-run variation prevents consistent 12/12. Motor models in `tools/motor_models.json` don't match unloaded hardware.
-- **Action**: Run system identification on hardware for EV3 Large and EV3 Medium (unloaded).
-- **Deliverable**: Updated `tools/motor_models.json` with HW-identified parameters.
-- **Verify**: Re-run digital twin with calibrated models → sim-hw alignment.
-
 ### 2. Phase 8 (Drive Base) — BLOCKED
 - Cannot proceed until 2+ consecutive 12/12 runs on all 4 axes.
-- Current best: 9-11/12 consistently, but run-to-run variation prevents 2+ consecutive 12/12.
-- Once motor models calibrated and 2+ consecutive 12/12 achieved → begin drive base kinematics.
+- Current best: 9-11/12 consistently, but stiction + run-to-run variation prevents 2+ consecutive 12/12.
+- Once stiction fixed and 2+ consecutive 12/12 achieved → begin drive base kinematics.
 
 ### 3. Alternative: Statistical Approach (Lower Priority)
 - Run 20+ consecutive autonomous runs with current winning configs.
 - Low probability of 2+ consecutive 12/12 given current variance (~10% per axis).
-- Only viable if motor model calibration fails or takes too long.
+- Only viable if stiction fix fails or takes too long.
 
 ---
 

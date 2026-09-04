@@ -176,8 +176,9 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | 6 — PIO servos | ✅ Done | 2026-09-01 | `a16a5d3` |
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
 | 7 — Motion engine | ✅ Done | 2026-09-02 | `4319fb7` |
-| 8 — Drive base | ⬜ Not started — **BLOCKED** until multi-axis validation complete | — | — |
-| 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
+| **8 — Motor Model Calibration** | **✅ Done** | **2026-09-04** | **`14f81b1`** |
+| 9 — Drive base | ⬜ Not started — **BLOCKED** until stiction fix + 2+ consecutive 12/12 runs | — | — |
+| 10 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 
 ## 8. Agent Session Protocol
 
