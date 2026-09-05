@@ -124,6 +124,17 @@ Firmware now queues records without blocking, and `tools/tune_session.py` waits
 for the closing marker before recording `DONE`. A timeout is a failed trace, not
 a partially valid sample.
 
+**C6. Waiting for "BOOTSEL appeared" right after `picotool load -x` reads the
+STALE drive.** `flash_extract_decode.py` polled `check_bootsel.ps1` immediately
+after flashing; the pre-flash BOOTSEL drive was still mounted, so it extracted the
+*previous* run's flash and decoded it as if it were new (run 0x26090444 "decoded"
+as bit-identical 0x26090443 — the tell was 16/16 scores identical to 4 decimals,
+which never happens on real hardware). **Rule: after flashing, first wait for the
+BOOTSEL drive to DISAPPEAR (app booted), THEN wait for it to REAPPEAR (run
+finished).** Implemented as `wait_for_bootsel_absent()`. Corollary: when decoded
+results look suspiciously identical to a prior run, check the record `run_id`
+field before trusting them.
+
 ---
 
 ## D. Process
