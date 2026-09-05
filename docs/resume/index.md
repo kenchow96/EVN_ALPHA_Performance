@@ -154,24 +154,25 @@ python tools/flash_extract_decode.py
 | 2026-09-05 | [2026-09-05_phase8_autonomous_run_0x26090442.md](2026-09-05_phase8_autonomous_run_0x26090442.md) | Phase 8 Autonomous Validation Run 0x26090442 — 3rd consecutive run, case_00 12/12 for 3rd time, EV3 Medium 8-11/12 |
 | 2026-09-05 | [2026-09-05_phase8_autonomous_run_0x26090443.md](2026-09-05_phase8_autonomous_run_0x26090443.md) | Phase 8 Autonomous Validation Run 0x26090443 — 4th run, case_15 121° error FIXED, case_08 first 12/12 for EV3M axis 3 NEG |
 | 2026-09-06 | [2026-09-06_phase8_autonomous_run_0x26090445.md](2026-09-06_phase8_autonomous_run_0x26090445.md) | Phase 8 Run 0x26090445 — pipeline BOOTSEL false-positive FIXED; case_15 & case_04 12/12; axis 0 hunting regression (6/12) |
+| 2026-09-06 | [2026-09-06_phase8_autonomous_run_0x26090446.md](2026-09-06_phase8_autonomous_run_0x26090446.md) | Phase 8 Run 0x26090446 — case_01 (axis 0 NEG) hunting SYSTEMATIC; case_04 12/12 2nd consecutive; axis0/axis1 divergence = per-axis/hardware |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-06 — autonomous validation run 0x26090445 complete; pipeline BOOTSEL false-positive FIXED)
+## 📋 Quick Reference — Current State (as of 2026-09-06 — runs 0x26090445/46 complete via fixed pipeline; case_04 2× consecutive 12/12; axis 0 NEG hunting is systematic)
 
 | Item | Value |
 |------|-------|
 | **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (new motor on port 4 per user) |
 | **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with stiction fix + symmetric EV3 Medium config |
-| **Next Run ID** | `0x26090446` (in `hal/hal_tuning_log.h` — ready for next run) |
+| **Next Run ID** | `0x26090447` (in `hal/hal_tuning_log.h` — ready for next run) |
 | **Autonomous Tuning** | Disabled in `CMakeLists.txt` (restored after run) |
 | **Hardware Validation** | ✅ Complete — 208/208 cases run across 13 autonomous runs, all traces decoded |
 | **Motor Model Calibration** | ✅ Complete — EV3 Medium model fixed for unloaded operation, sim 12/12 both directions |
 | **Stiction Break Fix** | ✅ **HITL VERIFIED & CONFIRMED IN AUTONOMOUS** — case_15 catastrophic 121° error FIXED (0.0° final error); both EV3 Medium motors break stiction |
 | **Dashboard** | **10/10 BUGS FIXED** — All confirmed root causes from firmware console audit resolved (see session file) |
 | **Symmetric EV3 Medium Config** | ✅ **VALIDATED** — Simulation 12/12 for both NEG/POS; hardware 7-12/12 consistent |
-| **Consecutive 12/12** | ⚠️ **NOT YET** — Run 0x26090445: case_04 (axis 1 POS r0) & case_15 (axis 3 POS r3) 12/12, but no axis has 2+ consecutive across clean runs. Axis 0 regressed to 6/12 (hunting) |
+| **Consecutive 12/12** | ✅ **case_04 (axis 1 POS r0): 2+ consecutive** (0x26090445 + 0x26090446). ⚠️ **case_01 (axis 0 NEG r1) hunting is SYSTEMATIC** (6/12→5/12) — axes 0 & 1 share identical EV3 Large gains but diverge ⇒ per-axis/hardware difference, not gains |
 | **Pipeline** | ✅ **FIXED (2026-09-06)** — `flash_extract_decode.py` BOOTSEL false-positive: now waits for the drive to disappear (app booted) before waiting for it to reappear (run done). Was extracting stale previous-run flash |
 | **Simulator** | ✅ **ENHANCED & VALIDATED** — Stribeck friction, cogging torque, thermal model (open-loop); 16/16 cases 12/12 in sim |
 
@@ -200,6 +201,7 @@ python tools/flash_extract_decode.py
 - **Run 0x26090442**: 3rd consecutive validation — case_00 (EV3 Large axis 0 POS) **12/12 in 3 CONSECUTIVE RUNS** (first 3-peat!), case_04 7/12, EV3 Medium 8-11/12, axis 3 POS repeat 3 catastrophic 121° error. 16 cases, 16/16 traces. Core 1: 999-1001µs period, 0 missed ticks.
 - **Run 0x26090443**: 4th consecutive validation — case_08 (EV3 Medium axis 3 NEG repeat 0) **FIRST 12/12**; case_15 (axis 3 POS repeat 3) catastrophic 121° error **FIXED** (10/12, 0.0° final error). 16 cases, 16/16 traces. Core 1: 999-1001µs period, 0 missed ticks. Timeouts fixed (core1 pause 10k→100k, watchdog 5k→30k).
 - **Run 0x26090445** (2026-09-06): First clean run via **fixed pipeline** (BOOTSEL false-positive corrected). case_15 (axis 3 POS r3) & case_04 (axis 1 POS r0) **12/12**; 8 cases 10-11/12; **axis 0 (EV3 Large) regressed to 6/12 on case_01/case_02** — trace shows endpoint **limit-cycle hunting** (duty swinging ±full, 3° overshoot), not stiction. 16/16 traces, Core 1 0 missed ticks, battery 8.13 V. (Run 0x26090444 was recovered from flash but fragmented across reboots — not counted as a clean run.)
+- **Run 0x26090446** (2026-09-06): Repeatability check. **case_01 (axis 0 NEG r1) hunting is SYSTEMATIC** (6/12→5/12, ~3° err). **case_04 (axis 1 POS r0) 12/12 for the 2nd consecutive run.** **Key insight: axes 0 & 1 share identical EV3 Large gains but diverge (axis 1 clean, axis 0 hunts) ⇒ per-axis/hardware difference, not a gain problem.** 16/16 traces, Core 1 0 missed, battery 8.11 V.
 - `CMakeLists.txt`: EVN_AUTONOMOUS_TUNING toggled for runs, restored to 0 after
 - `hal/hal_tuning_log.h`: Run ID incremented to 0x26090444 (ready for next run)
 - `docs/resume/2026-09-05_phase8_symmetric_ev3m_consecutive.md`: New session file created (runs 0x26090440, 0x26090441)
