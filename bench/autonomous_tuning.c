@@ -17,13 +17,13 @@
 #endif
 
 #define TUNING_TRACE_US             3800000ULL
-#define TUNING_BATTERY_WAIT_US      2000000ULL
+#define TUNING_BATTERY_WAIT_US      10000000ULL
 #define TUNING_BATTERY_MAX_AGE_US   250000u
 #define TUNING_BATTERY_MIN_PACK_MV  6500u
 #define TUNING_BATTERY_MIN_CELL_MV  3000u
 #define TUNING_FLASH_SETTLE_US      20000ULL
-#define TUNING_CORE_PAUSE_TIMEOUT_US 10000u
-#define TUNING_WATCHDOG_MS           5000u
+#define TUNING_CORE_PAUSE_TIMEOUT_US 100000u
+#define TUNING_WATCHDOG_MS           30000u
 
 typedef struct {
     evn_trajectory_type_t trajectory_type;

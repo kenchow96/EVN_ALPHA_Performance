@@ -315,7 +315,8 @@ class EVNDashboard:
     def setup_motors_tab(self):
         """Setup the motors control tab - using full width"""
         # Create scrollable frame
-        canvas = tk.Canvas(self.motors_tab)
+        canvas = tk.Canvas(self.motors_tab, highlightthickness=0)
+        self.motors_canvas = canvas  # keep ref for dark-mode recolor
         scrollbar = ttk.Scrollbar(self.motors_tab, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
         
@@ -419,7 +420,8 @@ class EVNDashboard:
     def setup_servos_tab(self):
         """Setup the servos control tab - using full width and pulse width (us)"""
         # Create scrollable frame
-        canvas = tk.Canvas(self.servos_tab)
+        canvas = tk.Canvas(self.servos_tab, highlightthickness=0)
+        self.servos_canvas = canvas  # keep ref for dark-mode recolor
         scrollbar = ttk.Scrollbar(self.servos_tab, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
         
@@ -753,15 +755,16 @@ class EVNDashboard:
         return None
     
     def _find_cdc_port(self):
-        """Find the CDC serial port for the EVN board"""
+        """Find the CDC serial port for the EVN board (Raspberry Pi VID 0x2E8A)"""
         try:
             ports = serial.tools.list_ports.comports()
+            # Primary: match Raspberry Pi vendor ID (most reliable)
             for port in ports:
-                # Look for Pico/RP2040 CDC device
-                if 'Pico' in port.description or 'RP2040' in port.description or 'CDC' in port.description:
+                if port.vid == 0x2E8A:
                     return port.device
-                # Fallback: any USB serial device
-                if 'USB' in port.description or 'Serial' in port.description:
+            # Fallback: description match
+            for port in ports:
+                if 'Pico' in port.description or 'RP2040' in port.description or 'CDC' in port.description:
                     return port.device
             return None
         except Exception:
@@ -787,9 +790,9 @@ class EVNDashboard:
         self._reconnect_timer = self.root.after(5000, self._attempt_reconnect)
     
     def _attempt_reconnect(self):
-        """Attempt to reconnect to the board"""
+        """Attempt to reconnect to the board. Always reschedules itself unless connected/shutting down."""
         if self.serial_running or self._shutting_down:
-            return  # Already connected or shutting down
+            return  # Already connected or shutting down - stop the loop
         
         self.log_to_console("Attempting to reconnect...")
         self.update_status("Attempting to reconnect...")
@@ -800,22 +803,33 @@ class EVNDashboard:
             self.port_var.set(cdc_port)
             self.log_to_console(f"Found console mode on {cdc_port}")
             self.connect_serial()
-            return
+            return  # connect_serial succeeded or failed; if it failed serial_running stays False
+                  # but we still want to retry, so fall through to reschedule if not running
         
-        # If not in console mode, check for BOOTSEL
-        bootsel_port = self._check_bootsel_silent()
-        if bootsel_port:
-            self.log_to_console(f"Board in BOOTSEL mode on {bootsel_port} - flashing firmware...")
+        if self.serial_running:
+            return  # Connected successfully
+        
+        # If not in console mode, check for BOOTSEL and flash in a background thread
+        # (flash + wait-for-CDC blocks; must not run on the Tk main thread)
+        bootsel_drive = self._check_bootsel_silent()
+        if bootsel_drive:
+            self.log_to_console(f"Board in BOOTSEL mode on drive {bootsel_drive} - flashing firmware...")
             self.update_status("Board in BOOTSEL - flashing firmware...")
-            if self._flash_firmware():
-                self._wait_for_cdc_port()
-                self.root.after(0, self._connect_after_startup)
+            threading.Thread(target=self._flash_and_reconnect, daemon=True).start()
+            # Reschedule to keep watchdog alive; _flash_and_reconnect connects on success
+            self._start_reconnect_timer()
             return
         
         # Neither console nor BOOTSEL - schedule another attempt
         self.log_to_console("Board not found - will retry in 5 seconds")
         self.update_status("Board not found - retrying in 5s...")
         self._start_reconnect_timer()
+    
+    def _flash_and_reconnect(self):
+        """Background thread: flash firmware then wait for CDC and connect."""
+        if self._flash_firmware():
+            self._wait_for_cdc_port()
+            self.root.after(0, self._connect_after_startup)
     
     def toggle_connection(self):
         """Toggle serial connection"""
@@ -1328,8 +1342,15 @@ class EVNDashboard:
             self.update_servo_display(i)
     
     def update_servo_display(self, servo_index):
-        """Update single servo display with real data"""
-        getattr(self, f'servo{servo_index+1}_pulse_label').config(text=f"{self.servo_pulses[servo_index]} us")
+        """Update single servo display with real data (status label + slider stay in sync)"""
+        pulse = self.servo_pulses[servo_index]
+        getattr(self, f'servo{servo_index+1}_pulse_label').config(text=f"{pulse} us")
+        # Keep slider var and its live display in sync with the confirmed value
+        try:
+            getattr(self, f'servo{servo_index+1}_slider_var').set(pulse)
+            getattr(self, f'servo{servo_index+1}_pulse_display').config(text=f"{pulse} us")
+        except (tk.TclError, AttributeError):
+            pass
     
     def on_closing(self):
         """Handle window close event"""
@@ -1417,6 +1438,11 @@ class EVNDashboard:
             self.i2c_results.configure(bg=self._current_colors['frame_bg'], 
                                        fg=self._current_colors['fg'], 
                                        insertbackground=self._current_colors['fg'])
+        
+        # Update scroll canvases (tk.Canvas ignores ttk styles - must set bg directly)
+        for attr in ('motors_canvas', 'servos_canvas'):
+            if hasattr(self, attr):
+                getattr(self, attr).configure(bg=self._current_colors['bg'])
         
         # Force update all widgets by updating the style
         self.root.update_idletasks()

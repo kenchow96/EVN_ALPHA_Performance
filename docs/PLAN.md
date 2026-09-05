@@ -177,7 +177,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
 | 7 — Motion engine | ✅ Done | 2026-09-02 | `4319fb7` |
 | **8 — Motor Model Calibration** | **✅ Done** | **2026-09-04** | **`14f81b1`** |
-| 8 — Autonomous Validation (perfection) | 🔄 In Progress — Runs 0x26090440, 0x26090441: case_04 (EV3 Large axis 1 POS repeat 0) 12/12 in **2 consecutive runs** (first time!). Symmetric EV3 Medium config (kd_vel=0, endpoint_kp=2.0e-6) validated 12/12 in sim for both directions; hardware 9-11/12 consistent. EV3 Large axis 0, EV3 Medium axes 2&3 need consecutive 12/12. | 2026-09-05 | (runs 0x26090440, 0x26090441) |
+| 8 — Autonomous Validation (perfection) | 🔄 In Progress — Runs 0x26090440-43: case_08 (EV3 Medium axis 3 NEG repeat 0) **FIRST 12/12**; case_15 (axis 3 POS repeat 3) catastrophic 121° error **FIXED** (0.0° final error). Symmetric EV3 Medium config (kd_vel=0, endpoint_kp=2.0e-6) validated 12/12 in sim for both directions; hardware 7-12/12 consistent. Need 2+ consecutive 12/12 on all 4 axes (currently 1/4: case_08). Timeouts fixed (core1 pause 10k→100k, watchdog 5k→30k). | 2026-09-05 | (runs 0x26090440-43) |
 | 9 — Drive base | ⬜ Not started — **BLOCKED** until stiction fix + 2+ consecutive 12/12 runs | — | — |
 | 10 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 
