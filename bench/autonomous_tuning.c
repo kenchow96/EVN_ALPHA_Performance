@@ -68,10 +68,11 @@ typedef enum {
 /* Focused tuning matrix for Phase 8 perfection (v25 -> v26):
  * Target: REPRODUCE 12/12 for ALL 4 AXES with 2+ consecutive runs
  * - EV3 Large (axes 0,1): 800 deg/s - VALIDATED 12/12 with kp=4.0e-4, kv=5.0e-6. REPRODUCE 4x
- * - EV3 Medium NEG (axis 2): 1100 deg/s - VALIDATED 12/12 with kp=2.5e-4, kv=1.0e-6, endpoint_kp=2.0e-6. REPRODUCE 4x
- * - EV3 Medium POS (axis 3): 1100 deg/s - VALIDATED 12/12 with kp=2.5e-4, kv=1.0e-6, kd=1.0e-6, endpoint_kp=2.5e-6. REPRODUCE 4x
+ * - EV3 Medium (axes 2,3): 1100 deg/s - SIM VALIDATED 12/12 BOTH DIRS with SYMMETRIC gains
+ *   kp=2.5e-4, kv=1.0e-6, kd_vel=0, endpoint_kp=2.0e-6, accel_scale=0.35.
+ *   POS config (kd_vel=1.0e-6, endpoint_kp=2.5e-6) FAILS 4/12 in sim for both dirs.
  * All moves: 720° distance, alternating directions, absolute moves
- * Key insight: ALL FOUR AXES HAVE 12/12 CONFIGS. Need 2+ consecutive 12/12 runs on all axes before Phase 8. */
+ * Key insight: EV3 Medium now uses SYMMETRIC gains for both axes. Need 2+ consecutive 12/12 runs on all axes before Phase 8. */
 static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
     /* Axis 0 (EV3 Large, 800 deg/s max): REPRODUCE 12/12 config */
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 0, 0,  720.0f,  800.0f, 1600.0f, 0, 4.0e-4f, 5.0e-6f, 500, 1.0e-6f, 0.70f, 0.0f, 0.0f},
@@ -92,11 +93,12 @@ static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
     
     /* Axis 3 (EV3 Medium UNLOADED, 1200 deg/s max): POS direction - REPRODUCE 12/12
-     * Winning config from run 0x2609043B case 12: kp=2.5e-4, kv=1.0e-6, kd_vel=1.0e-6, endpoint_kp=2.5e-6 */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.5e-6f, 800, 200, 4, 0.80f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.5e-6f, 0.35f, 0.0f, 1.0e-6f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.5e-6f, 800, 200, 4, 0.80f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.5e-6f, 0.35f, 0.0f, 1.0e-6f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.5e-6f, 800, 200, 4, 0.80f, 3, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.5e-6f, 0.35f, 0.0f, 1.0e-6f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.5e-6f, 800, 200, 4, 0.80f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.5e-6f, 0.35f, 0.0f, 1.0e-6f},
+     * Simulation validation: symmetric NEG config (kd_vel=0, endpoint_kp=2.0e-6) passes 12/12 for BOTH directions.
+     * POS config (kd_vel=1.0e-6, endpoint_kp=2.5e-6) fails 4/12 in sim for both directions. */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;

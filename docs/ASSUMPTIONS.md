@@ -1,14 +1,15 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-05, Dashboard Fixes + Autonomous Run 0x2609043C Complete):** 
+> **RESUME POINT (2026-09-05, Autonomous Runs 0x26090440, 0x26090441 Complete):**
+> - **Run 0x26090440**: Symmetric EV3 Medium config (kd_vel=0, endpoint_kp=2.0e-6) — 2 cases 12/12 (case_04: EV3 Large axis 1 POS, case_12: EV3 Medium axis 2 NEG). Multiple 9-11/12.
+> - **Run 0x26090441**: Consecutive validation — case_04 (EV3 Large axis 1 POS repeat 0) **12/12 in 2 CONSECUTIVE RUNS** (first time!). EV3 Medium 9-11/12 consistent but no consecutive 12/12.
+> - **EV3 Large positive sim-to-real**: case_04 (axis 1 POS repeat 0) now stable 12/12 across 2 runs; other repeats vary 5-11/12. Run-to-run variance ~10% per axis.
+> - **EV3 Medium symmetric config VALIDATED**: Simulation 12/12 for both NEG/POS directions; hardware 9-11/12 consistent (vs 4-9/12 with asymmetric config).
+> - **Stiction Break Fix VERIFIED**: Velocity threshold 5000→1000, pos-error activation works. No stiction stalls in autonomous runs 0x26090440, 0x26090441.
 > - **Dashboard 10/10 bugs fixed** (A-J from firmware console audit) in `tools/evn_dashboard.py`
-> - **Autonomous run 0x2609043C**: 2 configs achieved 12/12 (EV3 Large pos, W40_K50 gains), multiple 11/12 & 10/12. 16 cases. Core 1: 999-1001µs period, 0 missed ticks.
-> - **EV3 Large positive sim-to-real gap CLOSED**: 12/12 achieved with W40_K50 gains (track error ~1.6-1.8° < 2.0° threshold).
-> - **Stiction Break Fix VERIFIED on hardware**: Velocity threshold 5000→1000, pos-error activation works. EV3 Medium axes show no stiction stalls in autonomous run.
 > - **D7 IMPLEMENTED**: Console idle timeout (120s) + heartbeat protocol (`h`/`H`, `r`/`R`) enabled in `EVN_ALPHA_Performance.c` for autonomous↔console handoff.
-> - **D4 PARTIALLY ADDRESSED**: Dashboard thread-safety fixes (Bug C) eliminate Tkinter crashes from non-main threads.
 > - Board: Console firmware (EVN_AUTONOMOUS_TUNING=0), USB CDC functional after power cycle
-> - Next: Consecutive autonomous validation runs (target 2+ consecutive 12/12 on all 4 axes); Phase 8 Drive Base blocked until achieved.
+> - Next: 3rd consecutive autonomous validation run 0x26090442 (target 2+ consecutive 12/12 on all 4 axes); Phase 8 Drive Base blocked until achieved. EV3 Medium POS (axis 3) needs endpoint_kp/accel_scale sweep.
 
 Every assumption made during development that is **not** marked `[GROUND TRUTH]` in the specs and has **not** been independently verified against hardware. **Review and confirm/refute each before we build dependent phases on top.** Each entry: the assumption, where it's baked in, why we made it, and how to falsify it.
 
