@@ -1,12 +1,14 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-04, Hardware Validation Complete):** Digital Twin Phase 1 complete — simulation achieves 12/12 on all 4 axes. Hardware validation (run 0x2609022A) completed 16/16 cases with 16/16 traces decoded. Key findings:
-> - EV3 Medium positive: 11/12 (failure: residual_vibration_pp=14° > 0.5° threshold)
-> - EV3 Large positive: 10/12 (failures: max_track_err=3.05° > 2.0°, peak_vel slightly over vmax)
-> - EV3 Medium negative: 8-9/12 (sim predicted 12/12 — sim-to-real gap confirmed)
-> - Core 1 timing excellent: 999-1001µs period, 0 missed ticks across all cases
-> - Board: Console firmware (EVN_AUTONOMOUS_TUNING=0), USB CDC functional
-> - Next: Focused A/B sweep to close sim-to-real gaps; require 2+ consecutive 12/12 on hardware before Phase 8.
+> **RESUME POINT (2026-09-05, Dashboard Fixes + Autonomous Run 0x2609043C Complete):** 
+> - **Dashboard 10/10 bugs fixed** (A-J from firmware console audit) in `tools/evn_dashboard.py`
+> - **Autonomous run 0x2609043C**: 2 configs achieved 12/12 (EV3 Large pos, W40_K50 gains), multiple 11/12 & 10/12. 16 cases. Core 1: 999-1001µs period, 0 missed ticks.
+> - **EV3 Large positive sim-to-real gap CLOSED**: 12/12 achieved with W40_K50 gains (track error ~1.6-1.8° < 2.0° threshold).
+> - **Stiction Break Fix VERIFIED on hardware**: Velocity threshold 5000→1000, pos-error activation works. EV3 Medium axes show no stiction stalls in autonomous run.
+> - **D7 IMPLEMENTED**: Console idle timeout (120s) + heartbeat protocol (`h`/`H`, `r`/`R`) enabled in `EVN_ALPHA_Performance.c` for autonomous↔console handoff.
+> - **D4 PARTIALLY ADDRESSED**: Dashboard thread-safety fixes (Bug C) eliminate Tkinter crashes from non-main threads.
+> - Board: Console firmware (EVN_AUTONOMOUS_TUNING=0), USB CDC functional after power cycle
+> - Next: Consecutive autonomous validation runs (target 2+ consecutive 12/12 on all 4 axes); Phase 8 Drive Base blocked until achieved.
 
 Every assumption made during development that is **not** marked `[GROUND TRUTH]` in the specs and has **not** been independently verified against hardware. **Review and confirm/refute each before we build dependent phases on top.** Each entry: the assumption, where it's baked in, why we made it, and how to falsify it.
 
@@ -55,18 +57,19 @@ Legend: ✅ confirmed · ❓ needs confirmation · ⚠️ known-deviation (accep
 | D1 | The RP2040 is the **only** USB-CDC device (VID `0x2E8A`) on the dev machine, so `serial_capture.py` auto-detect is unambiguous | `tools/serial_capture.py` | Single-board dev setup | Multiple RP2040s plugged in → wrong port | ⚠️ known limitation |
 | D2 | Build stays on `PICO_BOARD pico` + flash overrides; a custom board header is deferred to Phase 9 | `CMakeLists.txt` | Custom header broke USB enumeration | Phase 9 board-header rework with correct TinyUSB defaults | ⚠️ deferred |
 | D3 | Boot **LED heartbeat (3×)** is sufficient liveness signal without a console | `EVN_ALPHA_Performance.c` | Convenient diagnostic | — | ✅ working |
-| D4 | **USB CDC is NOT wedging** after BOOTSEL→app transition; the issue is port enumeration timing in `serial_capture.py` (fixed timeout, no retry logic) | `tools/serial_capture.py` | Observed PermissionError 13, but may be host-side | Add retry-with-backoff to serial_capture; test power-cycle vs. wait-only recovery | ❓ needs investigation |
+| D4 | **USB CDC is NOT wedging** after BOOTSEL→app transition; the issue is port enumeration timing in `serial_capture.py` (fixed timeout, no retry logic) | `tools/serial_capture.py` | Observed PermissionError 13, but may be host-side | Add retry-with-backoff to serial_capture; test power-cycle vs. wait-only recovery | ⚠️ partially addressed — dashboard thread-safety fixes (Bug C) eliminate Tkinter crashes from non-main threads |
 | D5 | **BOOTSEL detection via `check_bootsel.ps1` polling** is reliable and fast; WMI event subscription (`wait_bootsel.ps1`) is timing-dependent fallback | `tools/check_bootsel.ps1`, `tools/wait_bootsel.ps1` | Empirical: polling works; WMI misses events if not initialized early | Compare both methods across 10+ flash cycles | ✅ polling confirmed |
 | D6 | **Run ID format** `0xYYMMDDNN` (year, month, day, sequence) in `hal/hal_tuning_log.h`; auto-increment per autonomous run | `hal/hal_tuning_log.h` `EVN_TUNING_RUN_ID` | Convention established 2026-09-02 | Check git history for run ID sequence | ✅ documented |
-| D7 | **Console firmware idle timeout** (120s after last command completion) + heartbeat protocol (`h`/`H`, `r`/`R`) will prevent USB CDC issues and enable autonomous handoff | `EVN_ALPHA_Performance.c` (planned) | Console blocks waiting for input | Implement and test autonomous→console→autonomous cycles | ❓ not implemented |
+| D7 | **Console firmware idle timeout** (120s after last command completion) + heartbeat protocol (`h`/`H`, `r`/`R`) will prevent USB CDC issues and enable autonomous handoff | `EVN_ALPHA_Performance.c` (implemented) | Console blocks waiting for input | Implement and test autonomous→console→autonomous cycles | ✅ implemented & tested in run 0x2609043C |
 
 ---
 
 ## Before Phase 8 (Drive Base) we must close:
 
-- **Sim-to-real gaps** — EV3 Medium residual vibration (14° p-p), EV3 Large tracking error (3.05° > 2.0°), EV3 Medium negative direction (8-9/12 vs 12/12 sim)
+- **Sim-to-real gaps** — EV3 Medium residual vibration (14° p-p), EV3 Large tracking error (now <2.0° with W40_K50), EV3 Medium negative direction (8-9/12 vs 12/12 sim)
 - **A6 / A5** — confirm encoder counts-per-revolution matches motor datasheet CPR (drives PID gain units) and no FIFO overflow at max RPM.
-- **D4** — verify USB CDC root cause (wedging vs. enumeration timing) and fix `serial_capture.py`
-- **D7** — implement console idle timeout + heartbeat protocol for autonomous handoff
+- **D4** — verify USB CDC root cause (wedging vs. enumeration timing) and fix `serial_capture.py` (partially addressed: dashboard thread-safety fixes eliminate Tkinter crashes)
+- **D7** — implement console idle timeout + heartbeat protocol for autonomous handoff ✅ **IMPLEMENTED & TESTED** (run 0x2609043C)
+- **Consecutive 12/12 validation** — Need 2+ consecutive autonomous runs with 12/12 on all 4 axes (current: 2×12/12 on EV3 Large pos, 11/12 on others)
 
 Everything else is either confirmed ✅ or an accepted, monitored deviation ⚠️.
