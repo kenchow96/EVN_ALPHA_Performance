@@ -91,11 +91,12 @@ static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
     
-    /* Axis 3 (EV3 Medium UNLOADED, 1200 deg/s max): POS direction - REPRODUCE 12/12 */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    /* Axis 3 (EV3 Medium UNLOADED, 1200 deg/s max): POS direction - REPRODUCE 12/12
+     * Winning config from run 0x2609043B case 12: kp=2.5e-4, kv=1.0e-6, kd_vel=1.0e-6, endpoint_kp=2.5e-6 */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.5e-6f, 800, 200, 4, 0.80f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.5e-6f, 0.35f, 0.0f, 1.0e-6f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.5e-6f, 800, 200, 4, 0.80f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.5e-6f, 0.35f, 0.0f, 1.0e-6f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.5e-6f, 800, 200, 4, 0.80f, 3, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.5e-6f, 0.35f, 0.0f, 1.0e-6f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.5e-6f, 800, 200, 4, 0.80f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.5e-6f, 0.35f, 0.0f, 1.0e-6f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;

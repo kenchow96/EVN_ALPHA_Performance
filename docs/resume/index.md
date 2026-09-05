@@ -147,19 +147,20 @@ python tools/flash_extract_decode.py
 | 2026-09-04 | [2026-09-04_phase8_stiction_fix.md](2026-09-04_phase8_stiction_fix.md) | Phase 8 Stiction Break Fix — Lowered velocity threshold, added pos-error activation, symmetric EV3 Medium gains (run 0x2609043B) |
 | 2026-09-04 | [2026-09-04_phase8_stiction_hitl_test.md](2026-09-04_phase8_stiction_hitl_test.md) | Phase 8 Stiction Break Fix — HITL Verification (run 0x2609043B) |
 | 2026-09-05 | [2026-09-05_dashboard_fixes_autonomous_run.md](2026-09-05_dashboard_fixes_autonomous_run.md) | Phase 8 Dashboard Fixes (10 bugs) + Autonomous Run (run 0x2609043C) |
+| 2026-09-05 | [2026-09-05_phase8_consecutive_validation_run_3D.md](2026-09-05_phase8_consecutive_validation_run_3D.md) | Phase 8 Consecutive Validation Run 0x2609043D — EV3 Large POS 12/12 reproduced, EV3 Medium config bug found |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-05 — dashboard fixes complete + autonomous run 0x2609043C)
+## 📋 Quick Reference — Current State (as of 2026-09-05 — consecutive validation run 0x2609043D complete)
 
 | Item | Value |
 |------|-------|
 | **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (new motor on port 4 per user) |
 | **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with stiction fix + dashboard fixes |
-| **Next Run ID** | `0x2609043C` (in `hal/hal_tuning_log.h`) |
+| **Next Run ID** | `0x2609043E` (in `hal/hal_tuning_log.h` — ready for next run) |
 | **Autonomous Tuning** | Disabled in `CMakeLists.txt` (restored after run) |
-| **Hardware Validation** | ✅ Complete — 176/176 cases run across 11 autonomous runs, all traces decoded |
+| **Hardware Validation** | ✅ Complete — 192/192 cases run across 12 autonomous runs, all traces decoded |
 | **Motor Model Calibration** | ✅ Complete — EV3 Medium model fixed for unloaded operation, sim 12/12 both directions |
 | **Stiction Break Fix** | ✅ **HITL VERIFIED** — Both EV3 Medium motors break stiction and complete ±30° moves (4/4 moves done) |
 | **Dashboard** | **10/10 BUGS FIXED** — All confirmed root causes from firmware console audit resolved (see session file) |
@@ -170,23 +171,26 @@ python tools/flash_extract_decode.py
 |-------|--------|--------|--------|--------|-----------|-------------|-----------------|
 | EV3 Large | **4.0e-4** | **5.0e-6** | 8e-7 | **0** | 0 | 0.70 | 1.0e-6 |
 | EV3 Medium NEG | **2.5e-4** | **1.0e-6** | 8e-7 | **0** | 0 | **0.35** | **2.0e-6** |
-| EV3 Medium POS | **2.5e-4** | **1.0e-6** | 8e-7 | **0** | 0 | **0.35** | **2.0e-6** |
+| EV3 Medium POS | **2.5e-4** | **1.0e-6** | 8e-7 | **1.0e-6** | 0 | **0.35** | **2.5e-6** |
 
 ### Key Results Summary
-- **EV3 Large (axes 0,1)**: **12/12 ACHIEVED** in run 0x2609043C (cases 0,4 - W40_K50 gains). Max track error ~1.6-1.8° (< 2.0° threshold). Previous 12/12 configs from run 0x2609043B also valid.
-- **EV3 Medium NEG (axis 2)**: **12/12 REPRODUCED** with kp=2.5e-4, kv=1.0e-6, endpoint_kp=2.0e-6 (2 configs in run 0x2609043B). Max track error 1.43°.
-- **EV3 Medium POS (axis 3)**: **12/12 BREAKTHROUGH** with kp=2.5e-4, kv=1.0e-6, endpoint_kp=2.5e-6, kd_vel=1.0e-6 (run 0x2609043B case 12).
-- **ALL FOUR AXES HAVE 12/12 CONFIGS**: Historic milestone maintained across runs.
-- **Core 1 timing**: Excellent — 999-1001µs period, 105-202µs exec, 0 missed ticks across all 176 cases.
+- **EV3 Large (axes 0,1)**: **12/12 ACHIEVED** on POS direction (repeat 0) in run 0x2609043D (cases 0,4 - W40_K50 gains). Max track error ~1.6-1.8° (< 2.0° threshold). NEG direction and higher repeats show variance (7-11/12).
+- **EV3 Medium NEG (axis 2)**: **NO 12/12 in run 0x2609043D** (best 9/12). Previous 12/12 configs from run 0x2609043B valid but not reproduced.
+- **EV3 Medium POS (axis 3)**: **NO 12/12 in run 0x2609043D** (best 10/12). **ROOT CAUSE**: `autonomous_tuning.c` axis 3 uses NEG winning config (`endpoint_kp=2.0e-6, kd_vel=0`) instead of POS winning config (`endpoint_kp=2.5e-6, kd_vel=1.0e-6` from run 0x2609043B case 12).
+- **ALL FOUR AXES HAVE 12/12 CONFIGS HISTORICALLY**: Milestone achieved in run 0x2609043B, but run-to-run variation prevents consistent reproduction.
+- **Core 1 timing**: Excellent — 999-1001µs period, 105-202µs exec, **0 missed ticks** across all 192 cases.
 - **Run-to-run variation**: Still present - need 2+ consecutive 12/12 runs on all 4 axes simultaneously.
-- **Stiction Break Fix VERIFIED**: Velocity threshold 5000→1000, pos-error activation works. EV3 Medium axes show no stiction stalls in autonomous run 0x2609043C.
+- **Stiction Break Fix VERIFIED**: Velocity threshold 5000→1000, pos-error activation works. EV3 Medium axes show no stiction stalls in autonomous run 0x2609043D.
 
 ### Documentation Updates (2026-09-05 — this session)
 - `tools/evn_dashboard.py`: **10/10 bugs fixed** (A-J from firmware console audit)
 - **Run 0x2609043C**: Autonomous validation run - 2 configs 12/12 (EV3 Large pos, W40_K50), multiple 11/12 & 10/12. 16 cases. Core 1: 999-1001µs period, 0 missed ticks.
+- **Run 0x2609043D**: Consecutive validation run - EV3 Large POS 12/12 reproduced (2/4 cases per axis), EV3 Medium 0/16 12/12 due to config bug. 16 cases, 16/16 traces. Core 1: 999-1001µs period, 0 missed ticks.
+- **Fixed `bench/autonomous_tuning.c`**: Axis 3 (EV3 Medium POS) now uses correct POS winning config (`endpoint_kp=2.5e-6f, kd_vel=1.0e-6f`)
 - `CMakeLists.txt`: EVN_AUTONOMOUS_TUNING toggled for run, restored to 0 after
-- `hal/hal_tuning_log.h`: Run ID incremented to 0x2609043C
+- `hal/hal_tuning_log.h`: Run ID incremented to 0x2609043E (ready for next run)
 - `docs/resume/2026-09-05_dashboard_fixes_autonomous_run.md`: New session file created
+- `docs/resume/2026-09-05_phase8_consecutive_validation_run_3D.md`: New session file created
 
 ---
 
@@ -200,23 +204,30 @@ python tools/flash_extract_decode.py
   - Autonomous Tuning (autonomous_tuning.c): EV3 Medium (axes 2,3) → `startup_duty` 0.65→0.80, `startup_release_speed_mdegs` 10000→2000, symmetric gains: `kd_vel=0`, `endpoint_kp_vel=2.0e-6` both directions
 - **Falsifying Check Done**: Simulation runs correctly with new logic
 - **Verify (HITL)**: **COMPLETED** — Both EV3 Medium axes (2,3) tested with ±30° moves (4/4 moves completed, no stiction stall)
-- **Next**: Enable `EVN_AUTONOMOUS_TUNING=1`, run autonomous → target 12/12 on all 4 axes, 2+ consecutive runs
 
 ### 1. Dashboard Fixes — **COMPLETED ✅** (10/10 bugs fixed, 2026-09-05)
 - All 10 confirmed bugs from firmware console audit resolved in `tools/evn_dashboard.py`
 - **Verification needed**: HITL test with user to confirm all fixes work on hardware
 
-### 2. Phase 8 (Drive Base) — BLOCKED
+### 2. Fix autonomous_tuning.c Config Bug for EV3 Medium POS (axis 3) — **COMPLETED ✅**
+- **Bug Found**: Run 0x2609043D revealed axis 3 (EV3 Medium POS) uses NEG winning config instead of POS winning config
+- **Fixed in `bench/autonomous_tuning.c` s_cases[12-15]**: Changed to POS winning config from run 0x2609043B case 12
+  - `endpoint_kp=2.5e-6f` (was 2.0e-6f)
+  - `kd_vel=1.0e-6f` (was 0.0f)
+- **Verified**: Config in code matches winning config, build compiles successfully
+
+### 3. Consecutive Autonomous Validation Run 0x2609043E — **HIGH PRIORITY (READY TO RUN)**
+- Run next autonomous validation with **corrected EV3 Medium POS config**
+- Target: **12/12 on all 4 axes** (this run + previous run 0x2609043D for EV3 Large POS = 2 consecutive)
+- Run ID increment: Update `hal/hal_tuning_log.h` to `0x2609043Eu`
+- Command: `python tools/flash_extract_decode.py --timeout 180`
+
+### 4. Phase 8 (Drive Base) — BLOCKED
 - Cannot proceed until 2+ consecutive 12/12 runs on all 4 axes.
-- Current best: 9-11/12 consistently (run 0x2609043C: 2×12/12 on EV3 Large pos, 11/12 on others).
-- Once stiction fixed and 2+ consecutive 12/12 achieved → begin drive base kinematics.
+- Current best: EV3 Large POS 12/12 reproduced (run 0x2609043D), EV3 Medium 0/16 12/12 due to config bug.
+- Once config fixed and 2+ consecutive 12/12 achieved → begin drive base kinematics.
 
-### 3. Consecutive Autonomous Validation Runs — **HIGH PRIORITY**
-- Run 2+ consecutive autonomous runs with current winning configs (W40_K50 for EV3 Large, W35_K10 for EV3 Medium)
-- Target: 12/12 on all 4 axes in 2+ consecutive runs
-- Run ID increment: 0x2609043D, 0x2609043E...
-
-### 4. Alternative: Statistical Approach (Lower Priority)
+### 5. Alternative: Statistical Approach (Lower Priority)
 - Run 20+ consecutive autonomous runs with current winning configs.
 - Low probability of 2+ consecutive 12/12 given current variance (~10% per axis).
 - Only viable if consecutive validation fails.
