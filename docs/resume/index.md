@@ -9,9 +9,9 @@
 
 ### BEFORE STARTING — Pre-Session Checklist
 - [ ] Read **this file** (index.md) completely
-- [ ] Read `docs/AGENTS.md` (mandatory rules)
-- [ ] Read `docs/PLAN.md` → check **Status Board** for active phase
-- [ ] Read `docs/ASSUMPTIONS.md` → confirm any assumptions needed for active phase
+- [ ] Read `../../AGENTS.md` (mandatory rules — at repo root)
+- [ ] Read `../PLAN.md` → check **Status Board** for active phase
+- [ ] Read `../ASSUMPTIONS.md` → confirm any assumptions needed for active phase
 - [ ] Verify board state: **powered on?** (HITL requirement — ask user before any flash)
 - [ ] Check `hal/hal_tuning_log.h` for current `EVN_TUNING_RUN_ID`
 - [ ] Check `CMakeLists.txt` for `EVN_AUTONOMOUS_TUNING` value (0 = console, 1 = autonomous)

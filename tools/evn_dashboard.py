@@ -659,7 +659,7 @@ class EVNDashboard:
         # Step 1: First check if board is already running console mode (CDC port)
         cdc_port = self._find_cdc_port()
         if cdc_port:
-            self.port_var.set(cdc_port)
+            self._set_port_var(cdc_port)
             self.log_to_console(f"Board already running console mode on {cdc_port}")
             self.update_status("Found console mode - connecting...")
             self.root.after(0, self._connect_after_startup)
@@ -746,7 +746,7 @@ class EVNDashboard:
         while time.time() - start_time < timeout:
             cdc_port = self._find_cdc_port()
             if cdc_port:
-                self.port_var.set(cdc_port)
+                self._set_port_var(cdc_port)
                 self.log_to_console(f"Board re-enumerated on {cdc_port}")
                 return cdc_port
             time.sleep(1)
@@ -769,6 +769,17 @@ class EVNDashboard:
             return None
         except Exception:
             return None
+
+    def _set_port_var(self, port):
+        """Set the port combobox variable thread-safely.
+
+        Tk variables must only be written from the main thread. Background
+        threads (startup_sequence, _flash_and_reconnect) marshal the write via
+        root.after(0, ...)."""
+        if threading.current_thread() is threading.main_thread():
+            self.port_var.set(port)
+        else:
+            self.root.after(0, lambda p=port: self.port_var.set(p))
     
     def _connect_after_startup(self):
         """Connect to serial port after startup sequence completes"""
@@ -800,7 +811,7 @@ class EVNDashboard:
         # First check for CDC port (console mode)
         cdc_port = self._find_cdc_port()
         if cdc_port:
-            self.port_var.set(cdc_port)
+            self._set_port_var(cdc_port)
             self.log_to_console(f"Found console mode on {cdc_port}")
             self.connect_serial()
             return  # connect_serial succeeded or failed; if it failed serial_running stays False

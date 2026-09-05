@@ -1,0 +1,8 @@
+# EVN ALPHA host tools — Python dependencies.
+# Install with:  pip install -r tools/requirements.txt
+#
+# Only third-party package required by the canonical tools
+# (flash_and_capture.py, serial_capture.py, evn_dashboard.py).
+# Everything else uses the Python standard library (tkinter ships with
+# CPython on Windows; no separate install needed).
+pyserial>=3.5

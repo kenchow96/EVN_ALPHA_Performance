@@ -22,19 +22,17 @@ import time
 
 try:
     import serial
-    from serial.tools import list_ports
 except ImportError:
-    sys.exit("pyserial not installed. Run: pip install pyserial")
+    sys.exit("pyserial not installed. Run: pip install -r tools/requirements.txt")
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _common import find_board_port, RP2040_VID  # noqa: E402
 
 PICOTOOL = os.path.expandvars(
     r"%USERPROFILE%\.pico-sdk\picotool\2.3.0\picotool\picotool.exe")
-RP2040_VID = 0x2E8A
 
 def find_port():
-    for p in list_ports.comports():
-        if p.vid == RP2040_VID:
-            return p.device
-    return None
+    return find_board_port()
 
 def wait_for_port_open(baud, timeout_s=8.0, stable_s=0.3, settle_s=0.3):
     """Wait for stable enumeration, then return a validated held handle+bytes.

@@ -58,4 +58,9 @@ uint16_t hal_battery_cell2_mv(void);     /* bottom cell */
 /* Convenience: pack voltage as float volts. */
 float hal_battery_voltage_v(void);
 
+/* Debug: raw dump of key BQ25887 registers for diagnosing ADC/readback issues.
+ * Reads directly via I2C (bypasses the cache). Returns false if not present. */
+bool hal_battery_debug_regs(uint8_t *part, uint8_t *adc_ctrl,
+                            uint16_t *vbat, uint16_t *vtop, uint16_t *vbot);
+
 #endif /* HAL_BATTERY_H */

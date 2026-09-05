@@ -78,11 +78,6 @@ bool hal_i2c_probe(uint8_t addr, uint32_t timeout_us);
 void hal_i2c_scan_all(uint8_t counts[EVN_I2C_PORT_COUNT],
                       uint8_t found[EVN_I2C_PORT_COUNT][16]);
 
-/* Attempt to free a stuck bus: 9 SCL clock pulses + STOP on both buses,
- * then re-init. Called automatically when a transaction times out with
- * SDA held low. Returns EVN_I2C_OK if lines are idle afterwards. */
-evn_i2c_status_t hal_i2c_recover_bus(void);
-
 /* Diagnostics: last error per bus, mux cache state. */
 uint8_t hal_i2c_cached_channel(uint8_t bus_index); /* 0 or 1; 0xFF = none */
 

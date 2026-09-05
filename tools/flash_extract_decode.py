@@ -233,40 +233,57 @@ def decode_flash(uf2_path, output_dir):
 
 
 def print_summary(summary_path):
-    """Print a nice summary table from summary.csv."""
+    """Print a nice summary table from summary.csv.
+
+    The decoder (decode_tuning_flash.py) writes summary.csv with columns:
+      name, passed, total, failures, score, max_track_err_deg,
+      rms_track_err_deg, overshoot_deg, final_err_deg, duty_smoothness,
+      duty_cruise_ripple_pp, core1_status
+    A case is a full PASS when passed == total (e.g. 12/12).
+    """
     import csv
-    
+
     with open(summary_path, 'r') as f:
         reader = csv.DictReader(f)
         rows = list(reader)
-    
+
     if not rows:
         print("[flash_extract] No results in summary")
         return
-    
-    print("\n" + "=" * 100)
+
+    def fnum(row, key):
+        try:
+            return float(row.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    print("\n" + "=" * 108)
     print("AUTONOMOUS TUNING RESULTS SUMMARY")
-    print("=" * 100)
-    print(f"{'Case':>4} {'Axis':>4} {'Status':>10} {'Delta':>8} {'Vmax':>8} {'Accel':>8} {'KP':>10} {'KV':>10} {'Endpoint KP':>12} {'Accel Scale':>10} {'Score':>8}")
-    print("-" * 100)
-    
+    print("=" * 108)
+    print(f"{'Case':<26} {'Result':>8} {'Score':>8} {'MaxErr':>8} {'RMSErr':>8} "
+          f"{'OvrSht':>8} {'FinalErr':>9} {'Smooth':>8} {'Ripple':>8}")
+    print("-" * 108)
+
+    full_passes = 0
     for row in rows:
-        status = "PASS" if row.get('status') == '1' else "FAIL"
-        print(f"{row.get('case_index', '?'):>4} {row.get('axis', '?'):>4} {status:>10} "
-              f"{float(row.get('delta_mdeg', 0))/1000:>8.1f} "
-              f"{float(row.get('vmax_mdegs', 0))/1000:>8.1f} "
-              f"{float(row.get('accel_mdegs2', 0))/1000:>8.1f} "
-              f"{float(row.get('kp', 0)):>10.2e} "
-              f"{float(row.get('kv', 0)):>10.2e} "
-              f"{float(row.get('endpoint_kp_vel', 0)):>12.2e} "
-              f"{float(row.get('accel_scale', 0)):>10.2f} "
-              f"{float(row.get('score', 0)):>8.2f}")
-    
-    # Count passes
-    passes = sum(1 for r in rows if r.get('status') == '1')
-    total = len(rows)
-    print(f"\nTotal: {passes}/{total} PASS")
-    print("=" * 100)
+        passed = int(fnum(row, 'passed'))
+        total = int(fnum(row, 'total'))
+        is_pass = (total > 0 and passed == total)
+        if is_pass:
+            full_passes += 1
+        result = f"{passed}/{total}"
+        print(f"{row.get('name', '?'):<26} {result:>8} "
+              f"{fnum(row, 'score'):>8.4f} "
+              f"{fnum(row, 'max_track_err_deg'):>8.3f} "
+              f"{fnum(row, 'rms_track_err_deg'):>8.3f} "
+              f"{fnum(row, 'overshoot_deg'):>8.3f} "
+              f"{fnum(row, 'final_err_deg'):>9.3f} "
+              f"{fnum(row, 'duty_smoothness'):>8.3f} "
+              f"{fnum(row, 'duty_cruise_ripple_pp'):>8.3f}")
+
+    print("-" * 108)
+    print(f"Full 12/12 PASS: {full_passes}/{len(rows)} cases")
+    print("=" * 108)
 
 
 def restore_console_build():

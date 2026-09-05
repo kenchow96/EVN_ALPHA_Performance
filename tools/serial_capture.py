@@ -11,22 +11,17 @@ Usage:
 Exits 0 and prints captured text; --expect exits 1 if substring not seen.
 """
 import argparse
+import os
 import sys
 import time
 
 try:
     import serial
-    from serial.tools import list_ports
 except ImportError:
-    sys.exit("pyserial not installed. Run: pip install pyserial")
+    sys.exit("pyserial not installed. Run: pip install -r tools/requirements.txt")
 
-def find_board_port():
-    """Auto-detect the EVN ALPHA (RP2040 USB-CDC) COM port."""
-    for p in list_ports.comports():
-        # RP2040 USB-CDC VID:PID = 2E8A:000A (stdio) or 2E8A:0003 (TinyUSB)
-        if p.vid == 0x2E8A:
-            return p.device
-    return None
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _common import find_board_port  # noqa: E402
 
 def main():
     ap = argparse.ArgumentParser()

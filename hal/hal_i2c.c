@@ -184,53 +184,6 @@ void hal_i2c_scan_all(uint8_t counts[EVN_I2C_PORT_COUNT],
     hal_i2c_deselect_all();
 }
 
-evn_i2c_status_t hal_i2c_recover_bus(void) {
-    /* I2C Spec §6: a slave holding SDA low mid-transfer is freed by clocking
-     * 9 SCL pulses then issuing a STOP. Bit-bang via SIO (temporarily steal
-     * the pins from the I2C function), then restore. */
-    static const uint8_t sda_pin[2] = { PIN_I2C0_SDA, PIN_I2C1_SDA };
-    static const uint8_t scl_pin[2] = { PIN_I2C0_SCL, PIN_I2C1_SCL };
-    bool stuck_any = false;
-
-    for (int b = 0; b < 2; b++) {
-        bool sda_low = (sio_hw->gpio_in & (1u << sda_pin[b])) == 0;
-        bool scl_low = (sio_hw->gpio_in & (1u << scl_pin[b])) == 0;
-        if (!sda_low && !scl_low) continue;
-        stuck_any = true;
-
-        gpio_set_function(sda_pin[b], GPIO_FUNC_SIO);
-        gpio_set_function(scl_pin[b], GPIO_FUNC_SIO);
-        sio_hw->gpio_oe_set = (1u << sda_pin[b]) | (1u << scl_pin[b]);
-        sio_hw->gpio_set = (1u << sda_pin[b]);  /* release SDA (open-drain high) */
-
-        for (int i = 0; i < 9; i++) {
-            sio_hw->gpio_clr = (1u << scl_pin[b]);
-            busy_wait_us(5);
-            sio_hw->gpio_set = (1u << scl_pin[b]);
-            busy_wait_us(5);
-        }
-        /* STOP: SDA low→high while SCL high */
-        sio_hw->gpio_clr = (1u << sda_pin[b]);
-        busy_wait_us(5);
-        sio_hw->gpio_set = (1u << sda_pin[b]);
-        busy_wait_us(5);
-
-        /* Return pins to I2C function + pull-ups */
-        gpio_set_function(sda_pin[b], GPIO_FUNC_I2C);
-        gpio_set_function(scl_pin[b], GPIO_FUNC_I2C);
-        sio_hw->gpio_oe_clr = (1u << sda_pin[b]) | (1u << scl_pin[b]);
-        gpio_pull_up(sda_pin[b]);
-        gpio_pull_up(scl_pin[b]);
-    }
-
-    if (stuck_any) {
-        s_cached_channel[0] = 0xFFu;
-        s_cached_channel[1] = 0xFFu;
-        return EVN_I2C_ERR_BUS_STUCK;
-    }
-    return EVN_I2C_OK;
-}
-
 uint8_t hal_i2c_cached_channel(uint8_t bus_idx) {
     if (bus_idx > 1u) return 0xFFu;
     return s_cached_channel[bus_idx];

@@ -107,24 +107,29 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         };
         evn_observer_init(&a->observer, a->model, &a->observer.settings, 0);
         evn_pid_init(&a->pid);
-        /* Per-model gains and launch behavior validated on hardware (v18 multi-axis).
-         * EV3 Medium (axes 2,3): kp=3.0e-4, kv=1.0e-6, accel_scale=0.30 (neg 12/12, pos 11/12)
-         * EV3 Large (axes 0,1): kp=2.2e-4, kv=2.5e-6, accel_scale=0.70 (pos 11/12) */
+        /* Winning configurations promoted from autonomous tuning (see
+         * docs/resume/2026-09-04_phase8_stiction_fix.md and run 0x26090437+).
+         * EV3 Medium (axes 2,3): kp=2.5e-4, kv=1.0e-6, kd=0, endpoint_kp=2.0e-6,
+         *   accel_scale=0.35, start_duty=0.80 (symmetric, stiction-break fix)
+         * EV3 Large (axes 0,1):  kp=4.0e-4, kv=5.0e-6, kd=0, endpoint_kp=1.0e-6,
+         *   accel_scale=0.70 (W40_K50 config, 3 consecutive 12/12 runs) */
         bool is_medium =
             a->model == evn_motor_model_get(EVN_MOTOR_MODEL_EV3_MEDIUM);
         if (is_medium) {
-            a->pid.kp_pos = 3.0e-4f; a->pid.kp_vel = 1.0e-6f;
-            a->pid.ki_pos = 8.0e-7f; a->pid.kff_accel = 0.0f;
-            a->pid.endpoint_kp_vel = 1.0e-6f;
-            a->pid.start_duty = 0.65f; a->pid.min_duty = 0.55f;
-            a->pid.startup_release_speed_mdegs = 10000.0f;
+            a->pid.kp_pos = 2.5e-4f; a->pid.kp_vel = 1.0e-6f;
+            a->pid.ki_pos = 8.0e-7f; a->pid.kd_vel = 0.0f;
+            a->pid.kff_accel = 0.0f;
+            a->pid.endpoint_kp_vel = 2.0e-6f;
+            a->pid.start_duty = 0.80f; a->pid.min_duty = 0.55f;
+            a->pid.startup_release_speed_mdegs = 2000.0f;
             a->pid.startup_ramp_ticks = 800u;
             a->pid.restart_ramp_ticks = 200u;
             a->pid.startup_pulse_on_ticks = 4u;
             a->pid.vel_window = 40;
         } else {   /* EV3 Large / NXT */
-            a->pid.kp_pos = 2.2e-4f; a->pid.kp_vel = 2.5e-6f;
-            a->pid.ki_pos = 8.0e-7f; a->pid.kff_accel = 0.0f;
+            a->pid.kp_pos = 4.0e-4f; a->pid.kp_vel = 5.0e-6f;
+            a->pid.ki_pos = 8.0e-7f; a->pid.kd_vel = 0.0f;
+            a->pid.kff_accel = 0.0f;
             a->pid.endpoint_kp_vel = 1.0e-6f;
             a->pid.start_duty = 0.12f; a->pid.min_duty = 0.12f;
             a->pid.startup_release_speed_mdegs = 10000.0f;
@@ -139,7 +144,7 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         a->edge_speed_filtered = 0.0f;
         a->edge_speed_alpha = 0.05f;
         a->profile_vel_scale = is_medium ? 0.85f : 1.0f;
-        a->profile_accel_scale = is_medium ? 0.30f : 0.70f;
+        a->profile_accel_scale = is_medium ? 0.35f : 0.70f;
         a->trajectory_type = EVN_TRAJECTORY_TRAPEZOID;
         a->startup_reference_governor = is_medium;
         a->active_startup_reference_governor = is_medium;

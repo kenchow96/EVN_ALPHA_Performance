@@ -133,6 +133,16 @@ static void con_printf(const char *fmt, ...) {
 static int s_state = 3;   /* 0=OUT 1=RETURN 3=DONE (start idle) */
 static bool s_report = false;  /* 10 Hz status report (default OFF to keep USB RX responsive) */
 
+/* Non-blocking deferred reboot: when nonzero, reboot to BOOTSEL once the
+ * timestamp is reached (gives the CDC TX queue time to drain first). */
+static uint64_t s_reboot_at = 0;
+
+/* Non-blocking boot LED blinker state (replaces the old busy_wait_ms loop).
+ * Toggles the user LED every BOOT_BLINK_US until s_boot_blinks_left hits 0. */
+#define BOOT_BLINK_US 80000ULL
+static uint64_t s_boot_blink_next = 0;
+static int s_boot_blinks_left = 0;
+
 /* Run the full +360 -> 0 trapezoidal test on all axes. */
 static void start_full_test(void) {
     for (int i = 0; i < 4; i++)
@@ -563,11 +573,10 @@ static void handle_command(void) {
         }
         break;
     }
-    case 'R': {  /* explicit reset to BOOTSEL */
+    case 'R': {  /* explicit reset to BOOTSEL (deferred, non-blocking) */
         con_printf("R rebooting to BOOTSEL...\n");
         cdc_service();  // flush TX
-        busy_wait_ms(100);
-        reset_usb_boot(0, 0);
+        s_reboot_at = time_us_64() + 100000ULL;  // 100 ms for TX to drain
         break;
     }
     case 's': {  /* s <motor 1-4> <enc_sign +/-1> <motor_dir +/-1> */
@@ -606,7 +615,10 @@ int main(void) {
 
     hal_led_init();
     hal_button_init();
-    for (int i = 0; i < 3; i++) { hal_led_set(true); busy_wait_ms(80); hal_led_set(false); busy_wait_ms(80); }
+    /* Non-blocking boot blink: 3 on/off cycles serviced from the main loop. */
+    s_boot_blinks_left = 6;
+    s_boot_blink_next = time_us_64();
+    hal_led_set(true);
 
     con_printf("hal_i2c_init: %s\n", hal_i2c_init() == EVN_I2C_OK ? "OK" : "MUX ERROR");
     con_printf("hal_battery_init: %s\n", hal_battery_init() ? "OK" : "NOT FOUND");
@@ -650,12 +662,23 @@ int main(void) {
         /* Console idle timeout: reboot to BOOTSEL if no commands completed
          * within CONSOLE_IDLE_TIMEOUT_US (120s). This allows autonomous
          * handoff without power cycling. */
-        if (now - s_last_command_done >= CONSOLE_IDLE_TIMEOUT_US) {
+        if (now - s_last_command_done >= CONSOLE_IDLE_TIMEOUT_US && s_reboot_at == 0) {
             con_printf("\n>> console idle timeout (%lus) - rebooting to BOOTSEL\n",
                        CONSOLE_IDLE_TIMEOUT_US / 1000000ULL);
             cdc_service();  // flush TX
-            busy_wait_ms(100);
+            s_reboot_at = now + 100000ULL;  // 100 ms for TX to drain
+        }
+
+        /* Deferred reboot: fire once the TX-drain window has elapsed. */
+        if (s_reboot_at != 0 && (int64_t)(now - s_reboot_at) >= 0) {
             reset_usb_boot(0, 0);
+        }
+
+        /* Non-blocking boot LED blinker. */
+        if (s_boot_blinks_left > 0 && (int64_t)(now - s_boot_blink_next) >= 0) {
+            s_boot_blink_next = now + BOOT_BLINK_US;
+            s_boot_blinks_left--;
+            hal_led_set((s_boot_blinks_left & 1) != 0);
         }
 
         cdc_service();
