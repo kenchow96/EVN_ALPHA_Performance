@@ -92,6 +92,33 @@ def wait_for_bootsel_drive(timeout_s=180):
     return wait_for_bootsel_wmi(timeout_s - int(time.time() - start_time))
 
 
+def wait_for_bootsel_absent(timeout_s=30):
+    """Wait for the BOOTSEL drive to DISAPPEAR (i.e. the flashed app has booted
+    and left BOOTSEL). Returns True once the drive is gone, False on timeout.
+
+    This guards against the false-positive where wait_for_bootsel_drive() sees
+    the *stale* BOOTSEL drive that was present before/at flash time and extracts
+    the previous run's flash before the new autonomous run has executed."""
+    print(f"[flash_extract] Waiting for BOOTSEL drive to disappear (app booting, timeout {timeout_s}s)...")
+    check_script = REPO_ROOT / "tools" / "check_bootsel.ps1"
+    start_time = time.time()
+    while time.time() - start_time < timeout_s:
+        try:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(check_script)],
+                capture_output=True, text=True, timeout=10
+            )
+            # exit 1 (no drive) => app has left BOOTSEL
+            if result.returncode != 0:
+                print(f"[flash_extract] BOOTSEL drive gone after {time.time()-start_time:.1f}s (app booted)")
+                return True
+        except subprocess.TimeoutExpired:
+            pass
+        time.sleep(0.5)
+    print("[flash_extract] WARNING: BOOTSEL drive never disappeared (app may not have booted)")
+    return False
+
+
 def wait_for_bootsel_wmi(timeout_s):
     """Wait for BOOTSEL drive using WMI event subscription (fallback).
     Must be initialized early to catch the event."""
@@ -342,8 +369,15 @@ def main():
         
         if not flash_uf2(uf2_path):
             return 1
-        
-        # Step 3: Wait for BOOTSEL drive
+
+        # Step 3a: Wait for the board to LEAVE BOOTSEL (app booted). This is the
+        # critical guard against extracting the *previous* run's flash: right
+        # after `picotool load -x` the stale BOOTSEL drive is still mounted, so
+        # we must first see it disappear before waiting for it to reappear.
+        wait_for_bootsel_absent(timeout_s=30)
+
+        # Step 3b: Wait for BOOTSEL drive to REAPPEAR (autonomous run finished
+        # and the app rebooted to BOOTSEL).
         drive = wait_for_bootsel_drive(args.timeout)
         if not drive:
             print("[flash_extract] BOOTSEL drive not detected within timeout", file=sys.stderr)
