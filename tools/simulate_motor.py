@@ -102,6 +102,15 @@ class MotorModel:
     counts_per_rev: float = 720.0
     rated_max_speed_deg_s: int = 800
 
+    # Stribeck friction parameters (for enhanced PlantModel)
+    # torque_friction is the Coulomb friction level (at high speed)
+    # static_friction: static friction torque (stiction) at zero speed
+    # stribeck_vel_mdegs: Stribeck transition velocity (mdeg/s)
+    # viscous_friction: viscous friction coefficient (torque per mdeg/s)
+    static_friction: int = 0          # If 0, defaults to 2x torque_friction
+    stribeck_vel_mdegs: int = 50000   # Transition speed (mdeg/s) ~ 50 deg/s
+    viscous_friction: int = 0         # Viscous coefficient (unm per mdeg/s)
+
     @property
     def substeps_per_rev(self) -> float:
         return (self.counts_per_rev / 4.0) * 256.0
@@ -109,6 +118,18 @@ class MotorModel:
     @property
     def mdeg_per_substep(self) -> float:
         return 360000.0 / self.substeps_per_rev
+    
+    def get_static_friction(self) -> int:
+        """Get static friction torque (stiction). Defaults to 2x Coulomb if not set."""
+        return self.static_friction if self.static_friction > 0 else self.torque_friction * 2
+    
+    def get_stribeck_vel(self) -> int:
+        """Get Stribeck transition velocity."""
+        return self.stribeck_vel_mdegs
+    
+    def get_viscous_friction(self) -> int:
+        """Get viscous friction coefficient."""
+        return self.viscous_friction
 
 
 @dataclass
@@ -623,6 +644,7 @@ class PlantModel:
     """Discrete-time plant model matching observer state-space (no feedback)
     
     Uses the exact same A/B matrices as the observer for perfect consistency.
+    Enhanced with Stribeck friction, cogging torque, and gearbox compliance.
     State: [angle_mdeg, speed_mdeg/s, current_0.1mA]
     Input: [voltage_mv, torque_unm]
     """
@@ -644,7 +666,25 @@ class PlantModel:
     d_angle_d_torque: int = -1887437
     d_speed_d_torque: int = -9555
     d_current_d_torque: int = 861143
-    torque_friction: int = 16476
+    torque_friction: int = 16476      # Coulomb friction level (high speed)
+    
+    # Stribeck friction parameters
+    static_friction: int = 0          # Static friction (stiction) at zero speed
+    stribeck_vel_mdegs: int = 50000   # Stribeck transition velocity (mdeg/s)
+    viscous_friction: int = 0         # Viscous friction coefficient
+    
+    # Cogging torque parameters
+    cogging_amplitude: int = 0        # Cogging torque amplitude (unm)
+    cogging_period_mdeg: int = 45000  # Cogging period (mdeg) = 45 deg = 360/8 for 8-pole
+    
+    # Gearbox compliance parameters
+    gearbox_stiffness: int = 0        # Gearbox torsional stiffness (unm/deg)
+    gearbox_backlash_mdeg: int = 0    # Gearbox backlash (mdeg)
+    motor_inertia_ratio: float = 1.0  # Ratio of motor inertia to load inertia
+    
+    # Gearbox state
+    gearbox_twist_mdeg: int = 0       # Torsional twist between motor and load
+    load_speed_mdegs: int = 0         # Load side speed
     
     # Observer prescales
     EVN_OBS_PRESCALE_SPEED: int = 858
@@ -672,6 +712,52 @@ class PlantModel:
             self.d_speed_d_torque = motor_model.d_speed_d_torque
             self.d_current_d_torque = motor_model.d_current_d_torque
             self.torque_friction = motor_model.torque_friction
+            
+            # Stribeck parameters (with defaults if not in model)
+            self.static_friction = motor_model.get_static_friction()
+            self.stribeck_vel_mdegs = motor_model.get_stribeck_vel()
+            self.viscous_friction = motor_model.get_viscous_friction()
+            
+            # Cogging defaults based on motor type
+            if motor_model.counts_per_rev == 720:  # EV3 Large / NXT (8-pole?)
+                self.cogging_period_mdeg = 45000  # 45 deg per cog
+                self.cogging_amplitude = motor_model.torque_friction // 10  # ~10% of Coulomb
+            elif motor_model.counts_per_rev == 360:  # EV3 Medium (different pole count?)
+                self.cogging_period_mdeg = 90000  # 90 deg per cog
+                self.cogging_amplitude = motor_model.torque_friction // 10
+            
+            # Gearbox defaults (DISABLED by default - enable explicitly for compliance studies)
+            # The observer model assumes rigid body; adding compliance requires careful tuning
+            self.gearbox_backlash_mdeg = 0     # 5 deg backlash typical for EV3 (set >0 to enable)
+            self.gearbox_stiffness = 0         # Gearbox torsional stiffness (unm/deg) (set >0 to enable)
+            self.motor_inertia_ratio = 1.0     # Load inertia / motor inertia (set >1 for compliance)
+            
+            # Thermal model parameters (DISABLED by default - enable explicitly for thermal studies)
+            # Copper resistance: R = R0 * (1 + alpha_cu * (T - T0))
+            # alpha_cu = 0.00393 /°C for copper
+            self.temp_ambient: float = 25.0           # Ambient temperature (°C)
+            self.temp_initial: float = 25.0           # Initial temperature (°C)
+            self.alpha_cu: float = 0.00393            # Copper temp coefficient (/°C)
+            self.r_phase_ohm_25c: float = 1.0         # Phase resistance at 25°C (ohm)
+            self.magnet_temp_coeff: float = -0.0012   # Magnet flux temp coefficient (/°C) ~ -0.12%/°C
+            
+            # Lumped thermal network (Cauer/R-C ladder)
+            # Winding -> Core -> Case -> Ambient
+            self.c_th_winding: float = 10.0           # Winding thermal capacitance (J/°C)
+            self.c_th_core: float = 50.0              # Core thermal capacitance (J/°C)
+            self.c_th_case: float = 200.0             # Case thermal capacitance (J/°C)
+            self.r_th_wc: float = 0.5                 # Winding-to-core thermal resistance (°C/W)
+            self.r_th_cc: float = 1.0                 # Core-to-case thermal resistance (°C/W)
+            self.r_th_ca: float = 2.0                 # Case-to-ambient thermal resistance (°C/W)
+            
+            # Thermal states
+            self.temp_winding: float = 25.0           # Winding temperature (°C)
+            self.temp_core: float = 25.0              # Core temperature (°C)
+            self.temp_case: float = 25.0              # Case temperature (°C)
+            
+            # Thermal update rate (every N ms, since thermal time constants are long)
+            self.thermal_update_divider: int = 1000   # Update thermal every 1000ms (1s)
+            self.thermal_counter: int = 0
 
     @staticmethod
     def iclamp(x: int, limit: int) -> int:
@@ -687,48 +773,281 @@ class PlantModel:
     def iabs32(x: int) -> int:
         return x if x >= 0 else -x
 
+    def _compute_stribeck_friction(self, speed_mdegs: int) -> int:
+        """Compute Stribeck friction torque.
+        
+        Model: T = sign(ω) * [T_c + (T_s - T_c) * exp(-(ω/ω_st)^2)] + B*ω
+        
+        Where:
+        - T_s = static_friction (stiction)
+        - T_c = torque_friction (Coulomb)
+        - ω_st = stribeck_vel_mdegs
+        - B = viscous_friction
+        """
+        if speed_mdegs == 0:
+            return 0
+        
+        sign = 1 if speed_mdegs > 0 else -1
+        abs_speed = abs(speed_mdegs)
+        
+        T_c = self.torque_friction
+        T_s = self.static_friction
+        omega_st = self.stribeck_vel_mdegs
+        B = self.viscous_friction
+        
+        if omega_st <= 0:
+            # Fallback to linear transition if no Stribeck velocity set
+            if abs_speed > 20000:
+                coulomb = sign * T_c
+            else:
+                coulomb = sign * (abs_speed * T_c // 20000)
+            return coulomb + (B * speed_mdegs // 1000)  # B is per mdeg/s, scale
+        
+        # Stribeck curve: exponential transition from static to Coulomb
+        ratio = abs_speed / omega_st
+        # exp(-ratio^2) - use integer approximation
+        # For small ratio, exp(-ratio^2) ≈ 1 - ratio^2
+        # For large ratio, exp(-ratio^2) ≈ 0
+        if ratio >= 3:
+            stribeck_factor = 0
+        else:
+            # Approximate exp(-x^2) using polynomial
+            r2 = ratio * ratio
+            stribeck_factor = max(0, 10000 - int(r2 * 10000)) / 10000.0
+        
+        # T = T_c + (T_s - T_c) * exp(-(ω/ω_st)^2)
+        friction_magnitude = T_c + int((T_s - T_c) * stribeck_factor)
+        
+        # Add viscous component
+        viscous = B * abs_speed // 1000  # B in unm per mdeg/s
+        
+        return sign * (friction_magnitude + viscous)
+
+    def _compute_cogging_torque(self, angle_mdeg: int) -> int:
+        """Compute cogging torque (position-dependent disturbance).
+        
+        Model: T_cog = A * sin(2π * θ / period)
+        
+        Uses math.sin() for accurate sine (Python simulator, not firmware).
+        """
+        if self.cogging_amplitude == 0 or self.cogging_period_mdeg == 0:
+            return 0
+        
+        # Normalize angle to [0, period)
+        period = self.cogging_period_mdeg
+        norm_angle = angle_mdeg % period
+        if norm_angle < 0:
+            norm_angle += period
+        
+        # Proper sine using math.sin
+        # sin(2π * angle / period)
+        angle_rad = 2.0 * math.pi * norm_angle / period
+        sine_val = math.sin(angle_rad)
+        
+        # Scale by amplitude
+        return int(self.cogging_amplitude * sine_val)
+
+    def _update_gearbox(self, motor_torque_unm: int, load_torque_unm: int = 0) -> int:
+        """Update gearbox compliance model.
+        
+        Two-inertia model with backlash:
+        - Motor side: connected to motor shaft (encoder measures this)
+        - Load side: connected to output
+        - Torsional spring + backlash between them
+        
+        Returns the spring torque acting on the motor side (negative = opposing motor motion).
+        """
+        if self.gearbox_stiffness == 0 and self.gearbox_backlash_mdeg == 0:
+            # Rigid gearbox - no spring torque on motor side
+            return 0
+        
+        # Torsional twist (mdeg) = gearbox_twist_mdeg = motor_angle - load_angle
+        # Spring torque on motor side = -K * effective_twist
+        # (negative because spring opposes the twist)
+        
+        backlash_half = self.gearbox_backlash_mdeg // 2
+        
+        # Compute spring torque on motor side
+        if abs(self.gearbox_twist_mdeg) <= backlash_half:
+            # In backlash zone - no spring torque
+            spring_torque = 0
+        else:
+            # Outside backlash - spring force
+            effective_twist = self.gearbox_twist_mdeg
+            if effective_twist > 0:
+                effective_twist -= backlash_half
+            else:
+                effective_twist += backlash_half
+            # Spring torque on motor = -K * effective_twist
+            # stiffness in unm/deg, twist in mdeg, so divide by 1000
+            spring_torque = - (self.gearbox_stiffness * effective_twist // 1000)
+        
+        # Update twist based on speed difference
+        # twist = motor_angle - load_angle (in mdeg)
+        # twist_dot = motor_speed - load_speed (in mdeg/s)
+        # timestep = 1ms = 0.001s
+        # twist += twist_dot * dt
+        speed_diff = self.speed_mdegs - self.load_speed_mdegs  # mdeg/s
+        self.gearbox_twist_mdeg += speed_diff // 1000  # mdeg/s * 0.001s = mdeg/1000
+        
+        # Update load speed based on spring torque and load torque
+        # Load acceleration = (spring_torque_on_load - load_torque) / J_load
+        # spring_torque_on_load = -spring_torque (Newton's 3rd law)
+        # J_load = motor_inertia_ratio * J_motor
+        # We don't have J_motor explicitly, but we can estimate from d_speed_d_torque
+        # In the discrete model: speed_next = ... + PRESCALE_TORQUE * torque / d_speed_d_torque
+        # So 1/J_motor ≈ PRESCALE_TORQUE / d_speed_d_torque (in appropriate units)
+        
+        if self.motor_inertia_ratio > 0 and self.d_speed_d_torque != 0:
+            # Estimate J_motor from model coefficients
+            # J_motor ∝ d_speed_d_torque / PRESCALE_TORQUE
+            # J_load = motor_inertia_ratio * J_motor
+            # load_accel = (-spring_torque - load_torque_unm) / J_load
+            # In discrete terms with 1ms step:
+            # speed_change = load_accel * 0.001
+            # Using the same scaling as the observer model:
+            load_accel_scaled = (self.EVN_OBS_PRESCALE_TORQUE * (-spring_torque - load_torque_unm) 
+                               // (self.d_speed_d_torque * max(1, int(self.motor_inertia_ratio))))
+            self.load_speed_mdegs += load_accel_scaled
+        else:
+            self.load_speed_mdegs = self.speed_mdegs
+        
+        return spring_torque
+
+    def _update_thermal(self, current_01ma: int, speed_mdegs: int, voltage_mv: int):
+        """Update lumped thermal network (winding -> core -> case -> ambient).
+        
+        Called at slower rate (thermal_update_divider ms) since thermal time constants
+        are much longer than electrical/mechanical time constants.
+        
+        Heat sources:
+        - Copper losses: I²R (current_01ma is in 0.1mA units)
+        - Core losses: hysteresis + eddy current (speed-dependent)
+        """
+        if self.thermal_update_divider <= 0:
+            return
+            
+        self.thermal_counter += 1
+        if self.thermal_counter < self.thermal_update_divider:
+            return
+        self.thermal_counter = 0
+        
+        dt_s = self.thermal_update_divider / 1000.0  # seconds
+        
+        # Current in Amps (current_01ma is 0.1mA units)
+        current_a = abs(current_01ma) / 10000.0
+        
+        # Copper resistance at current winding temperature
+        # R = R0 * (1 + alpha * (T - T0))
+        r_phase = self.r_phase_ohm_25c * (1.0 + self.alpha_cu * (self.temp_winding - 25.0))
+        
+        # Copper losses (3-phase): P_cu = 3 * I_rms² * R
+        # Assuming current_a is peak, I_rms = I_peak / sqrt(2) for sinusoidal
+        # But motor current is more complex. Use P_cu = 1.5 * I² * R for 3-phase (conservative)
+        p_cu = 1.5 * current_a * current_a * r_phase  # Watts
+        
+        # Core losses (simplified): P_core = k_h * f * B^2 + k_e * f^2 * B^2
+        # Speed in electrical rad/s: omega_e = speed_mdegs * pi/180000 * pole_pairs
+        # Pole pairs: assume 4 for EV3 (8 poles)
+        pole_pairs = 4
+        omega_e = abs(speed_mdegs) * math.pi / 180000.0 * pole_pairs
+        # Flux linkage proportional to magnet flux (decreases with temperature)
+        # Simplified: P_core = k_h * omega_e + k_e * omega_e^2
+        # These coefficients would need to be identified per motor
+        k_h = 0.001  # Hysteresis loss coefficient
+        k_e = 0.00001  # Eddy current loss coefficient
+        p_core = k_h * omega_e + k_e * omega_e * omega_e
+        
+        # Scale core losses to be reasonable (few watts max)
+        p_core = min(p_core, 5.0)
+        
+        # Total heat generated in winding and core
+        p_winding = p_cu + 0.3 * p_core  # 30% of core losses in winding
+        p_core_total = 0.7 * p_core      # 70% of core losses in core
+        
+        # Thermal network: Winding -> Core -> Case -> Ambient
+        # Using forward Euler integration
+        
+        # Heat flow from winding to core
+        q_wc = (self.temp_winding - self.temp_core) / self.r_th_wc
+        
+        # Heat flow from core to case
+        q_cc = (self.temp_core - self.temp_case) / self.r_th_cc
+        
+        # Heat flow from case to ambient
+        q_ca = (self.temp_case - self.temp_ambient) / self.r_th_ca
+        
+        # Temperature derivatives
+        dT_winding = (p_winding - q_wc) / self.c_th_winding
+        dT_core = (p_core_total + q_wc - q_cc) / self.c_th_core
+        dT_case = (q_cc - q_ca) / self.c_th_case
+        
+        # Update temperatures
+        self.temp_winding += dT_winding * dt_s
+        self.temp_core += dT_core * dt_s
+        self.temp_case += dT_case * dt_s
+
+    def get_phase_resistance(self) -> float:
+        """Get phase resistance at current winding temperature (ohm)."""
+        return self.r_phase_ohm_25c * (1.0 + self.alpha_cu * (self.temp_winding - 25.0))
+
+    def get_magnet_flux_factor(self) -> float:
+        """Get magnet flux factor at current core temperature (1.0 at 25°C)."""
+        return 1.0 + self.magnet_temp_coeff * (self.temp_core - 25.0)
+
     def step(self, voltage_mv: int, load_torque_unm: int = 0):
         """Discrete-time step matching observer (no feedback correction)"""
-        m = self
         
-        # Coulomb friction (same as observer)
-        coulomb = self.isign32(self.speed_mdegs) * (
-            self.torque_friction if self.iabs32(self.speed_mdegs) > 20000
-            else self.iabs32(self.speed_mdegs) * self.torque_friction // 20000
-        )
-        torque = self.iclamp(coulomb + load_torque_unm, self.EVN_OBS_MAX_TORQUE_UNM)
+        # Compute Stribeck friction (motor side)
+        friction = self._compute_stribeck_friction(self.speed_mdegs)
+        
+        # Compute cogging torque
+        cogging = self._compute_cogging_torque(self.angle_mdeg)
+        
+        # Compute gearbox spring torque
+        spring_torque = self._update_gearbox(0, load_torque_unm)  # spring torque on motor side
+        
+        # Total disturbance torque on motor side
+        # Includes friction, cogging, spring, and external load
+        # The load_torque_unm is applied to the load side, so it affects motor via spring
+        motor_disturbance = self.iclamp(friction + cogging + spring_torque, self.EVN_OBS_MAX_TORQUE_UNM)
         
         # Clamp voltage
         voltage_mv = self.iclamp(voltage_mv, self.EVN_OBS_MAX_VOLTAGE_MV)
         
         # x(k+1) = A x(k) + B u(k) — exact observer update without feedback
+        # Use motor_disturbance (friction + cogging + spring) as torque input
         angle_next = (self.angle_mdeg +
             self.EVN_OBS_PRESCALE_SPEED   * self.speed_mdegs // self.d_angle_d_speed +
             self.EVN_OBS_PRESCALE_CURRENT * self.current     // self.d_angle_d_current +
             self.EVN_OBS_PRESCALE_VOLTAGE * voltage_mv       // self.d_angle_d_voltage +
-            self.EVN_OBS_PRESCALE_TORQUE  * torque           // self.d_angle_d_torque)
+            self.EVN_OBS_PRESCALE_TORQUE  * motor_disturbance // self.d_angle_d_torque)
 
         speed_next = self.iclamp(
             self.EVN_OBS_PRESCALE_SPEED   * self.speed_mdegs // self.d_speed_d_speed +
             self.EVN_OBS_PRESCALE_CURRENT * self.current     // self.d_speed_d_current +
             self.EVN_OBS_PRESCALE_VOLTAGE * voltage_mv       // self.d_speed_d_voltage +
-            self.EVN_OBS_PRESCALE_TORQUE  * torque           // self.d_speed_d_torque,
+            self.EVN_OBS_PRESCALE_TORQUE  * motor_disturbance // self.d_speed_d_torque,
             self.EVN_OBS_MAX_SPEED_MDEPS)
 
         current_next = self.iclamp(
             self.EVN_OBS_PRESCALE_SPEED   * self.speed_mdegs // self.d_current_d_speed +
             self.EVN_OBS_PRESCALE_CURRENT * self.current     // self.d_current_d_current +
             self.EVN_OBS_PRESCALE_VOLTAGE * voltage_mv       // self.d_current_d_voltage +
-            self.EVN_OBS_PRESCALE_TORQUE  * torque           // self.d_current_d_torque,
+            self.EVN_OBS_PRESCALE_TORQUE  * motor_disturbance // self.d_current_d_torque,
             self.EVN_OBS_MAX_CURRENT)
 
         # Undo friction through zero-speed crossing (same as observer)
+        # Use the friction value computed for this step
         if (self.speed_mdegs < 0) != (speed_next < 0):
-            speed_next -= self.EVN_OBS_PRESCALE_TORQUE * coulomb // self.d_speed_d_torque
+            speed_next -= self.EVN_OBS_PRESCALE_TORQUE * friction // self.d_speed_d_torque
 
         self.angle_mdeg = angle_next
         self.speed_mdegs = speed_next
         self.current = current_next
+        
+        # Update thermal model (runs at slower rate internally)
+        self._update_thermal(self.current, self.speed_mdegs, voltage_mv)
         
         return self.angle_mdeg, self.speed_mdegs, self.current
 
