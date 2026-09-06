@@ -177,7 +177,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
 | 7 — Motion engine | ✅ Done | 2026-09-02 | `4319fb7` |
 | **7u — Motor Model Calibration** | **✅ Done** | **2026-09-04** | **`14f81b1`** |
-| 7v — Autonomous Validation (perfection) | 🔄 In Progress — Run 0x26090447: **vel_window lever FALSIFIED** (axis 0 at 60 got worse) and **BOTH EV3 Large axes collapsed together** (case_04 12/12→3/12 despite being untouched at 40) ⇒ shared physical cause (thermal/connector/sag), not gains. EV3 Medium unaffected — case_09 (axis 2 POS r1) **first 12/12**. Prior consecutive: case_04 2× (45+46). Need 2+ consecutive 12/12 on all 4 axes. **Next: baseline revert run 0x26090448 after Large-motor hardware inspection/cooldown.** | 2026-09-06 | (runs 0x26090444-47) |
+| 7v — Autonomous Validation (perfection) | 🔄 In Progress — Runs 0x26090447/48: **vel_window lever FALSIFIED**; **motor-swap (M1↔M2) proves EV3 Large hunting follows NEITHER motor NOR axis** ⇒ the config is marginally stable across the gear-train slack/friction range (hardware is fine; motors unloaded, no heating). EV3 Medium reliable (case_08 12/12 in 48, case_09 12/12 in 47). **Sim does NOT yet reproduce the physical Large limit cycle — calibrating the sim against physical logs is the current blocker.** Need 2+ consecutive 12/12 on all 4 axes. | 2026-09-06 | (runs 0x26090444-48) |
 | 8 — Drive base | ⬜ Not started — **BLOCKED** until stiction fix + 2+ consecutive 12/12 runs | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 

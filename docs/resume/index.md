@@ -156,17 +156,18 @@ python tools/flash_extract_decode.py
 | 2026-09-06 | [2026-09-06_phase8_autonomous_run_0x26090445.md](2026-09-06_phase8_autonomous_run_0x26090445.md) | Phase 8 Run 0x26090445 — pipeline BOOTSEL false-positive FIXED; case_15 & case_04 12/12; axis 0 hunting regression (6/12) |
 | 2026-09-06 | [2026-09-06_phase8_autonomous_run_0x26090446.md](2026-09-06_phase8_autonomous_run_0x26090446.md) | Phase 8 Run 0x26090446 — case_01 (axis 0 NEG) hunting SYSTEMATIC; case_04 12/12 2nd consecutive; axis0/axis1 divergence = per-axis/hardware |
 | 2026-09-06 | [2026-09-06_phase8_autonomous_run_0x26090447.md](2026-09-06_phase8_autonomous_run_0x26090447.md) | Phase 8 Run 0x26090447 — vel_window lever FALSIFIED; BOTH EV3 Large axes collapsed (shared physical cause); case_09 first 12/12 (EV3 Medium axis 2 POS) |
+| 2026-09-06 | [2026-09-06_phase8_autonomous_run_0x26090448.md](2026-09-06_phase8_autonomous_run_0x26090448.md) | Phase 8 Run 0x26090448 — **Motor-swap (M1↔M2) experiment**: hunting follows NEITHER motor NOR axis ⇒ EV3 Large config is marginally stable across the whole gear-train variability range; sim gap confirmed; case_08 12/12 (EV3 Medium) |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-06 — run 0x26090447 complete; vel_window lever FALSIFIED; BOTH EV3 Large axes collapsed together ⇒ shared physical cause; EV3 Medium unaffected, case_09 first 12/12)
+## 📋 Quick Reference — Current State (as of 2026-09-06 — runs 0x26090447/48 complete; vel_window lever FALSIFIED; **motor-swap proves EV3 Large hunting follows NEITHER motor NOR axis** ⇒ config is marginally stable across the gear-train slack/friction range; sim does NOT yet reproduce the physical hunting; EV3 Medium reliable)
 
 | Item | Value |
 |------|-------|
 | **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (new motor on port 4 per user) |
 | **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with stiction fix + symmetric EV3 Medium config |
-| **Next Run ID** | `0x26090448` (bump `hal/hal_tuning_log.h` from `0x26090447` before the next run) |
+| **Next Run ID** | `0x26090449` (bump `hal/hal_tuning_log.h` from `0x26090448` before the next run) |
 | **Autonomous Tuning** | Disabled in `CMakeLists.txt` (restored after run) |
 | **Hardware Validation** | ✅ Complete — 208/208 cases run across 13 autonomous runs, all traces decoded |
 | **Motor Model Calibration** | ✅ Complete — EV3 Medium model fixed for unloaded operation, sim 12/12 both directions |
@@ -224,19 +225,18 @@ python tools/flash_extract_decode.py
 
 ## 🎯 Next Session Priorities
 
-### 1. EV3 Large Shared Collapse — Hardware Investigation — **HIGHEST PRIORITY**
-- **Finding** (run 0x26090447): the `vel_window` 40→60 lever on axis 0 is **FALSIFIED** (axis 0 got WORSE: 4,3,4,4). Decisively, **axis 1 (untouched, vel_window=40) also collapsed** — case_04 went 12/12 → 3/12. A change confined to axis 0 cannot move axis 1, so **both Large motors are hunting from a shared physical cause** (temperature, connector, battery-contact sag under Large-motor current), not gains or the differentiator window. EV3 Medium was unaffected (case_09 first 12/12).
-- **Trace signature** (case_00): duty bangs ±1000, encoder oscillates ±5° around target, observer speed swings ±160°/s — a sustained endpoint limit cycle that never settles.
-- **Actions (HITL)**:
-  1. Inspect/re-seat M1 & M2 connectors; **swap M1↔M2 at the connector** to see if hunting follows the motor or the port.
-  2. Feel gearbox temperature after a run; allow cooldown, then re-run the **baseline (vel_window=40)** to test whether the Large collapse is thermal/persistent or a one-off.
-  3. Log per-case battery voltage **sag during the move** (not just the pre-move sample) — Large-motor current spikes may droop the rail.
-- **Falsifying check**: after cooldown + connector re-seat, baseline run recovers Large to ≥11/12 ⇒ environmental; if not, a durable Large drive-train change.
+### 1. EV3 Large Robustness — Calibrate Sim, Then Tune for the Variability Range — **HIGHEST PRIORITY**
+- **Established** (runs 0x26090447/48 + motor swap): the hunting is **NOT** a specific motor, axis, or the `vel_window`. The EV3 Large gear train has inherent **slack (backlash) + high/variable friction**; the current config is **marginally stable across that whole range**, so which case hunts varies run-to-run. Hardware is fine; motors are unloaded and don't get hot. The fix must make the controller **robust across the full backlash/friction/load envelope**.
+- **Sim gap (must close first)**: sim at baseline = 12/12 for case_00, but physical = 3-4/12 with a sustained ±5° endpoint limit cycle and up to 9.4° enc/hat observer divergence. Neither 2× friction nor the (rewritten, now-stable) dead-zone backlash model alone reproduces it.
+- **Actions**:
+  1. **Calibrate the simulator against the physical logs** so it reproduces the observed EV3 Large limit cycle (the missing ingredient is likely the observer/plant model mismatch under high friction + backlash). Validate against `bench/results/autonomous_auto_20260906_*/case_*.txt`.
+  2. **Then use the validated sim to find a robust EV3 Large config** that holds 12/12 across the full backlash/friction/load envelope.
+  3. Add a **load** dimension to the test matrix (motors are currently unloaded; must work under varying load).
+- **Falsifying check**: the sim reproduces the physical case_00/case_01 limit cycle (±5° enc oscillation, duty bang-bang) before any sim-derived gain is trusted.
 
-### 2. Run Autonomous Validation 0x26090448 (Baseline Revert) — **HIGH PRIORITY**
-- Config: **uniform vel_window=40** (lever reverted), all other gains unchanged.
-- Target: determine whether the run-47 Large collapse reproduces at baseline (persistent hardware change) or resolves (transient/thermal). Confirm case_04 and watch case_01.
-- Run ID: bump `hal/hal_tuning_log.h` to `0x26090448` first.
+### 2. Run Autonomous Validation 0x26090449 — **HIGH PRIORITY** (after sim calibration)
+- Config: robust EV3 Large config derived from the calibrated sim (once the sim reproduces the physical hunting).
+- Run ID: bump `hal/hal_tuning_log.h` to `0x26090449` first.
 - Command: `python tools/flash_extract_decode.py --timeout 900`
 
 ### 3. EV3 Medium Consistency (Axes 2 & 3) — **HIGH PRIORITY**
