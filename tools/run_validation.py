@@ -5,6 +5,11 @@ import subprocess
 import sys
 
 # Test cases from autonomous_tuning.c
+# vel_window: EV3 Large uses 10 (calibrated sim shows this eliminates the endpoint
+# limit cycle caused by the windowed speed estimate's phase lag); EV3 Medium uses 40.
+EV3_LARGE_VEL_WINDOW = 10
+EV3_MEDIUM_VEL_WINDOW = 40
+
 cases = [
     # Axis 0 (EV3 Large) - 4 repeats: POS, NEG, POS, NEG
     ('EV3_Large', 4.0e-4, 8e-7, 5.0e-6, 1.0e-6, 0.70, 0.12, 200, 200, 4, 720, 800, 1600, 'axis0_pos_r0'),
@@ -33,6 +38,7 @@ for motor, kp_pos, ki_pos, kp_vel, endpoint_kp_vel, accel_scale, start_duty, sta
     print(f'Running {name}...', end=' ', flush=True)
     
     # Run simulation
+    vel_window = EV3_LARGE_VEL_WINDOW if motor == 'EV3_Large' else EV3_MEDIUM_VEL_WINDOW
     cmd = [
         sys.executable, 'tools/simulate_motor.py',
         '--motor', motor,
@@ -45,6 +51,7 @@ for motor, kp_pos, ki_pos, kp_vel, endpoint_kp_vel, accel_scale, start_duty, sta
         '--startup-ramp-ticks', str(startup_ramp),
         '--restart-ramp-ticks', str(restart_ramp),
         '--startup-pulse-on-ticks', str(startup_pulse),
+        '--vel-window', str(vel_window),
         '--target', str(target),
         '--max-vel', str(max_vel),
         '--max-accel', str(max_accel),

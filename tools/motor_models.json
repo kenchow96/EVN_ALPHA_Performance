@@ -28,7 +28,10 @@
     "stall_current_01ma": 18000,
     "rated_max_speed_deg_s": 800,
     "cpr": 2880,
-    "counts_per_rev": 720.0
+    "counts_per_rev": 720.0,
+    "plant_tau_ms": 130.0,
+    "plant_lag_ms": 6.5,
+    "plant_friction_scale": 1.5
   },
   "EV3_Medium": {
     "d_angle_d_speed": 89465,

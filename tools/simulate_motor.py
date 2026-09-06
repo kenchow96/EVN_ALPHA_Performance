@@ -685,7 +685,19 @@ class PlantModel:
     # Gearbox state
     gearbox_twist_mdeg: int = 0       # Torsional twist between motor and load
     load_speed_mdegs: int = 0         # Load side speed
-    
+
+    # Plant voltage lag (first-order low-pass on applied voltage, models the
+    # physical motor's electrical + electromechanical delay that the 5 ms
+    # observer matrices don't capture when the plant is stepped at 1 ms)
+    voltage_lag_ms: float = 0.0       # Time constant (ms); 0 = no lag
+    voltage_filtered_mv: float = 0.0  # Filtered voltage state
+
+    # Plant transport delay (pure delay on applied voltage, models the
+    # physical PWM->current->torque->motion pipeline delay)
+    voltage_delay_ms: int = 0         # Delay (ms); 0 = no delay
+    voltage_delay_buf: list = None    # Ring buffer for delayed voltage
+    voltage_delay_idx: int = 0        # Ring buffer write index
+
     # Observer prescales
     EVN_OBS_PRESCALE_SPEED: int = 858
     EVN_OBS_PRESCALE_ACCEL: int = 85
@@ -973,6 +985,33 @@ class PlantModel:
         self.temp_core += dT_core * dt_s
         self.temp_case += dT_case * dt_s
 
+    def set_mechanical_tau_ms(self, tau_ms: float):
+        """Set the plant's mechanical time constant while preserving steady-state gain.
+
+        The plant is stepped at 1 ms but uses the observer's 5 ms discrete matrices,
+        which makes the effective mechanical time constant ~5x too fast. This method
+        adjusts d_speed_d_speed and d_speed_d_voltage to match the physical motor's
+        true mechanical time constant.
+
+        For the first-order speed dynamics:
+            speed_next = a * speed + b * V
+            a = PRESCALE_SPEED / d_speed_d_speed
+            b = PRESCALE_VOLTAGE / d_speed_d_voltage
+            tau = -dt / ln(a)  (dt = 1 ms step)
+            K_ss = b / (1 - a)  (steady-state gain, preserved)
+        """
+        import math
+        dt = 1.0  # plant step is 1 ms
+        a_old = self.EVN_OBS_PRESCALE_SPEED / self.d_speed_d_speed
+        b_old = self.EVN_OBS_PRESCALE_VOLTAGE / self.d_speed_d_voltage
+        K_ss = b_old / (1.0 - a_old)
+
+        a_new = math.exp(-dt / tau_ms)
+        b_new = K_ss * (1.0 - a_new)
+
+        self.d_speed_d_speed = int(round(self.EVN_OBS_PRESCALE_SPEED / a_new))
+        self.d_speed_d_voltage = int(round(self.EVN_OBS_PRESCALE_VOLTAGE / b_new))
+
     def get_phase_resistance(self) -> float:
         """Get phase resistance at current winding temperature (ohm)."""
         return self.r_phase_ohm_25c * (1.0 + self.alpha_cu * (self.temp_winding - 25.0))
@@ -983,7 +1022,21 @@ class PlantModel:
 
     def step(self, voltage_mv: int, load_torque_unm: int = 0):
         """Discrete-time step matching observer (no feedback correction)"""
-        
+
+        # Apply transport delay (pure delay on voltage)
+        if self.voltage_delay_ms > 0:
+            if self.voltage_delay_buf is None:
+                self.voltage_delay_buf = [0] * self.voltage_delay_ms
+            self.voltage_delay_buf[self.voltage_delay_idx] = voltage_mv
+            self.voltage_delay_idx = (self.voltage_delay_idx + 1) % self.voltage_delay_ms
+            voltage_mv = self.voltage_delay_buf[self.voltage_delay_idx]
+
+        # Apply first-order voltage lag (models electrical/electromechanical delay)
+        if self.voltage_lag_ms > 0.0:
+            alpha = 1.0 - math.exp(-1.0 / self.voltage_lag_ms)  # 1 ms step
+            self.voltage_filtered_mv += alpha * (voltage_mv - self.voltage_filtered_mv)
+            voltage_mv = int(round(self.voltage_filtered_mv))
+
         # Compute Stribeck friction (motor side)
         friction = self._compute_stribeck_friction(self.speed_mdegs)
         
@@ -1124,6 +1177,18 @@ class Simulator:
         
         # Motor plant (uses observer's discrete state-space for perfect consistency)
         self.plant = PlantModel(self.motor_model)
+        # Apply per-motor plant calibration (from motor_models.json)
+        # These correct for the fact that the plant is stepped at 1 ms but uses
+        # the observer's 5 ms discrete matrices, making it ~5x too fast.
+        if "plant_tau_ms" in m:
+            self.plant.set_mechanical_tau_ms(m["plant_tau_ms"])
+        if "plant_lag_ms" in m:
+            self.plant.voltage_lag_ms = m["plant_lag_ms"]
+        if "plant_friction_scale" in m:
+            fs = m["plant_friction_scale"]
+            self.plant.torque_friction = int(self.plant.torque_friction * fs)
+            self.plant.static_friction = int(self.plant.static_friction * fs)
+            self.plant.viscous_friction = int(self.plant.viscous_friction * fs)
         self.encoder = EncoderModel(
             cpr=self.motor_model.cpr,
             counts_per_rev=self.motor_model.counts_per_rev
@@ -1460,9 +1525,21 @@ def main():
                         help='Load inertia / motor inertia (>1 adds compliance)')
     parser.add_argument('--friction-scale', type=float, default=1.0,
                         help='Scale Coulomb/static/viscous friction to model unit-to-unit variability')
+    parser.add_argument('--static-friction', type=int, default=0,
+                        help='Override static friction (stiction) torque (unm). 0 = use model default')
     parser.add_argument('--load-torque', type=int, default=0,
                         help='Constant external load torque (unm) applied to the load side')
-    
+    parser.add_argument('--plant-lag-ms', type=float, default=0.0,
+                        help='First-order voltage lag time constant (ms) applied to the plant input; '
+                             'models the physical motor electrical/electromechanical delay')
+    parser.add_argument('--plant-delay-ms', type=int, default=0,
+                        help='Pure transport delay (ms) applied to the plant voltage input; '
+                             'models the physical PWM->current->torque pipeline delay')
+    parser.add_argument('--plant-tau-ms', type=float, default=0.0,
+                        help='Set the plant mechanical time constant (ms), preserving steady-state gain. '
+                             'The default plant uses 5 ms observer matrices at 1 ms steps, making it ~5x too fast. '
+                             'Set to the physical motor time constant (e.g. 70-110 ms) to match hardware.')
+
     # Output
     parser.add_argument('--duration', type=float, default=5.0, help='Simulation duration (s)')
     parser.add_argument('--output', type=str, default='trace.csv', help='Output CSV file')
@@ -1485,7 +1562,15 @@ def main():
         sim.plant.torque_friction = int(sim.plant.torque_friction * args.friction_scale)
         sim.plant.static_friction = int(sim.plant.static_friction * args.friction_scale)
         sim.plant.viscous_friction = int(sim.plant.viscous_friction * args.friction_scale)
+    if args.static_friction > 0:
+        sim.plant.static_friction = args.static_friction
     sim.load_torque_unm = args.load_torque
+    if args.plant_lag_ms > 0.0:
+        sim.plant.voltage_lag_ms = args.plant_lag_ms
+    if args.plant_delay_ms > 0:
+        sim.plant.voltage_delay_ms = args.plant_delay_ms
+    if args.plant_tau_ms > 0.0:
+        sim.plant.set_mechanical_tau_ms(args.plant_tau_ms)
 
     # Configure gains
     sim.set_gains(
