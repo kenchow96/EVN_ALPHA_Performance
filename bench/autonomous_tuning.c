@@ -296,6 +296,11 @@ void autonomous_tuning_service(void) {
         const tuning_case_t *test = &s_cases[s_case_index];
         uint8_t axis = test->axis;
         evn_motion_set_velocity_source(axis, 1);
+        /* Run 0x26090447 FALSIFIED the vel_window lever: axis 0 at 60 hunted
+         * WORSE (4,3,4,4 vs 11,5,11,11 in run 46) and axis 1 (still 40) also
+         * collapsed (case_04 12/12 -> 3/12). Both Large axes hunting together
+         * points to a shared physical cause, not the differentiator window.
+         * Reverted to the uniform 40 baseline pending hardware inspection. */
         evn_motion_set_speed_window(axis, 40);
         evn_motion_set_edge_speed_alpha(axis, 0.05f);
         float vel_scale = (axis >= 2) ? 0.85f : 1.0f;

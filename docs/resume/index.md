@@ -155,17 +155,18 @@ python tools/flash_extract_decode.py
 | 2026-09-05 | [2026-09-05_phase8_autonomous_run_0x26090443.md](2026-09-05_phase8_autonomous_run_0x26090443.md) | Phase 8 Autonomous Validation Run 0x26090443 — 4th run, case_15 121° error FIXED, case_08 first 12/12 for EV3M axis 3 NEG |
 | 2026-09-06 | [2026-09-06_phase8_autonomous_run_0x26090445.md](2026-09-06_phase8_autonomous_run_0x26090445.md) | Phase 8 Run 0x26090445 — pipeline BOOTSEL false-positive FIXED; case_15 & case_04 12/12; axis 0 hunting regression (6/12) |
 | 2026-09-06 | [2026-09-06_phase8_autonomous_run_0x26090446.md](2026-09-06_phase8_autonomous_run_0x26090446.md) | Phase 8 Run 0x26090446 — case_01 (axis 0 NEG) hunting SYSTEMATIC; case_04 12/12 2nd consecutive; axis0/axis1 divergence = per-axis/hardware |
+| 2026-09-06 | [2026-09-06_phase8_autonomous_run_0x26090447.md](2026-09-06_phase8_autonomous_run_0x26090447.md) | Phase 8 Run 0x26090447 — vel_window lever FALSIFIED; BOTH EV3 Large axes collapsed (shared physical cause); case_09 first 12/12 (EV3 Medium axis 2 POS) |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-06 — runs 0x26090445/46 complete via fixed pipeline; case_04 2× consecutive 12/12; axis 0 NEG hunting is systematic)
+## 📋 Quick Reference — Current State (as of 2026-09-06 — run 0x26090447 complete; vel_window lever FALSIFIED; BOTH EV3 Large axes collapsed together ⇒ shared physical cause; EV3 Medium unaffected, case_09 first 12/12)
 
 | Item | Value |
 |------|-------|
 | **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (new motor on port 4 per user) |
 | **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with stiction fix + symmetric EV3 Medium config |
-| **Next Run ID** | `0x26090447` (in `hal/hal_tuning_log.h` — ready for next run) |
+| **Next Run ID** | `0x26090448` (bump `hal/hal_tuning_log.h` from `0x26090447` before the next run) |
 | **Autonomous Tuning** | Disabled in `CMakeLists.txt` (restored after run) |
 | **Hardware Validation** | ✅ Complete — 208/208 cases run across 13 autonomous runs, all traces decoded |
 | **Motor Model Calibration** | ✅ Complete — EV3 Medium model fixed for unloaded operation, sim 12/12 both directions |
@@ -223,26 +224,30 @@ python tools/flash_extract_decode.py
 
 ## 🎯 Next Session Priorities
 
-### 1. Analyze Repeat-Dependent Degradation — **HIGH PRIORITY**
-- **Finding**: Run 0x26090443 confirms strong repeat-dependent variation persists:
-  - Axis 0 (EV3 Large): repeat 0 POS 11/12, repeat 2 POS 8/12 (1.63° max err)
-  - Axis 1 (EV3 Large): repeat 0 POS 11/12, repeat 2 POS 11/12, repeat 3 NEG 11/12
-  - Axis 2 (EV3 Medium): repeat 0 NEG 11/12, repeat 1 POS 9/12, repeat 2 NEG 9/12, repeat 3 POS 7/12
-  - Axis 3 (EV3 Medium): repeat 0 NEG **12/12**, repeat 1 POS 11/12, repeat 2 NEG 10/12, repeat 3 POS 10/12 (0.0° final error - FIXED!)
-- **Hypothesis**: Thermal drift, encoder accumulation, or observer state divergence over consecutive moves
-- **Action**: Add inter-move cooldown, reset observer state between repeats, or investigate thermal effects
+### 1. EV3 Large Shared Collapse — Hardware Investigation — **HIGHEST PRIORITY**
+- **Finding** (run 0x26090447): the `vel_window` 40→60 lever on axis 0 is **FALSIFIED** (axis 0 got WORSE: 4,3,4,4). Decisively, **axis 1 (untouched, vel_window=40) also collapsed** — case_04 went 12/12 → 3/12. A change confined to axis 0 cannot move axis 1, so **both Large motors are hunting from a shared physical cause** (temperature, connector, battery-contact sag under Large-motor current), not gains or the differentiator window. EV3 Medium was unaffected (case_09 first 12/12).
+- **Trace signature** (case_00): duty bangs ±1000, encoder oscillates ±5° around target, observer speed swings ±160°/s — a sustained endpoint limit cycle that never settles.
+- **Actions (HITL)**:
+  1. Inspect/re-seat M1 & M2 connectors; **swap M1↔M2 at the connector** to see if hunting follows the motor or the port.
+  2. Feel gearbox temperature after a run; allow cooldown, then re-run the **baseline (vel_window=40)** to test whether the Large collapse is thermal/persistent or a one-off.
+  3. Log per-case battery voltage **sag during the move** (not just the pre-move sample) — Large-motor current spikes may droop the rail.
+- **Falsifying check**: after cooldown + connector re-seat, baseline run recovers Large to ≥11/12 ⇒ environmental; if not, a durable Large drive-train change.
 
-### 2. Run 5th Consecutive Autonomous Validation 0x26090444 — **HIGH PRIORITY**
-- Target: **12/12 on case_08 (axis 3 NEG repeat 0) for 2nd consecutive run** and **case_00/case_04 recovery to 12/12**
-- Current: case_08 (axis 3 NEG repeat 0) achieved **FIRST 12/12** in run 0x26090443; case_00/case_04 streaks broken (were 3-peat and 2-peat)
-- Need: 2+ consecutive 12/12 on all 4 axes before Phase 8 (Drive Base)
-- Run ID: Already incremented to `0x26090444` in `hal/hal_tuning_log.h`
+### 2. Run Autonomous Validation 0x26090448 (Baseline Revert) — **HIGH PRIORITY**
+- Config: **uniform vel_window=40** (lever reverted), all other gains unchanged.
+- Target: determine whether the run-47 Large collapse reproduces at baseline (persistent hardware change) or resolves (transient/thermal). Confirm case_04 and watch case_01.
+- Run ID: bump `hal/hal_tuning_log.h` to `0x26090448` first.
 - Command: `python tools/flash_extract_decode.py --timeout 900`
 
-### 3. EV3 Medium Improvement (Axes 2 & 3) — **HIGH PRIORITY**
-- **Finding**: Run 0x26090443 axis 2 best 11/12 (repeat 0 NEG), axis 3 best 12/12 (repeat 0 NEG) but repeat 3 POS only 10/12
-- **Hypothesis**: Symmetric config works (sim 12/12), but hardware needs slight tuning for consistency
-- **Action**: Sweep endpoint_kp (2.0e-6 → 2.5e-6) and accel_scale (0.35 → 0.40) for both EV3 Medium axes
+### 3. EV3 Medium Consistency (Axes 2 & 3) — **HIGH PRIORITY**
+- **Finding**: Runs 0x26090445/46 — axis 2: 9-11/12; axis 3: 8-12/12 (case_15 12/12 in 45, 10/12 in 46 — run-to-run variation, no catastrophic error; stiction fix holding).
+- **Hypothesis**: Symmetric config works (sim 12/12), but hardware needs slight tuning for consistency.
+- **Action**: Sweep endpoint_kp (2.0e-6 → 2.5e-6) and accel_scale (0.35 → 0.40) for both EV3 Medium axes.
+
+### 4. Repeat-Dependent Degradation Analysis — **MEDIUM PRIORITY**
+- **Finding**: Repeat-index-dependent variation persists across runs (e.g. run 0x26090443: axis 2 repeat 0 NEG 11/12 → repeat 3 POS 7/12). Partially explained by the axis 0 systematic hunting (see #1).
+- **Hypothesis**: Thermal drift, encoder accumulation, or observer state divergence over consecutive moves.
+- **Action**: Add inter-move cooldown, reset observer state between repeats, or investigate thermal effects.
 
 ### 5. Feed Thermal Effects Back Into Electrical Model — **MEDIUM PRIORITY**
 - Simulator now tracks winding/core/case temperatures but runs open-loop
@@ -260,9 +265,9 @@ python tools/flash_extract_decode.py
 
 ### 8. Phase 8 (Drive Base) — **BLOCKED**
 - Cannot proceed until 2+ consecutive 12/12 runs on all 4 axes.
-- Current state: 1/4 axes with 3+ consecutive 12/12 (EV3 Large axis 0 POS repeat 0), 1/4 axes with 2+ consecutive 12/12 (EV3 Large axis 1 POS repeat 0).
+- Current state: 1/4 axes with 2+ consecutive 12/12 (case_04, EV3 Large axis 1 POS repeat 0 — runs 0x26090445+46). Axis 0 NEG hunting is systematic (see #1); axes 2/3 at 8-12/12 without consecutive 12/12.
 
-### 7. Dashboard Fixes — **5 ISSUES REMAIN** (re-audited vs firmware+HAL, 2026-09-05)
+### 9. Dashboard Fixes — **5 ISSUES REMAIN** (re-audited vs firmware+HAL, 2026-09-05)
 
 Re-verified every parser against exact firmware output (`EVN_ALPHA_Performance.c` cmd handlers, `hal_servo.c`, `hal_i2c.c`, `hal_battery.c`). Parsers are all CORRECT. Remaining issues and **verified** root causes:
 
@@ -275,10 +280,6 @@ Re-verified every parser against exact firmware output (`EVN_ALPHA_Performance.c
 | 5 | Reconnect after power cycle doesn't find board | `_find_cdc_port()` matches description substrings ('Pico'/'USB'/'Serial') — unreliable, never checks `port.vid == 0x2E8A` (Raspberry Pi). Also `_attempt_reconnect` doesn't reschedule after a failed CDC attempt → loop stalls | Dashboard: match `port.vid == 0x2E8A`; ensure `_attempt_reconnect` always calls `_start_reconnect_timer()` on failure |
 
 **Key correction to earlier note**: The I2C scan problem is a **firmware bug** (battery-service/mux race), not a dashboard parser bug. Dashboard cannot fix #3/#4 — needs a firmware change. The `E`/`S`/`I`/`L`/`y` parsers were all re-verified correct against exact firmware printf formats.
-
-### 10. HITL Test Stiction Break Fix — **HITL VERIFIED ✅**
-- Velocity threshold 5000→1000, pos-error activation works.
-- Both EV3 Medium axes (2,3) tested with ±30° moves (4/4 moves completed, no stiction stall).
 
 Audit method: every console command handler in `EVN_ALPHA_Performance.c` (lines 305–585) read and matched against `tools/evn_dashboard.py` parsers. **Nemotron's guesses are superseded** — root causes below are confirmed against firmware source. Fix in priority order; each fix is independent.
 
@@ -364,16 +365,6 @@ Every periodic query is logged (`> h`, `> S` every 500 ms) and each log calls `u
 6. Close via X with reboot → board enumerates as RPI-RP2 drive (Bug F).
 7. Idle connected 10 min → no crash (Bug C).
 8. Coast all motors at end (`c`) — motor safety rule.
-
-### 2. Phase 8 (Drive Base) — BLOCKED
-- Cannot proceed until 2+ consecutive 12/12 runs on all 4 axes.
-- Current best: 9-11/12 consistently, but stiction + run-to-run variation prevents 2+ consecutive 12/12.
-- Once stiction fixed and 2+ consecutive 12/12 achieved → begin drive base kinematics.
-
-### 3. Alternative: Statistical Approach (Lower Priority)
-- Run 20+ consecutive autonomous runs with current winning configs.
-- Low probability of 2+ consecutive 12/12 given current variance (~10% per axis).
-- Only viable if stiction fix fails or takes too long.
 
 ---
 

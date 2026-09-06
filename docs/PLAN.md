@@ -177,7 +177,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
 | 7 — Motion engine | ✅ Done | 2026-09-02 | `4319fb7` |
 | **7u — Motor Model Calibration** | **✅ Done** | **2026-09-04** | **`14f81b1`** |
-| 7v — Autonomous Validation (perfection) | 🔄 In Progress — Runs 0x26090440-43: case_08 (EV3 Medium axis 3 NEG repeat 0) **FIRST 12/12**; case_15 (axis 3 POS repeat 3) catastrophic 121° error **FIXED** (0.0° final error). Symmetric EV3 Medium config (kd_vel=0, endpoint_kp=2.0e-6) validated 12/12 in sim for both directions; hardware 7-12/12 consistent. Need 2+ consecutive 12/12 on all 4 axes (currently 1/4: case_08). Timeouts fixed (core1 pause 10k→100k, watchdog 5k→30k). | 2026-09-05 | (runs 0x26090440-43) |
+| 7v — Autonomous Validation (perfection) | 🔄 In Progress — Run 0x26090447: **vel_window lever FALSIFIED** (axis 0 at 60 got worse) and **BOTH EV3 Large axes collapsed together** (case_04 12/12→3/12 despite being untouched at 40) ⇒ shared physical cause (thermal/connector/sag), not gains. EV3 Medium unaffected — case_09 (axis 2 POS r1) **first 12/12**. Prior consecutive: case_04 2× (45+46). Need 2+ consecutive 12/12 on all 4 axes. **Next: baseline revert run 0x26090448 after Large-motor hardware inspection/cooldown.** | 2026-09-06 | (runs 0x26090444-47) |
 | 8 — Drive base | ⬜ Not started — **BLOCKED** until stiction fix + 2+ consecutive 12/12 runs | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 
