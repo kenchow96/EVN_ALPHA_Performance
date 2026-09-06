@@ -848,71 +848,57 @@ class PlantModel:
         return int(self.cogging_amplitude * sine_val)
 
     def _update_gearbox(self, motor_torque_unm: int, load_torque_unm: int = 0) -> int:
-        """Update gearbox compliance model.
-        
-        Two-inertia model with backlash:
-        - Motor side: connected to motor shaft (encoder measures this)
-        - Load side: connected to output
-        - Torsional spring + backlash between them
-        
-        Returns the spring torque acting on the motor side (negative = opposing motor motion).
+        """Stable dead-zone backlash model (replaces the unstable two-inertia model).
+
+        Physics: the encoder sits on the MOTOR shaft. With gear-train slack, the
+        motor shaft can move within the backlash band WITHOUT the load (and its
+        disturbance/load torque) following. Only when the twist exceeds the band
+        does the load engage and its torque react back on the motor.
+
+        - twist = motor_angle - load_angle (mdeg), integrated from speed difference
+        - |twist| <= backlash/2  -> dead zone: no spring torque, load torque decoupled
+        - |twist| >  backlash/2  -> engaged: spring torque (stiffness) + load torque
+
+        This is unconditionally stable (no free-running load-inertia integration,
+        which was the source of the runaway in the old two-inertia model) and
+        reproduces the sustained endpoint limit cycle seen on the physical EV3
+        Large: the controller overshoots into the dead zone, the load doesn't
+        follow, the error sign flips, and the motor bangs back and forth.
+
+        Returns the torque acting on the MOTOR side (spring + engaged load).
         """
         if self.gearbox_stiffness == 0 and self.gearbox_backlash_mdeg == 0:
-            # Rigid gearbox - no spring torque on motor side
-            return 0
-        
-        # Torsional twist (mdeg) = gearbox_twist_mdeg = motor_angle - load_angle
-        # Spring torque on motor side = -K * effective_twist
-        # (negative because spring opposes the twist)
-        
+            return 0  # rigid gearbox
+
         backlash_half = self.gearbox_backlash_mdeg // 2
-        
-        # Compute spring torque on motor side
+
+        # Integrate twist from the motor/load speed difference (1 ms step).
+        # Load speed: in the dead zone the load coasts (decays toward 0); when
+        # engaged it tracks the motor. This avoids the unstable separate
+        # load-inertia integration of the old model.
         if abs(self.gearbox_twist_mdeg) <= backlash_half:
-            # In backlash zone - no spring torque
-            spring_torque = 0
+            # Dead zone: load not driven, its speed decays (friction at rest)
+            self.load_speed_mdegs = (self.load_speed_mdegs * 7) // 8
         else:
-            # Outside backlash - spring force
-            effective_twist = self.gearbox_twist_mdeg
-            if effective_twist > 0:
-                effective_twist -= backlash_half
-            else:
-                effective_twist += backlash_half
-            # Spring torque on motor = -K * effective_twist
-            # stiffness in unm/deg, twist in mdeg, so divide by 1000
-            spring_torque = - (self.gearbox_stiffness * effective_twist // 1000)
-        
-        # Update twist based on speed difference
-        # twist = motor_angle - load_angle (in mdeg)
-        # twist_dot = motor_speed - load_speed (in mdeg/s)
-        # timestep = 1ms = 0.001s
-        # twist += twist_dot * dt
-        speed_diff = self.speed_mdegs - self.load_speed_mdegs  # mdeg/s
-        self.gearbox_twist_mdeg += speed_diff // 1000  # mdeg/s * 0.001s = mdeg/1000
-        
-        # Update load speed based on spring torque and load torque
-        # Load acceleration = (spring_torque_on_load - load_torque) / J_load
-        # spring_torque_on_load = -spring_torque (Newton's 3rd law)
-        # J_load = motor_inertia_ratio * J_motor
-        # We don't have J_motor explicitly, but we can estimate from d_speed_d_torque
-        # In the discrete model: speed_next = ... + PRESCALE_TORQUE * torque / d_speed_d_torque
-        # So 1/J_motor ≈ PRESCALE_TORQUE / d_speed_d_torque (in appropriate units)
-        
-        if self.motor_inertia_ratio > 0 and self.d_speed_d_torque != 0:
-            # Estimate J_motor from model coefficients
-            # J_motor ∝ d_speed_d_torque / PRESCALE_TORQUE
-            # J_load = motor_inertia_ratio * J_motor
-            # load_accel = (-spring_torque - load_torque_unm) / J_load
-            # In discrete terms with 1ms step:
-            # speed_change = load_accel * 0.001
-            # Using the same scaling as the observer model:
-            load_accel_scaled = (self.EVN_OBS_PRESCALE_TORQUE * (-spring_torque - load_torque_unm) 
-                               // (self.d_speed_d_torque * max(1, int(self.motor_inertia_ratio))))
-            self.load_speed_mdegs += load_accel_scaled
-        else:
+            # Engaged: load tracks the motor shaft
             self.load_speed_mdegs = self.speed_mdegs
-        
-        return spring_torque
+
+        speed_diff = self.speed_mdegs - self.load_speed_mdegs  # mdeg/s
+        self.gearbox_twist_mdeg += speed_diff // 1000          # 1 ms step
+
+        # Spring/load torque on the motor side
+        if abs(self.gearbox_twist_mdeg) <= backlash_half:
+            return 0  # dead zone: motor feels no load
+
+        effective_twist = self.gearbox_twist_mdeg
+        if effective_twist > 0:
+            effective_twist -= backlash_half
+        else:
+            effective_twist += backlash_half
+        # Spring torque opposes the twist; stiffness in unm/deg, twist in mdeg
+        spring_torque = -(self.gearbox_stiffness * effective_twist // 1000)
+        # When engaged, the external load torque also reacts on the motor
+        return spring_torque + load_torque_unm
 
     def _update_thermal(self, current_01ma: int, speed_mdegs: int, voltage_mv: int):
         """Update lumped thermal network (winding -> core -> case -> ambient).
@@ -1172,6 +1158,9 @@ class Simulator:
         # For PID speed measurement
         self.use_enc_speed = 1  # 0=observer, 1=windowed, 2=raw edge, 3=filtered edge
 
+        # External load torque applied to the load side (unm); set via --load-torque
+        self.load_torque_unm = 0
+
     def set_gains(self, kp_pos, ki_pos, kp_vel, kd_vel=0.0, kff_accel=0.0,
                   endpoint_kp_vel=0.0, vbus_comp=7400.0, i_limit=0.20,
                   deadzone_mdeg=400.0, min_duty=0.12, start_duty=0.12,
@@ -1316,7 +1305,7 @@ class Simulator:
         # --- Plant step ---
         applied_mv = duty * vbus_mv
         self.last_applied_mv = int(round(applied_mv))
-        self.plant.step(self.last_applied_mv)  # PlantModel uses mV directly
+        self.plant.step(self.last_applied_mv, getattr(self, 'load_torque_unm', 0))  # PlantModel uses mV directly
         
         # --- Trace capture ---
         if self.trace_armed:
@@ -1461,6 +1450,18 @@ def main():
     # Battery
     parser.add_argument('--battery', type=int, default=7400, help='Battery voltage (mV)')
     parser.add_argument('--battery-sag', action='store_true', help='Simulate battery sag')
+
+    # Physical gear-train / load (to reproduce hardware variability)
+    parser.add_argument('--backlash-deg', type=float, default=0.0,
+                        help='Gearbox backlash (deg). EV3 Large has significant slack; >0 enables the two-inertia model')
+    parser.add_argument('--gearbox-stiffness', type=int, default=0,
+                        help='Gearbox torsional stiffness (unm/deg). >0 enables the two-inertia model')
+    parser.add_argument('--inertia-ratio', type=float, default=1.0,
+                        help='Load inertia / motor inertia (>1 adds compliance)')
+    parser.add_argument('--friction-scale', type=float, default=1.0,
+                        help='Scale Coulomb/static/viscous friction to model unit-to-unit variability')
+    parser.add_argument('--load-torque', type=int, default=0,
+                        help='Constant external load torque (unm) applied to the load side')
     
     # Output
     parser.add_argument('--duration', type=float, default=5.0, help='Simulation duration (s)')
@@ -1472,7 +1473,20 @@ def main():
     
     # Create simulator
     sim = Simulator(args.motor, args.models)
-    
+
+    # Physical gear-train / load variability (EV3 Large has slack + high/variable friction)
+    if args.backlash_deg > 0.0:
+        sim.plant.gearbox_backlash_mdeg = int(args.backlash_deg * 1000.0)
+    if args.gearbox_stiffness > 0:
+        sim.plant.gearbox_stiffness = args.gearbox_stiffness
+    if args.inertia_ratio != 1.0:
+        sim.plant.motor_inertia_ratio = args.inertia_ratio
+    if args.friction_scale != 1.0:
+        sim.plant.torque_friction = int(sim.plant.torque_friction * args.friction_scale)
+        sim.plant.static_friction = int(sim.plant.static_friction * args.friction_scale)
+        sim.plant.viscous_friction = int(sim.plant.viscous_friction * args.friction_scale)
+    sim.load_torque_unm = args.load_torque
+
     # Configure gains
     sim.set_gains(
         kp_pos=args.kp_pos,
