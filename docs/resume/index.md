@@ -157,10 +157,11 @@ python tools/flash_extract_decode.py
 | 2026-09-06 | [2026-09-06_phase8_autonomous_run_0x26090446.md](2026-09-06_phase8_autonomous_run_0x26090446.md) | Phase 8 Run 0x26090446 — case_01 (axis 0 NEG) hunting SYSTEMATIC; case_04 12/12 2nd consecutive; axis0/axis1 divergence = per-axis/hardware |
 | 2026-09-06 | [2026-09-06_phase8_autonomous_run_0x26090447.md](2026-09-06_phase8_autonomous_run_0x26090447.md) | Phase 8 Run 0x26090447 — vel_window lever FALSIFIED; BOTH EV3 Large axes collapsed (shared physical cause); case_09 first 12/12 (EV3 Medium axis 2 POS) |
 | 2026-09-06 | [2026-09-06_phase8_autonomous_run_0x26090448.md](2026-09-06_phase8_autonomous_run_0x26090448.md) | Phase 8 Run 0x26090448 — **Motor-swap (M1↔M2) experiment**: hunting follows NEITHER motor NOR axis ⇒ EV3 Large config is marginally stable across the whole gear-train variability range; sim gap confirmed; case_08 12/12 (EV3 Medium) |
+| 2026-09-06 | [2026-09-06_phase8_sim_calibration.md](2026-09-06_phase8_sim_calibration.md) | Phase 8 **Sim Calibration BREAKTHROUGH** — sim now reproduces the physical EV3 Large limit cycle (13.9 Hz vs physical 13.6 Hz); **vel_window=10 eliminates the limit cycle in sim** (never tested on hardware — run 47 only tried vel_window=60 which made it worse) |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-06 — runs 0x26090447/48 complete; vel_window lever FALSIFIED; **motor-swap proves EV3 Large hunting follows NEITHER motor NOR axis** ⇒ config is marginally stable across the gear-train slack/friction range; sim does NOT yet reproduce the physical hunting; EV3 Medium reliable)
+## 📋 Quick Reference — Current State (as of 2026-09-06 — **sim calibrated to reproduce physical EV3 Large limit cycle**; **vel_window=10 predicted to eliminate the limit cycle** (sim-validated, never tested on hardware); EV3 Medium reliable)
 
 | Item | Value |
 |------|-------|
@@ -176,7 +177,7 @@ python tools/flash_extract_decode.py
 | **Symmetric EV3 Medium Config** | ✅ **VALIDATED** — Simulation 12/12 for both NEG/POS; hardware 7-12/12 consistent |
 | **Consecutive 12/12** | ✅ **case_04 (axis 1 POS r0): 2+ consecutive** (0x26090445 + 0x26090446). ⚠️ **case_01 (axis 0 NEG r1) hunting is SYSTEMATIC** (6/12→5/12) — axes 0 & 1 share identical EV3 Large gains but diverge ⇒ per-axis/hardware difference, not gains |
 | **Pipeline** | ✅ **FIXED (2026-09-06)** — `flash_extract_decode.py` BOOTSEL false-positive: now waits for the drive to disappear (app booted) before waiting for it to reappear (run done). Was extracting stale previous-run flash |
-| **Simulator** | ✅ **ENHANCED & VALIDATED** — Stribeck friction, cogging torque, thermal model (open-loop); 16/16 cases 12/12 in sim |
+| **Simulator** | ✅ **CALIBRATED TO PHYSICAL** — Reproduces the EV3 Large endpoint limit cycle (13.9 Hz vs physical 13.6 Hz). **vel_window=10 eliminates the limit cycle in sim** (never tested on hardware). EV3 Medium 12/12 unaffected |
 
 ### Winning Configurations (Promoted to `motion_engine.c`)
 
@@ -195,6 +196,7 @@ python tools/flash_extract_decode.py
 - **Symmetric EV3 Medium Config**: Simulation 12/12 for both NEG/POS; hardware 7-12/12 consistent (vs 4-9/12 with asymmetric config).
 - **Simulator Enhancement Validated**: All 16 autonomous tuning matrix cases pass 12/12 in simulation with Stribeck friction, cogging torque, and thermal model. Simulation deterministic (no run-to-run variation) vs hardware ~10% variation. Gap confirms need for stochastic parameters in sim.
 - **Timeout Fix Applied**: Extended `TUNING_CORE_PAUSE_TIMEOUT_US` (10k→100k) and `TUNING_WATCHDOG_MS` (5k→30k) in `bench/autonomous_tuning.c` allowed all 16 cases to complete (previously stopped at case 9 due to core1 pause timeout).
+- **Sim Calibration BREAKTHROUGH (2026-09-06)**: The sim now reproduces the physical EV3 Large endpoint limit cycle (13.9 Hz vs physical 13.6 Hz, 8.2° pp vs physical 6.2° pp). Root cause: the sim's plant used 5ms observer matrices at 1ms steps (5x too fast) + missing voltage lag. **Key prediction: vel_window=10 eliminates the limit cycle** (the windowed speed estimate's phase lag is the primary cause). Run 47 only tested vel_window=60 (wider, made it worse) — the narrower direction was never tested on hardware.
 
 ### Documentation Updates (2026-09-05 — this session)
 - **Symmetric EV3 Medium config applied**: Updated `bench/autonomous_tuning.c` axis 3 to use symmetric gains (kd_vel=0, endpoint_kp=2.0e-6) matching axis 2 — simulation validated 12/12 for both directions
@@ -225,19 +227,24 @@ python tools/flash_extract_decode.py
 
 ## 🎯 Next Session Priorities
 
-### 1. EV3 Large Robustness — Calibrate Sim, Then Tune for the Variability Range — **HIGHEST PRIORITY**
-- **Established** (runs 0x26090447/48 + motor swap): the hunting is **NOT** a specific motor, axis, or the `vel_window`. The EV3 Large gear train has inherent **slack (backlash) + high/variable friction**; the current config is **marginally stable across that whole range**, so which case hunts varies run-to-run. Hardware is fine; motors are unloaded and don't get hot. The fix must make the controller **robust across the full backlash/friction/load envelope**.
-- **Sim gap (must close first)**: sim at baseline = 12/12 for case_00, but physical = 3-4/12 with a sustained ±5° endpoint limit cycle and up to 9.4° enc/hat observer divergence. Neither 2× friction nor the (rewritten, now-stable) dead-zone backlash model alone reproduces it.
-- **Actions**:
-  1. **Calibrate the simulator against the physical logs** so it reproduces the observed EV3 Large limit cycle (the missing ingredient is likely the observer/plant model mismatch under high friction + backlash). Validate against `bench/results/autonomous_auto_20260906_*/case_*.txt`.
-  2. **Then use the validated sim to find a robust EV3 Large config** that holds 12/12 across the full backlash/friction/load envelope.
-  3. Add a **load** dimension to the test matrix (motors are currently unloaded; must work under varying load).
-- **Falsifying check**: the sim reproduces the physical case_00/case_01 limit cycle (±5° enc oscillation, duty bang-bang) before any sim-derived gain is trusted.
+### 1. Test vel_window=10 on Hardware — **HIGHEST PRIORITY**
+- **Sim prediction (calibrated sim, 2026-09-06)**: vel_window=10 eliminates the EV3 Large endpoint limit cycle. The windowed speed estimate's phase lag is the primary cause of the limit cycle.
+- **Why this was missed**: Run 0x26090447 only tested vel_window=60 (wider), which made the limit cycle WORSE (as the sim predicts). The narrower direction (vel_window=10) was never tested on hardware.
+- **Action**: Test vel_window=10 on hardware for EV3 Large axes. This is a single-parameter change in `motion/motion_engine.c` (or via the console `w` command if implemented).
+- **Falsifying check**: If vel_window=10 eliminates the limit cycle on hardware, the sim is validated. If not, the sim is missing a key physical effect.
 
-### 2. Run Autonomous Validation 0x26090449 — **HIGH PRIORITY** (after sim calibration)
-- Config: robust EV3 Large config derived from the calibrated sim (once the sim reproduces the physical hunting).
+### 2. Run Autonomous Validation 0x26090449 — **HIGH PRIORITY** (after vel_window=10 hardware test)
+- Config: vel_window=10 for EV3 Large (if hardware test confirms the sim prediction).
 - Run ID: bump `hal/hal_tuning_log.h` to `0x26090449` first.
 - Command: `python tools/flash_extract_decode.py --timeout 900`
+
+### 3. EV3 Large Robustness — Tune for the Variability Range — **HIGH PRIORITY** (after vel_window=10 validation)
+- **Established** (runs 0x26090447/48 + motor swap): the hunting is **NOT** a specific motor, axis, or the `vel_window`. The EV3 Large gear train has inherent **slack (backlash) + high/variable friction**; the current config is **marginally stable across that whole range**, so which case hunts varies run-to-run.
+- **Sim now calibrated**: The sim reproduces the physical limit cycle. Use it to find a robust config.
+- **Actions**:
+  1. If vel_window=10 works: use the calibrated sim to find additional robustness improvements (e.g., lower kp_pos, higher kd_vel).
+  2. If vel_window=10 doesn't work: the sim is missing something — investigate further.
+  3. Add a **load** dimension to the test matrix (motors are currently unloaded; must work under varying load).
 
 ### 3. EV3 Medium Consistency (Axes 2 & 3) — **HIGH PRIORITY**
 - **Finding**: Runs 0x26090445/46 — axis 2: 9-11/12; axis 3: 8-12/12 (case_15 12/12 in 45, 10/12 in 46 — run-to-run variation, no catastrophic error; stiction fix holding).
