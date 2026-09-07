@@ -87,18 +87,18 @@ static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-6f, 800, 200, 4, 0.12f, 1, 3, -720.0f,  800.0f, 1600.0f, 0, 4.0e-4f, 5.0e-6f, 500, 1.0e-6f, 0.70f, 0.0f, 0.0f},
     
     /* Axis 2 (EV3 Medium UNLOADED, 1200 deg/s max): NEG direction - REPRODUCE 12/12 */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+
     /* Axis 3 (EV3 Medium UNLOADED, 1200 deg/s max): POS direction - REPRODUCE 12/12
      * Simulation validation: symmetric NEG config (kd_vel=0, endpoint_kp=2.0e-6) passes 12/12 for BOTH directions.
      * POS config (kd_vel=1.0e-6, endpoint_kp=2.5e-6) fails 4/12 in sim for both directions. */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 2000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;
@@ -307,9 +307,10 @@ void autonomous_tuning_service(void) {
      * Keep 40 for EV3 Medium (axes 2,3) as they were unaffected.
      */
     int window = 10;
-    if (axis >= 2) {
-        window = 40;  /* EV3 Medium */
+    if (axis >= 2 && axis != 3) {
+        window = 40;  /* EV3 Medium axis 2 only */
     }
+    /* axis 3 (new EV3 Medium motor): use vel_window=10 to reduce phase lag on reversals */
     evn_motion_set_speed_window(axis, window);
         evn_motion_set_edge_speed_alpha(axis, 0.05f);
         float vel_scale = (axis >= 2) ? 0.85f : 1.0f;

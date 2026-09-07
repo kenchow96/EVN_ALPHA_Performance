@@ -177,7 +177,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
 | 7 — Motion engine | ✅ Done | 2026-09-02 | `4319fb7` |
 | **7u — Motor Model Calibration** | **✅ Done** | **2026-09-04** | **`14f81b1`** |
-| 7v — Autonomous Validation (perfection) | 🔄 In Progress — Runs 0x26090447/48: **vel_window lever FALSIFIED**; **motor-swap (M1↔M2) proves EV3 Large hunting follows NEITHER motor NOR axis** ⇒ the config is marginally stable across the gear-train slack/friction range (hardware is fine; motors unloaded, no heating). EV3 Medium reliable (case_08 12/12 in 48, case_09 12/12 in 47). **Sim does NOT yet reproduce the physical Large limit cycle — calibrating the sim against physical logs is the current blocker.** Need 2+ consecutive 12/12 on all 4 axes. | 2026-09-06 | (runs 0x26090444-48) |
+| 7v — Autonomous Validation (perfection) | 🔄 In Progress — Run 0x26090449: **vel_window=10 for EV3 Large eliminates axis-0 NEG hunting (6/12→11/12)**; **case_13/15 EV3 Medium POS stiction stalls on reversal (1.1s breakaway)**. Axis 1 POS degrades to 8/12 but no hunting. **Need 2+ consecutive 12/12 on all 4 axes.** | 2026-09-07 | (run 0x26090449) |
 | 8 — Drive base | ⬜ Not started — **BLOCKED** until stiction fix + 2+ consecutive 12/12 runs | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 

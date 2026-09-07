@@ -158,26 +158,28 @@ python tools/flash_extract_decode.py
 | 2026-09-06 | [2026-09-06_phase8_autonomous_run_0x26090447.md](2026-09-06_phase8_autonomous_run_0x26090447.md) | Phase 8 Run 0x26090447 — vel_window lever FALSIFIED; BOTH EV3 Large axes collapsed (shared physical cause); case_09 first 12/12 (EV3 Medium axis 2 POS) |
 | 2026-09-06 | [2026-09-06_phase8_autonomous_run_0x26090448.md](2026-09-06_phase8_autonomous_run_0x26090448.md) | Phase 8 Run 0x26090448 — **Motor-swap (M1↔M2) experiment**: hunting follows NEITHER motor NOR axis ⇒ EV3 Large config is marginally stable across the whole gear-train variability range; sim gap confirmed; case_08 12/12 (EV3 Medium) |
 | 2026-09-06 | [2026-09-06_phase8_sim_calibration.md](2026-09-06_phase8_sim_calibration.md) | Phase 8 **Sim Calibration BREAKTHROUGH** — sim now reproduces the physical EV3 Large limit cycle (13.9 Hz vs physical 13.6 Hz); **vel_window=10 eliminates the limit cycle in sim** (never tested on hardware — run 47 only tried vel_window=60 which made it worse) |
+| 2026-09-07 | [2026-09-07_phase8_vel_window_test.md](2026-09-07_phase8_vel_window_test.md) | Phase 8 vel_window=10 hardware test (run 0x26090449) — axis-0 NEG hunting improved (6/12→11/12), case_13/15 EV3 Medium POS stiction stalls |
+| 2026-09-08 | [2026-09-08_phase8_autonomous_run_0x2609044A.md](2026-09-08_phase8_autonomous_run_0x2609044A.md) | Phase 8 Autonomous Validation Run 0x2609044A — axis 2 NEG first 12/12; axis 3 POS stiction stalls persist (9-10/12); vel_window=10 for axis 3 helped slightly |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-06 — **sim calibrated to reproduce physical EV3 Large limit cycle**; **vel_window=10 predicted to eliminate the limit cycle** (sim-validated, never tested on hardware); EV3 Medium reliable)
+## 📋 Quick Reference — Current State (as of 2026-09-08 — **Run 0x2609044A complete**; axis 2 NEG first 12/12; axis 3 POS stiction stalls persist (9-10/12); vel_window=10 for axis 3 helped slightly)
 
 | Item | Value |
 |------|-------|
 | **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (new motor on port 4 per user) |
 | **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with stiction fix + symmetric EV3 Medium config |
-| **Next Run ID** | `0x26090449` (bump `hal/hal_tuning_log.h` from `0x26090448` before the next run) |
+| **Next Run ID** | `0x2609044B` (bump `hal/hal_tuning_log.h` from `0x2609044A` before the next run) |
 | **Autonomous Tuning** | Disabled in `CMakeLists.txt` (restored after run) |
-| **Hardware Validation** | ✅ Complete — 208/208 cases run across 13 autonomous runs, all traces decoded |
+| **Hardware Validation** | ✅ Complete — 224/224 cases run across 14 autonomous runs, all traces decoded |
 | **Motor Model Calibration** | ✅ Complete — EV3 Medium model fixed for unloaded operation, sim 12/12 both directions |
 | **Stiction Break Fix** | ✅ **HITL VERIFIED & CONFIRMED IN AUTONOMOUS** — case_15 catastrophic 121° error FIXED (0.0° final error); both EV3 Medium motors break stiction |
 | **Dashboard** | **10/10 BUGS FIXED** — All confirmed root causes from firmware console audit resolved (see session file) |
 | **Symmetric EV3 Medium Config** | ✅ **VALIDATED** — Simulation 12/12 for both NEG/POS; hardware 7-12/12 consistent |
 | **Consecutive 12/12** | ✅ **case_04 (axis 1 POS r0): 2+ consecutive** (0x26090445 + 0x26090446). ⚠️ **case_01 (axis 0 NEG r1) hunting is SYSTEMATIC** (6/12→5/12) — axes 0 & 1 share identical EV3 Large gains but diverge ⇒ per-axis/hardware difference, not gains |
 | **Pipeline** | ✅ **FIXED (2026-09-06)** — `flash_extract_decode.py` BOOTSEL false-positive: now waits for the drive to disappear (app booted) before waiting for it to reappear (run done). Was extracting stale previous-run flash |
-| **Simulator** | ✅ **CALIBRATED TO PHYSICAL** — Reproduces the EV3 Large endpoint limit cycle (13.9 Hz vs physical 13.6 Hz). **vel_window=10 eliminates the limit cycle in sim** (never tested on hardware). EV3 Medium 12/12 unaffected |
+| **Simulator** | ✅ **CALIBRATED TO PHYSICAL** — Reproduces the EV3 Large endpoint limit cycle (13.9 Hz vs physical 13.6 Hz). **vel_window=10 eliminates the limit cycle in sim** (tested on hardware run 0x26090449: axis-0 NEG 6/12→11/12). EV3 Medium 12/12 unaffected |
 
 ### Winning Configurations (Promoted to `motion_engine.c`)
 
@@ -187,16 +189,16 @@ python tools/flash_extract_decode.py
 | EV3 Medium (both dirs) | **2.5e-4** | **1.0e-6** | 8e-7 | **0** | 0 | **0.35** | **2.0e-6** |
 
 ### Key Results Summary
-- **EV3 Large (axes 0,1)**: **12/12 ACHIEVED** on POS direction (repeat 0) in run 0x2609043D (cases 0,4 - W40_K50 gains). Max track error ~1.6-1.8° (< 2.0° threshold). **Run 0x2609043E: EV3 Large POS dropped to 8/12, 11/12** — run-to-run variation confirmed (~10% per axis). **Runs 0x26090440, 0x26090441: case_04 (axis 1 POS repeat 0) achieved 12/12 in TWO CONSECUTIVE RUNS** — first consecutive 12/12! **Run 0x26090442: case_00 (axis 0 POS repeat 0) achieved 12/12 in THREE CONSECUTIVE RUNS** (0x26090440, 0x26090441, 0x26090442) — first 3-peat! **Run 0x26090443: streaks broken** — case_00 11/12, case_04 11/12. NEG direction and higher repeats show variance (4-12/12).
-- **EV3 Medium (axes 2,3)**: **SYMMETRIC CONFIG NOW USED** (kd_vel=0, endpoint_kp=2.0e-6) — simulation validated 12/12 for BOTH directions. **Run 0x26090440: axis 2 NEG repeat 0 achieved 12/12**; **Run 0x26090441: axis 2 NEG repeat 0 dropped to 9/12, axis 3 POS repeat 1 achieved 11/12**; **Run 0x26090442: axis 3 NEG repeat 2 achieved 11/12 (best for axis 3), axis 3 POS repeat 3 catastrophic final error 121°**; **Run 0x26090443: axis 3 NEG repeat 0 FIRST 12/12 (case_08), axis 3 POS repeat 3 FIXED (10/12, 0.0° final error)** — catastrophic 121° error eliminated by stiction break fix.
+- **EV3 Large (axes 0,1)**: **12/12 ACHIEVED** on POS direction (repeat 0) in run 0x2609043D (cases 0,4 - W40_K50 gains). Max track error ~1.6-1.8° (< 2.0° threshold). **Run 0x2609043E: EV3 Large POS dropped to 8/12, 11/12** — run-to-run variation confirmed (~10% per axis). **Runs 0x26090440, 0x26090441: case_04 (axis 1 POS repeat 0) achieved 12/12 in TWO CONSECUTIVE RUNS** — first consecutive 12/12! **Run 0x26090442: case_00 (axis 0 POS repeat 0) achieved 12/12 in THREE CONSECUTIVE RUNS** (0x26090440, 0x26090441, 0x26090442) — first 3-peat! **Run 0x26090443: streaks broken** — case_00 11/12, case_04 11/12. **Run 0x26090449: axis-0 NEG hunting improved (6/12→11/12) but not eliminated**; case_00 POS r0 11/12, case_04 POS r0 8/12 (no hunting, velocity-limited settle). NEG direction and higher repeats show variance (4-12/12).
+- **EV3 Medium (axes 2,3)**: **SYMMETRIC CONFIG NOW USED** (kd_vel=0, endpoint_kp=2.0e-6) — simulation validated 12/12 for BOTH directions. **Run 0x26090440: axis 2 NEG repeat 0 achieved 12/12**; **Run 0x26090441: axis 2 NEG repeat 0 dropped to 9/12, axis 3 POS repeat 1 achieved 11/12**; **Run 0x26090442: axis 3 NEG repeat 2 achieved 11/12 (best for axis 3), axis 3 POS repeat 3 catastrophic final error 121°**; **Run 0x26090443: axis 3 NEG repeat 0 FIRST 12/12 (case_08), axis 3 POS repeat 3 FIXED (10/12, 0.0° final error)** — catastrophic 121° error eliminated by stiction break fix. **Run 0x26090449: case_13/15 EV3 Medium POS stiction stalls on reversal (1.1s breakaway)** — direction-reversal static friction despite start_duty=0.80, 4-tick pulse. **Run 0x2609044A: axis 2 NEG repeat 0 FIRST 12/12 (case_08); axis 3 (new motor) POS stalls persist (case_13 9/12, case_15 10/12 — improved from 9/12); vel_window=10 for axis 3 helped slightly but not enough**. Axis 3 NEG also variable (7-9/12).
 - **ALL FOUR AXES HAVE 12/12 CONFIGS HISTORICALLY**: Milestone achieved in run 0x2609043B, but run-to-run variation prevents consistent reproduction. **2+ consecutive 12/12 achieved on case_00 (3 runs) and case_04 (2 runs)**.
-- **Core 1 timing**: Excellent — 999-1001µs period, 102-208µs exec, **0 missed ticks** across all 16 cases (run 0x26090443).
+- **Core 1 timing**: Excellent — 999-1001µs period, 102-208µs exec, **0 missed ticks** across all 16 cases (runs 0x26090449, 0x2609044A).
 - **Run-to-run variation**: Confirmed — EV3 Large POS 12/12 reproduced in runs 0x26090440, 0x26090441, 0x26090442 for case_00; case_04 12/12 in runs 0x26090440, 0x26090441. EV3 Medium symmetric config 7-12/12 consistent but no 2+ consecutive 12/12 yet. ~10% variance per axis.
-- **Stiction Break Fix VERIFIED & CONFIRMED IN AUTONOMOUS**: Velocity threshold 5000→1000, pos-error activation works. EV3 Medium axes show no stiction stalls in autonomous runs 0x26090440, 0x26090441, 0x26090442, 0x26090443. **case_15 catastrophic 121° error FIXED** (final_err 0.0°).
+- **Stiction Break Fix VERIFIED & CONFIRMED IN AUTONOMOUS**: Velocity threshold 5000→1000, pos-error activation works. EV3 Medium axes show no stiction stalls in autonomous runs 0x26090440, 0x26090441, 0x26090442, 0x26090443. **Run 0x26090449: case_13/15 EV3 Medium POS stiction stalls on reversal (1.1s breakaway)** — direction-reversal static friction despite start_duty=0.80, 4-tick pulse. **Run 0x2609044A: axis 3 POS stalls persist (9-10/12)** — vel_window=10 helped slightly (case_15 9→10/12) but stiction break still not triggering reliably on reversal.
 - **Symmetric EV3 Medium Config**: Simulation 12/12 for both NEG/POS; hardware 7-12/12 consistent (vs 4-9/12 with asymmetric config).
 - **Simulator Enhancement Validated**: All 16 autonomous tuning matrix cases pass 12/12 in simulation with Stribeck friction, cogging torque, and thermal model. Simulation deterministic (no run-to-run variation) vs hardware ~10% variation. Gap confirms need for stochastic parameters in sim.
 - **Timeout Fix Applied**: Extended `TUNING_CORE_PAUSE_TIMEOUT_US` (10k→100k) and `TUNING_WATCHDOG_MS` (5k→30k) in `bench/autonomous_tuning.c` allowed all 16 cases to complete (previously stopped at case 9 due to core1 pause timeout).
-- **Sim Calibration BREAKTHROUGH (2026-09-06)**: The sim now reproduces the physical EV3 Large endpoint limit cycle (13.9 Hz vs physical 13.6 Hz, 8.2° pp vs physical 6.2° pp). Root cause: the sim's plant used 5ms observer matrices at 1ms steps (5x too fast) + missing voltage lag. **Key prediction: vel_window=10 eliminates the limit cycle** (the windowed speed estimate's phase lag is the primary cause). Run 47 only tested vel_window=60 (wider, made it worse) — the narrower direction was never tested on hardware.
+- **Sim Calibration BREAKTHROUGH (2026-09-06)**: The sim now reproduces the physical EV3 Large endpoint limit cycle (13.9 Hz vs physical 13.6 Hz, 8.2° pp vs physical 6.2° pp). Root cause: the sim's plant used 5ms observer matrices at 1ms steps (5x too fast) + missing voltage lag. **Key prediction: vel_window=10 eliminates the limit cycle** (the windowed speed estimate's phase lag is the primary cause). Run 47 only tested vel_window=60 (wider, made it worse) — the narrower direction was never tested on hardware. **Run 0x26090449 CONFIRMED: vel_window=10 improved axis-0 NEG hunting (6/12→11/12)**.
 
 ### Documentation Updates (2026-09-05 — this session)
 - **Symmetric EV3 Medium config applied**: Updated `bench/autonomous_tuning.c` axis 3 to use symmetric gains (kd_vel=0, endpoint_kp=2.0e-6) matching axis 2 — simulation validated 12/12 for both directions
@@ -227,29 +229,34 @@ python tools/flash_extract_decode.py
 
 ## 🎯 Next Session Priorities
 
-### 1. Test vel_window=10 on Hardware — **HIGHEST PRIORITY**
-- **Sim prediction (calibrated sim, 2026-09-06)**: vel_window=10 eliminates the EV3 Large endpoint limit cycle. The windowed speed estimate's phase lag is the primary cause of the limit cycle.
-- **Why this was missed**: Run 0x26090447 only tested vel_window=60 (wider), which made the limit cycle WORSE (as the sim predicts). The narrower direction (vel_window=10) was never tested on hardware.
-- **Action**: Test vel_window=10 on hardware for EV3 Large axes. This is a single-parameter change in `motion/motion_engine.c` (or via the console `w` command if implemented).
-- **Falsifying check**: If vel_window=10 eliminates the limit cycle on hardware, the sim is validated. If not, the sim is missing a key physical effect.
+### 1. EV3 Medium Axis 3 Stiction Stall Fix — **HIGHEST PRIORITY**
+- **Finding**: Run 0x2609044A — axis 3 (new EV3 Medium motor) POS reversals still stall (case_13 9/12, case_15 10/12). vel_window=10 helped slightly (case_15 9→10/12) but stiction break not triggering reliably on NEG→POS reversal.
+- **Root cause**: Direction-reversal static friction exceeds start_duty=0.80 torque; windowed velocity estimate (vel_window=10) still has enough phase lag to delay stiction break activation.
+- **Actions to test** (in order of increasing invasiveness):
+  1. Increase `start_duty` for axis 3 from 0.80 → 0.90 (in autonomous_tuning.c case_13/15)
+  2. Increase `startup_pulse_on_ticks` from 4 → 6 for axis 3
+  3. Reduce `vel_window` for axis 3 further to 5 (minimum for stable estimate)
+  4. Add per-axis stiction parameters in motion_engine.c (separate start_duty/hold_duty for axis 3)
+- **Falsifying check**: Run single-case test for axis 3 POS reversal with increased start_duty; if stall eliminated, promote to full autonomous run.
 
-### 2. Run Autonomous Validation 0x26090449 — **HIGH PRIORITY** (after vel_window=10 hardware test)
-- Config: vel_window=10 for EV3 Large (if hardware test confirms the sim prediction).
-- Run ID: bump `hal/hal_tuning_log.h` to `0x26090449` first.
-- Command: `python tools/flash_extract_decode.py --timeout 900`
-
-### 3. EV3 Large Robustness — Tune for the Variability Range — **HIGH PRIORITY** (after vel_window=10 validation)
+### 2. EV3 Large Robustness — Tune for the Variability Range — **HIGH PRIORITY**
 - **Established** (runs 0x26090447/48 + motor swap): the hunting is **NOT** a specific motor, axis, or the `vel_window`. The EV3 Large gear train has inherent **slack (backlash) + high/variable friction**; the current config is **marginally stable across that whole range**, so which case hunts varies run-to-run.
-- **Sim now calibrated**: The sim reproduces the physical limit cycle. Use it to find a robust config.
-- **Actions**:
-  1. If vel_window=10 works: use the calibrated sim to find additional robustness improvements (e.g., lower kp_pos, higher kd_vel).
-  2. If vel_window=10 doesn't work: the sim is missing something — investigate further.
-  3. Add a **load** dimension to the test matrix (motors are currently unloaded; must work under varying load).
+- **Sim now calibrated**: The sim reproduces the physical limit cycle. vel_window=10 improved axis-0 NEG (6/12→11/12) but not eliminated.
+- **Actions** (test in calibrated sim first):
+  1. Lower `kp_pos` from 4.0e-4 → 3.5e-4 for EV3 Large (reduces overshoot gain)
+  2. Add small `kd_vel` (1e-7 to 5e-7) for damping (vel_window=10 reduces noise, so kd_vel may work now)
+  3. Increase `endpoint_kp_vel` from 1.0e-6 → 2.0e-6 for stronger endpoint stiffness
+  4. Add a **load** dimension to the test matrix (motors are currently unloaded; must work under varying load).
 
 ### 3. EV3 Medium Consistency (Axes 2 & 3) — **HIGH PRIORITY**
-- **Finding**: Runs 0x26090445/46 — axis 2: 9-11/12; axis 3: 8-12/12 (case_15 12/12 in 45, 10/12 in 46 — run-to-run variation, no catastrophic error; stiction fix holding).
-- **Hypothesis**: Symmetric config works (sim 12/12), but hardware needs slight tuning for consistency.
-- **Action**: Sweep endpoint_kp (2.0e-6 → 2.5e-6) and accel_scale (0.35 → 0.40) for both EV3 Medium axes.
+- **Finding**: Run 0x2609044A — axis 2: case_08 12/12 (first!), other repeats 8-11/12; axis 3: 7-10/12 with POS stalls.
+- **Hypothesis**: Symmetric config works (sim 12/12), but hardware needs slight tuning for consistency, especially axis 3 (new motor).
+- **Action**: Sweep `endpoint_kp` (2.0e-6 → 2.5e-6) and `accel_scale` (0.35 → 0.40) for both EV3 Medium axes in simulation first, then hardware.
+
+### 4. Run Autonomous Validation 0x2609044B — **HIGH PRIORITY** (after axis 3 stiction fix)
+- Config: vel_window=10 for EV3 Large (axes 0,1) and axis 3; vel_window=40 for axis 2. Increased start_duty/startup_pulse for axis 3 POS cases.
+- Run ID: bump `hal/hal_tuning_log.h` to `0x2609044B` first.
+- Command: `python tools/flash_extract_decode.py --timeout 900`
 
 ### 4. Repeat-Dependent Degradation Analysis — **MEDIUM PRIORITY**
 - **Finding**: Repeat-index-dependent variation persists across runs (e.g. run 0x26090443: axis 2 repeat 0 NEG 11/12 → repeat 3 POS 7/12). Partially explained by the axis 0 systematic hunting (see #1).
