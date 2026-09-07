@@ -1223,6 +1223,9 @@ class Simulator:
         # For PID speed measurement
         self.use_enc_speed = 1  # 0=observer, 1=windowed, 2=raw edge, 3=filtered edge
 
+        # Velocity measurement noise (for Domain Randomization)
+        self.vel_noise_std = 0.0  # Standard deviation of Gaussian noise (mdeg/s)
+
         # External load torque applied to the load side (unm); set via --load-torque
         self.load_torque_unm = 0
 
@@ -1350,6 +1353,10 @@ class Simulator:
             vel_for_pid = self.encoder.get_speed_substep()  # Not implemented
         elif self.pid.use_enc_speed == 1:
             vel_for_pid = self.pid.speed_of(float(angle_mdeg), MOTION_DT)
+            # Add Gaussian noise to windowed speed estimate (encoder quantization noise)
+            if self.vel_noise_std > 0.0:
+                import random
+                vel_for_pid += random.gauss(0.0, self.vel_noise_std)
         else:
             vel_for_pid = float(w_hat)
         
@@ -1546,10 +1553,18 @@ def main():
     parser.add_argument('--trace', action='store_true', default=True, help='Enable trace capture')
     parser.add_argument('--no-trace', dest='trace', action='store_false')
     
+    # Encoder noise for Domain Randomization
+    parser.add_argument('--vel-noise-std', type=float, default=0.0,
+                        help='Standard deviation of Gaussian velocity measurement noise (mdeg/s). '
+                             'Added to windowed speed estimate to model encoder quantization noise.')
+    
     args = parser.parse_args()
     
     # Create simulator
     sim = Simulator(args.motor, args.models)
+
+    # Velocity measurement noise (for Domain Randomization)
+    sim.vel_noise_std = args.vel_noise_std
 
     # Physical gear-train / load variability (EV3 Large has slack + high/variable friction)
     if args.backlash_deg > 0.0:

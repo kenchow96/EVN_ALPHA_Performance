@@ -177,7 +177,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
 | 7 — Motion engine | ✅ Done | 2026-09-02 | `4319fb7` |
 | **7u — Motor Model Calibration** | **✅ Done** | **2026-09-04** | **`14f81b1`** |
-| 7v — Autonomous Validation (perfection) | 🔄 In Progress — Run 0x26090449: **vel_window=10 for EV3 Large eliminates axis-0 NEG hunting (6/12→11/12)**; **case_13/15 EV3 Medium POS stiction stalls on reversal (1.1s breakaway)**. Axis 1 POS degrades to 8/12 but no hunting. **Need 2+ consecutive 12/12 on all 4 axes.** | 2026-09-07 | (run 0x26090449) |
+| 7v — Autonomous Validation (perfection) | 🔄 In Progress — Run 0x2609044A: **axis 2 NEG first 12/12**; **axis 3 POS stiction stalls persist (9-10/12)**; vel_window=10 for axis 3 helped slightly. **Sim-to-Real Report Analysis integrated**: Domain Randomization tuning methodology adopted; backlash model enable for axis-3; encoder noise for vel_window validation; duty-slew acceptance metric. Need 2+ consecutive 12/12 on all 4 axes. | 2026-09-08 | (run 0x2609044A) |
 | 8 — Drive base | ⬜ Not started — **BLOCKED** until stiction fix + 2+ consecutive 12/12 runs | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 

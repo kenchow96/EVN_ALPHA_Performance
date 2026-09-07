@@ -65,6 +65,17 @@ Legend: ✅ confirmed · ❓ needs confirmation · ⚠️ known-deviation (accep
 
 ---
 
+## E. Simulator Fidelity (2026-09-08 — Sim-to-Real Report Analysis)
+
+| # | Assumption | Where | Basis / Why | Falsify By | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| E1 | **Simulator uses deterministic physics** — no injected parameter noise, no measurement noise, no backlash/compliance unless explicitly enabled | `tools/simulate_motor.py` (PlantModel, EncoderSim) | Current validation harness runs single deterministic sim per config; no stochastic terms in codebase | Add Domain Randomization harness and verify pass-rate distribution changes; compare worst-case vs nominal | ❓ needs DR harness |
+| E2 | **Encoder model includes quantization but no Gaussian velocity measurement noise** | `tools/simulate_motor.py` EncoderSim | Quantization present (`round()` in substeps/edges); grep confirms no `np.random` or `random.gauss` usage | Inject Gaussian noise; re-sweep vel_window for robustness | ❓ needs noise injection |
+| E3 | **Gearbox backlash/compliance model is written but disabled by default** (`gearbox_backlash_mdeg = 0`) | `tools/simulate_motor.py` PlantModel | Two-inertia model with backlash & stiffness implemented but commented as "requires careful tuning" | Enable backlash sweep for axis-3 (0.5–2.5°); check for case_13/15 stall reproduction | ❓ needs enable & sweep |
+| E4 | **Plant and observer run at same rate (1 ms)** — velocity lag mismatch mitigated by `voltage_lag_ms` term but not swept | `tools/simulate_motor.py` PlantModel | Plant uses 1 ms step; observer matrices derived from 5 ms step; voltage_lag added as fix but not validated across rates | Sweep plant step rate vs observer matrices; check limit cycle sensitivity | ❓ needs rate sweep |
+
+---
+
 ## Before Phase 8 (Drive Base) we must close:
 
 - **Sim-to-real gaps** — EV3 Medium residual vibration (14° p-p), EV3 Large tracking error (now <2.0° with W40_K50), EV3 Medium negative direction (8-9/12 vs 12/12 sim)
