@@ -136,7 +136,7 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
             a->pid.startup_ramp_ticks = 800u;
             a->pid.restart_ramp_ticks = 200u;
             a->pid.startup_pulse_on_ticks = 4u;
-            a->pid.vel_window = 40;
+            a->pid.vel_window = 10;
         }
         a->last_applied_mv = 0;
         a->observer_voltage_sum_mv = 0;

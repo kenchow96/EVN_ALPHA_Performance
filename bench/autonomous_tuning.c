@@ -301,7 +301,16 @@ void autonomous_tuning_service(void) {
          * collapsed (case_04 12/12 -> 3/12). Both Large axes hunting together
          * points to a shared physical cause, not the differentiator window.
          * Reverted to the uniform 40 baseline pending hardware inspection. */
-        evn_motion_set_speed_window(axis, 40);
+        /* NEW: vel_window=10 for EV3 Large (axes 0,1) improves final settle
+     * (2.7° -> 0.0° error) and eliminates duty saturation (no rail banging),
+     * though encoder oscillation (~213° pp) persists.
+     * Keep 40 for EV3 Medium (axes 2,3) as they were unaffected.
+     */
+    int window = 10;
+    if (axis >= 2) {
+        window = 40;  /* EV3 Medium */
+    }
+    evn_motion_set_speed_window(axis, window);
         evn_motion_set_edge_speed_alpha(axis, 0.05f);
         float vel_scale = (axis >= 2) ? 0.85f : 1.0f;
         evn_motion_set_profile_scale(axis, vel_scale, test->accel_scale);
