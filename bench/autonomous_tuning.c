@@ -94,11 +94,13 @@ static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
 
     /* Axis 3 (EV3 Medium UNLOADED, 1200 deg/s max): POS direction - REPRODUCE 12/12
      * Simulation validation: symmetric NEG config (kd_vel=0, endpoint_kp=2.0e-6) passes 12/12 for BOTH directions.
-     * POS config (kd_vel=1.0e-6, endpoint_kp=2.5e-6) fails 4/12 in sim for both directions. */
+     * POS config (kd_vel=1.0e-6, endpoint_kp=2.5e-6) fails 4/12 in sim for both directions.
+     * HARDWARE FIX (2026-09-08): Increased start_duty 0.80→0.90 for POS cases (case_13, case_15)
+     * to overcome direction-reversal static friction stalls observed in runs 0x26090449/4A/4B. */
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.90f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.90f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;
