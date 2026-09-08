@@ -177,7 +177,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
 | 7 — Motion engine | ✅ Done | 2026-09-02 | `4319fb7` |
 | **7u — Motor Model Calibration** | **✅ Done** | **2026-09-04** | **`14f81b1`** |
-| 7v — Autonomous Validation (perfection) | 🔄 In Progress — Run 0x2609044A: **axis 2 NEG first 12/12**; **axis 3 POS stiction stalls persist (9-10/12)**; vel_window=10 for axis 3 helped slightly. **Sim-to-Real Report Analysis integrated**: Domain Randomization tuning methodology adopted; backlash model enable for axis-3; encoder noise for vel_window validation; duty-slew acceptance metric. Need 2+ consecutive 12/12 on all 4 axes. | 2026-09-08 | (run 0x2609044A) |
+| 7v — Autonomous Validation (perfection) | 🔄 In Progress — **DR Gain Tuning Complete**: DR baseline established (EV3 Large worst=2/12, EV3 Medium worst=4/12). **Killer combo identified**: transport delay (4ms) + backlash (2.5°) = worst-case 2/12. **DR-robust gains found**: prop9_accel06 (kp_pos=2.0e-4, kp_vel=1.0e-5, endpoint_kp=2.5e-6, accel_scale=0.60) achieves **DR worst=8/12 (4× improvement)**. Trade-off: nominal 12/12→10/12. Target worst≥11/12 not yet met. Axis 3 stiction fix WORKED (start_duty 0.80→0.90, case_13/15 now 11/12). Need 2+ consecutive 12/12 on all 4 axes. | 2026-09-08 | (run 0x2609044C + DR tuning) |
 | 8 — Drive base | ⬜ Not started — **BLOCKED** until stiction fix + 2+ consecutive 12/12 runs | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 

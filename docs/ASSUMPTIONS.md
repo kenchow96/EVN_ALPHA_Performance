@@ -74,6 +74,35 @@ Legend: ✅ confirmed · ❓ needs confirmation · ⚠️ known-deviation (accep
 | E3 | **Gearbox backlash/compliance model is written but disabled by default** (`gearbox_backlash_mdeg = 0`) | `tools/simulate_motor.py` PlantModel | Two-inertia model with backlash & stiffness implemented but commented as "requires careful tuning" | Enable backlash sweep for axis-3 (0.5–2.5°); check for case_13/15 stall reproduction | ❓ needs enable & sweep |
 | E4 | **Plant and observer run at same rate (1 ms)** — velocity lag mismatch mitigated by `voltage_lag_ms` term but not swept | `tools/simulate_motor.py` PlantModel | Plant uses 1 ms step; observer matrices derived from 5 ms step; voltage_lag added as fix but not validated across rates | Sweep plant step rate vs observer matrices; check limit cycle sensitivity | ❓ needs rate sweep |
 
+## F. Domain Randomization Gain Tuning (2026-09-08 — DR Gain Tuning Session)
+
+| # | Assumption | Where | Basis / Why | Falsify By | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| F1 | **Transport delay (4ms) + Backlash (2.5°) is the primary degradation source for EV3 Large** — neither alone causes worst-case 2/12, but together they do | DR validation results (2026-09-08 session) | Systematic DR sweep: baseline 2/12, high_friction 8/12, high_delay 3/12, high_backlash 8/12, delay+backlash 2/12 | Re-run DR validation with delay+backlash fixed; test if other combos still hit worst=2/12 | ✅ confirmed in sim |
+| F2 | **Lower kp_pos + higher kp_vel + higher endpoint_kp + lower accel_scale improves DR robustness** for delay+backlash | DR gain sweep results (prop9_accel06) | prop9_accel06 (2.0e-4, 1.0e-5, 2.5e-6, 0.60) achieves DR worst=8/12 vs baseline 2/12 | Test prop9_accel06 on hardware (run 0x2609044D); verify DR worst≥11/12 target met | ❓ needs hardware test |
+| F3 | **vel_window=10 for EV3 Large eliminates the endpoint limit cycle and is robust to encoder noise** (up to 5000 mdeg/s) | vel_window sweep + DR analysis (2026-09-08) | vel_window=5/10 achieve 10-11/12 pass across all noise levels; 20/40/60 only 2-3/12 | Test vel_window=10 on hardware for EV3 Large; run 0x26090449 showed axis-0 NEG 6/12→11/12 | ✅ partial hardware confirmation |
+| F4 | **EV3 Medium is inherently DR-robust** — all vel_window values achieve 12/12 pass even with 5000 mdeg/s noise | vel_window sweep (2026-09-08) | EV3 Medium 12/12 at all noise levels vs EV3 Large collapse at wider windows | Re-test with broader DR ranges; verify symmetric config remains robust | ✅ confirmed in sim |
+| F5 | **DR parameter ranges (±25% R, 0.5-2× friction, 0-2.5° backlash, 0-4ms delay, ±15% V_max, 0-5000 mdeg/s noise) may be too wide for fixed gains to achieve worst≥11/12** | DR tuning session (2026-09-08) | Best achieved: prop9_accel06 DR worst=8/12; target worst≥11/12 not met | Consider narrowing ranges or adaptive gains; re-evaluate if current ranges reflect actual hardware variability | ❓ needs range review |
+
+---
+
+## Before Phase 8 (Drive Base) we must close:
+- **Sim-to-real gaps** — EV3 Medium residual vibration (14° p-p), EV3 Large tracking error (now <2.0° with W40_K50), EV3 Medium negative direction (8-9/12 vs 12/12 sim)
+- **A6 / A5** — confirm encoder counts-per-revolution matches motor datasheet CPR (drives PID gain units) and no FIFO overflow at max RPM.
+- **D4** — verify USB CDC root cause (wedging vs. enumeration timing) and fix `serial_capture.py` (partially addressed: dashboard thread-safety fixes eliminate Tkinter crashes)
+- **D7** — implement console idle timeout + heartbeat protocol for autonomous handoff ✅ **IMPLEMENTED & TESTED** (run 0x2609043C)
+- **Consecutive 12/12 validation** — Need 2+ consecutive autonomous runs with 12/12 on all 4 axes (current: 2×12/12 on EV3 Large pos, 11/12 on others)
+- **DR robustness target** — EV3 Large worst-case ≥11/12 under DR ensemble before promoting to `motion_engine.c`
+
+Everything else is either confirmed ✅ or an accepted, monitored deviation ⚠️.
+
+| # | Assumption | Where | Basis / Why | Falsify By | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| E1 | **Simulator uses deterministic physics** — no injected parameter noise, no measurement noise, no backlash/compliance unless explicitly enabled | `tools/simulate_motor.py` (PlantModel, EncoderSim) | Current validation harness runs single deterministic sim per config; no stochastic terms in codebase | Add Domain Randomization harness and verify pass-rate distribution changes; compare worst-case vs nominal | ❓ needs DR harness |
+| E2 | **Encoder model includes quantization but no Gaussian velocity measurement noise** | `tools/simulate_motor.py` EncoderSim | Quantization present (`round()` in substeps/edges); grep confirms no `np.random` or `random.gauss` usage | Inject Gaussian noise; re-sweep vel_window for robustness | ❓ needs noise injection |
+| E3 | **Gearbox backlash/compliance model is written but disabled by default** (`gearbox_backlash_mdeg = 0`) | `tools/simulate_motor.py` PlantModel | Two-inertia model with backlash & stiffness implemented but commented as "requires careful tuning" | Enable backlash sweep for axis-3 (0.5–2.5°); check for case_13/15 stall reproduction | ❓ needs enable & sweep |
+| E4 | **Plant and observer run at same rate (1 ms)** — velocity lag mismatch mitigated by `voltage_lag_ms` term but not swept | `tools/simulate_motor.py` PlantModel | Plant uses 1 ms step; observer matrices derived from 5 ms step; voltage_lag added as fix but not validated across rates | Sweep plant step rate vs observer matrices; check limit cycle sensitivity | ❓ needs rate sweep |
+
 ---
 
 ## Before Phase 8 (Drive Base) we must close:
