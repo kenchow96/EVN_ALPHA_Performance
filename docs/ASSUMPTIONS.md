@@ -1,15 +1,15 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-05, Autonomous Run 0x26090443 Complete):**
-> - **Run 0x26090443**: 4th consecutive validation — case_08 (EV3 Medium axis 3 NEG repeat 0) **FIRST 12/12**; case_15 (axis 3 POS repeat 3) catastrophic 121° error **FIXED** (10/12, 0.0° final error). 16 cases, 16/16 traces. Core 1: 999-1001µs period, 0 missed ticks.
-> - **Stiction Break Fix CONFIRMED IN AUTONOMOUS**: case_15 final error went from 121.211° (run 0x26090442) to 0.0° (run 0x26090443). No stiction stalls in runs 0x26090440-43.
+> **RESUME POINT (2026-09-08, Autonomous Run 0x2609044D Complete):**
+> - **Run 0x2609044D**: DR-robust prop9_accel06 tested on hardware — 16/16 cases, 16/16 traces. **EV3 Large axis 0: ALL 4 repeats 11/12** (final error ~0°) — **DR target worst≥11/12 MET** on axis 0. **EV3 Large axis 1: Still hunting 6-8/12** with identical gains — **confirms per-axis/hardware divergence not solvable by gains alone**. **Axis 3 stiction fix CONFIRMED**: case_13/15 POS 11/12 with start_duty=0.90. **Axis 2 POS stalls persist** (case_09 10.5° final error) — needs start_duty=0.90 for axis 2 POS cases. vel_window=10 for axis 3 works well (10-11/12). Core 1: PERFECT (999-1001µs period, 0 missed ticks). 0/16 cases 12/12, 8 cases 11/12.
+> - **Stiction Break Fix CONFIRMED IN AUTONOMOUS (runs 0x26090440-4D)**: case_15 final error 0.0° consistently. No stiction stalls in runs 0x26090440-4D for axis 3 POS.
 > - **Symmetric EV3 Medium Config VALIDATED**: Simulation 12/12 for both NEG/POS directions; hardware 7-12/12 consistent (vs 4-9/12 with asymmetric config).
-> - **Run-to-run variation persists**: ~10% per axis. Streaks broken: case_00 (3-peat) now 11/12, case_04 (2-peat) now 11/12.
+> - **Run-to-run variation persists**: ~10% per axis. Streaks broken across runs.
 > - **Timeouts Fixed**: Extended TUNING_CORE_PAUSE_TIMEOUT_US (10k→100k) and TUNING_WATCHDOG_MS (5k→30k) allowed all 16 cases to complete.
 > - **Dashboard 10/10 bugs fixed** (A-J from firmware console audit) in `tools/evn_dashboard.py`
 > - **D7 IMPLEMENTED**: Console idle timeout (120s) + heartbeat protocol (`h`/`H`, `r`/`R`) enabled in `EVN_ALPHA_Performance.c` for autonomous↔console handoff.
-> - Board: Console firmware (EVN_AUTONOMOUS_TUNING=0), USB CDC functional after power cycle
-> - Next: 5th consecutive autonomous validation run 0x26090444 (target 2+ consecutive 12/12 on all 4 axes; case_08 achieved first 12/12). Phase 8 Drive Base blocked until achieved. EV3 Medium needs endpoint_kp/accel_scale sweep for consistency.
+> - Board: BOOTSEL mode after run 0x2609044D completed. Next session: rebuild with EVN_AUTONOMOUS_TUNING=0 (console) or =1 (autonomous via flash_extract_decode.py).
+> - Next: Apply start_duty=0.90 to axis 2 POS cases, test vel_window=10 for axis 2, test per-axis gains for EV3 Large axis 1, run autonomous validation 0x2609044E. Phase 8 Drive Base blocked until 2+ consecutive 12/12 on all 4 axes.
 
 Every assumption made during development that is **not** marked `[GROUND TRUTH]` in the specs and has **not** been independently verified against hardware. **Review and confirm/refute each before we build dependent phases on top.** Each entry: the assumption, where it's baked in, why we made it, and how to falsify it.
 
@@ -79,8 +79,8 @@ Legend: ✅ confirmed · ❓ needs confirmation · ⚠️ known-deviation (accep
 | # | Assumption | Where | Basis / Why | Falsify By | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | F1 | **Transport delay (4ms) + Backlash (2.5°) is the primary degradation source for EV3 Large** — neither alone causes worst-case 2/12, but together they do | DR validation results (2026-09-08 session) | Systematic DR sweep: baseline 2/12, high_friction 8/12, high_delay 3/12, high_backlash 8/12, delay+backlash 2/12 | Re-run DR validation with delay+backlash fixed; test if other combos still hit worst=2/12 | ✅ confirmed in sim |
-| F2 | **Lower kp_pos + higher kp_vel + higher endpoint_kp + lower accel_scale improves DR robustness** for delay+backlash | DR gain sweep results (prop9_accel06) | prop9_accel06 (2.0e-4, 1.0e-5, 2.5e-6, 0.60) achieves DR worst=8/12 vs baseline 2/12 | Test prop9_accel06 on hardware (run 0x2609044D); verify DR worst≥11/12 target met | ❓ needs hardware test |
-| F3 | **vel_window=10 for EV3 Large eliminates the endpoint limit cycle and is robust to encoder noise** (up to 5000 mdeg/s) | vel_window sweep + DR analysis (2026-09-08) | vel_window=5/10 achieve 10-11/12 pass across all noise levels; 20/40/60 only 2-3/12 | Test vel_window=10 on hardware for EV3 Large; run 0x26090449 showed axis-0 NEG 6/12→11/12 | ✅ partial hardware confirmation |
+| F2 | **Lower kp_pos + higher kp_vel + higher endpoint_kp + lower accel_scale improves DR robustness** for delay+backlash | DR gain sweep results (prop9_accel06) | prop9_accel06 (2.0e-4, 1.0e-5, 2.5e-6, 0.60) achieves DR worst=8/12 vs baseline 2/12 | Test prop9_accel06 on hardware (run 0x2609044D); verify DR worst≥11/12 target met | ✅ **Partial**: Axis 0 DR worst=11/12 (target MET), Axis 1 worst=6/12 (per-axis hardware divergence, not gains) |
+| F3 | **vel_window=10 for EV3 Large eliminates the endpoint limit cycle and is robust to encoder noise** (up to 5000 mdeg/s) | vel_window sweep + DR analysis (2026-09-08) | vel_window=5/10 achieve 10-11/12 pass across all noise levels; 20/40/60 only 2-3/12 | Test vel_window=10 on hardware for EV3 Large; run 0x26090449 showed axis-0 NEG 6/12→11/12; run 0x2609044D axis 0 ALL 11/12, axis 1 hunting | ✅ partial hardware confirmation (axis 0 confirmed, axis 1 diverges) |
 | F4 | **EV3 Medium is inherently DR-robust** — all vel_window values achieve 12/12 pass even with 5000 mdeg/s noise | vel_window sweep (2026-09-08) | EV3 Medium 12/12 at all noise levels vs EV3 Large collapse at wider windows | Re-test with broader DR ranges; verify symmetric config remains robust | ✅ confirmed in sim |
 | F5 | **DR parameter ranges (±25% R, 0.5-2× friction, 0-2.5° backlash, 0-4ms delay, ±15% V_max, 0-5000 mdeg/s noise) may be too wide for fixed gains to achieve worst≥11/12** | DR tuning session (2026-09-08) | Best achieved: prop9_accel06 DR worst=8/12; target worst≥11/12 not met | Consider narrowing ranges or adaptive gains; re-evaluate if current ranges reflect actual hardware variability | ❓ needs range review |
 
@@ -107,10 +107,13 @@ Everything else is either confirmed ✅ or an accepted, monitored deviation ⚠�
 
 ## Before Phase 8 (Drive Base) we must close:
 
-- **Sim-to-real gaps** — EV3 Medium residual vibration (14° p-p), EV3 Large tracking error (now <2.0° with W40_K50), EV3 Medium negative direction (8-9/12 vs 12/12 sim)
+- **Sim-to-real gaps** — EV3 Medium residual vibration (14° p-p), EV3 Large tracking error (axis 0 <2.0°, axis 1 hunting), EV3 Medium negative direction (8-9/12 vs 12/12 sim), Axis 2 POS stalls (case_09 10.5° final error)
 - **A6 / A5** — confirm encoder counts-per-revolution matches motor datasheet CPR (drives PID gain units) and no FIFO overflow at max RPM.
 - **D4** — verify USB CDC root cause (wedging vs. enumeration timing) and fix `serial_capture.py` (partially addressed: dashboard thread-safety fixes eliminate Tkinter crashes)
 - **D7** — implement console idle timeout + heartbeat protocol for autonomous handoff ✅ **IMPLEMENTED & TESTED** (run 0x2609043C)
-- **Consecutive 12/12 validation** — Need 2+ consecutive autonomous runs with 12/12 on all 4 axes (current: 2×12/12 on EV3 Large pos, 11/12 on others)
+- **Consecutive 12/12 validation** — Need 2+ consecutive autonomous runs with 12/12 on all 4 axes (current: 0/16 cases 12/12; 8 cases 11/12; best streak case_00 3-peat 12/12, case_04 2-peat 12/12)
+- **Per-axis EV3 Large divergence** — Axis 0 achieves DR worst≥11/12, Axis 1 fails (6/12) with identical gains → hardware difference not solvable by gains alone
+- **Axis 2 POS stiction fix** — Apply start_duty=0.90 to axis 2 POS cases (case_09, case_11), mirror axis 3 fix
+- **DR robustness target** — EV3 Large worst-case ≥11/12 under DR ensemble before promoting to `motion_engine.c` (axis 0 MET, axis 1 not)
 
 Everything else is either confirmed ✅ or an accepted, monitored deviation ⚠️.
