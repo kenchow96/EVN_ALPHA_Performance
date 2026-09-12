@@ -1,18 +1,12 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-08, Autonomous Run 0x2609044D Complete):**
-> - **Run 0x2609044D**: DR-robust prop9_accel06 tested on hardware — 16/16 cases, 16/16 traces. **EV3 Large axis 0: ALL 4 repeats 11/12** (final error ~0°) — **DR target worst≥11/12 MET** on axis 0. **EV3 Large axis 1: Still hunting 6-8/12** with identical gains — **confirms per-axis/hardware divergence not solvable by gains alone**. **Axis 3 stiction fix CONFIRMED**: case_13/15 POS 11/12 with start_duty=0.90. **Axis 2 POS stalls persist** (case_09 10.5° final error) — needs start_duty=0.90 for axis 2 POS cases. vel_window=10 for axis 3 works well (10-11/12). Core 1: PERFECT (999-1001µs period, 0 missed ticks). 0/16 cases 12/12, 8 cases 11/12.
-> - **Stiction Break Fix CONFIRMED IN AUTONOMOUS (runs 0x26090440-4D)**: case_15 final error 0.0° consistently. No stiction stalls in runs 0x26090440-4D for axis 3 POS.
-> - **Symmetric EV3 Medium Config VALIDATED**: Simulation 12/12 for both NEG/POS directions; hardware 7-12/12 consistent (vs 4-9/12 with asymmetric config).
-> - **Run-to-run variation persists**: ~10% per axis. Streaks broken across runs.
-> - **Timeouts Fixed**: Extended TUNING_CORE_PAUSE_TIMEOUT_US (10k→100k) and TUNING_WATCHDOG_MS (5k→30k) allowed all 16 cases to complete.
-> - **Dashboard 10/10 bugs fixed** (A-J from firmware console audit) in `tools/evn_dashboard.py`
-> - **D7 IMPLEMENTED**: Console idle timeout (120s) + heartbeat protocol (`h`/`H`, `r`/`R`) enabled in `EVN_ALPHA_Performance.c` for autonomous↔console handoff.
-> - Board: BOOTSEL mode after run 0x2609044D completed. Next session: rebuild with EVN_AUTONOMOUS_TUNING=0 (console) or =1 (autonomous via flash_extract_decode.py).
-> - Next: Apply start_duty=0.90 to axis 2 POS cases, test vel_window=10 for axis 2, test per-axis gains for EV3 Large axis 1, run autonomous validation 0x2609044E. Phase 8 Drive Base blocked until 2+ consecutive 12/12 on all 4 axes.
-
-Every assumption made during development that is **not** marked `[GROUND TRUTH]` in the specs and has **not** been independently verified against hardware. **Review and confirm/refute each before we build dependent phases on top.** Each entry: the assumption, where it's baked in, why we made it, and how to falsify it.
-
+> **RESUME POINT (2026-09-09, Autonomous Run 0x2609044E Complete):**
+> - **Run 0x2609044E**: DR-robust prop9_accel06 gains (kp_pos=2.0e-4, kp_vel=1.0e-5, endpoint_kp=2.5e-6, accel_scale=0.60, vel_window=10) with start_duty_POS=0.90 on axes 2/3.
+>   - Results: 2/16 cases 12/12 (axis 0 NEG repeat 0, axis 3 NEG repeat 0), 16/16 traces.
+>   - Axis 2 POS stiction fix WORKED: start_duty 0.80→0.90 achieved 11/12 on case_09/11.
+>   - EV3 Large axis 0 case_12 (NEG repeat 0) 12/12, axis 1 case_14 (NEG repeat 2) 11/12.
+>   - Core 1: PERFECT — 999-1001µs period, 0 missed ticks.
+> - Next: Commit all updates, update docs/PLAN.md Status Board and this index.md, then consider next tuning priorities (e.g. per-axis gains for EV3 Large axis 1)
 Legend: ✅ confirmed · ❓ needs confirmation · ⚠️ known-deviation (accepted, monitor)
 
 ---
