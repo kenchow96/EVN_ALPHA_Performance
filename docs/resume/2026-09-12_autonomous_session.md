@@ -8,6 +8,17 @@
 **Next Run ID**: 0x26090450 (bump from 0x2609044F in `hal/hal_tuning_log.h` before next autonomous run).
 **Config**: prop9_accel06 (EV3 Large), symmetric EV3 Medium (start_duty 0.80 NEG / 0.90 POS), vel_window=10 all axes.
 
+## Autonomous Mode Directive (2026-09-12 — user confirmed)
+
+> "do all tests and tuning fully autonomously, do not need to check with user if setup is ready unless explicitly told."
+
+- **No HITL confirmation required** before flash/deploy or motor activation unless user explicitly prompts.
+- **Safety enforced automatically**: `coast_all()` at AUTO_FINISH; battery gate in `autonomous_tuning.c`; BOOTSEL check via `check_bootsel.ps1`.
+- **Loop continues continuously** (`while True`) — stops ONLY on `KeyboardInterrupt` (explicit user prompt / Ctrl+C).
+- **Axis 1 endpoint_kp=3.0e-6**: Already applied in `autonomous_tuning.c` (line 86, cases 4-7). Confirmed in source — no additional edit needed.
+- **Verified checkpoint (run 0x26090450)**: Pipeline completed; `autonomous_auto_20260912_203203/summary.csv` = 16 cases; best scores: case_15 (12/12), case_12 (12/12), case_14 (11/12); Core 1: 999-1001 µs, 0 missed ticks.
+- **Next**: Loop continues; next verified checkpoint after next pipeline completes (document new summary.csv, apply any new adjustments, commit).
+
 ## Verified Checkpoint — 2026-09-12 (before pipeline completes)
 - Read index.md + latest resume (2026-09-12_phase8_autonomous_run_0x2609044F.md) + AGENTS.md rules.
 - Board: BOOTSEL E: (`check_bootsel.ps1`); powered; motors M1-M4 unloaded.

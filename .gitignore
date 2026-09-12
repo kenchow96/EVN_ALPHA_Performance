@@ -8,6 +8,9 @@ bench/results/
 # test trace outputs (transient, generated during testing)
 test_trace*.csv
 test_trace*.txt
+test_*.txt
+validation_*.txt
+/*.txt
 
 __pycache__/
 *.pyc

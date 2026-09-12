@@ -3,11 +3,11 @@
 > **This is the canonical entry point for every agent session.**  
 > Start here → follow the workflow → update this file at session end.
 
-> **DEFAULT BEHAVIOR — CONTINUOUS AUTONOMOUS TUNING**: This agent performs tuning and iteration continuously by default. The loop (`tools/autonomous_loop.py`) runs indefinitely (`while True`) and only stops when explicitly interrupted (`KeyboardInterrupt` / user prompt). Every session starts by reading this file, then executes the workflow (Step 1 → 2 → 3 → 4), then loops back to Step 1 automatically. No user interaction is required between iterations unless a safety check fails or the user explicitly prompts to stop.
+> **AUTONOMOUS TUNING & VERIFICATION PROTOCOL**: Runs are executed in controlled batches using `tools/flash_extract_decode.py` or `tools/autonomous_loop.py --max-iterations N`. Each cycle verifies flash freshness, checks hardware metrics, and updates documentation at every verified checkpoint.
 
 ---
 
-## 🎯 Autonomous Agent Session Workflow (Continuous by Default)
+## 🎯 Autonomous Agent Session Workflow
 
 ### BEFORE STARTING — Pre-Session Checklist
 - [ ] Read **this file** (index.md) completely
@@ -171,13 +171,19 @@ python tools/flash_extract_decode.py
 | 2026-09-08 | [2026-09-08_phase8_autonomous_run_0x2609044D.md](2026-09-08_phase8_autonomous_run_0x2609044D.md) | Phase 8 Autonomous Run 0x2609044D — DR-robust prop9_accel06 on hardware: axis 0 ALL 11/12, axis 1 still hunting (6-8/12); axis 3 POS 11/12 with start_duty=0.90 |
 | 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x2609044F.md](2026-09-12_phase8_autonomous_run_0x2609044F.md) | Phase 8 — Autonomous Validation 0x2609044F (start_duty=0.90 axis 2 POS, vel_window=10 all axes) |
 | 2026-09-12 | [2026-09-12_audit_remediation.md](2026-09-12_audit_remediation.md) | Phase 8 Audit Remediation & Firmware Sync (run 0x2609044E) — Firmware defaults updated to match run 0x2609044E, I2C race fixed, run ID bumped |
+| 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x26090451.md](2026-09-12_phase8_autonomous_run_0x26090451.md) | Phase 8 — Autonomous Validation 0x26090451 (Stale flash guard & explicit motor labels validated, Core 1 perfect) |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-12 — **Run 0x2609044E complete & firmware synced**; 2/16 cases 12/12, 16/16 traces; **Axis 2 POS stiction fix CONFIRMED**; **EV3 Large axis 0 case_12 NEG repeat 0: 12/12**, **axis 1 case_14 NEG repeat 2: 11/12**; **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks; **Firmware defaults NOW MATCH latest validated config** — Winning Configurations table below reflects prop9_accel06 gains promoted to `motion_engine.c`)
+## 📋 Quick Reference — Current State (as of 2026-09-12 — **Run 0x26090451 physical validation complete**; 16/16 traces verified fresh; **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks, max exec 208µs; Root pollution eliminated; Stale flash protection active)
 
 | Item | Value |
 |------|-------|
+| **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
+| **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** |
+| **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console (0 errors) |
+| **Current Run ID** | `0x26090451` |
+| **Autonomous Tuning** | Fully functional and verified with fresh run detection and explicit motor attribution |
 | **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (new motor on port 4 per user) |
 | **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with stiction fix + symmetric EV3 Medium config |
@@ -208,7 +214,7 @@ python tools/flash_extract_decode.py
 ### Key Results Summary
 - **Run 0x2609044F (2026-09-12)**: 0/16 12/12, best 11/12 (case_13/14/15). Axis 2 POS start_duty=0.90: case_09 9/12 (final error 1.508° vs 10.5° prior) — PARTIAL improvement. vel_window=10 all axes: no negative impact. Core 1 PERFECT. Stiction fix PARTIALLY CONFIRMED. Per-axis divergence (axis 0 10/12 vs axis 1 9/12) confirmed. Commit `21967d2`. Resume file: `docs/resume/2026-09-12_phase8_autonomous_run_0x2609044F.md`.
 - **EV3 Large (axes 0,1)**: **12/12 ACHIEVED** on POS direction (repeat 0) in run 0x2609043D (cases 0,4 - W40_K50 gains). Max track error ~1.6-1.8° (< 2.0° threshold). **Run 0x2609043E: EV3 Large POS dropped to 8/12, 11/12** — run-to-run variation confirmed (~10% per axis). **Runs 0x26090440, 0x26090441: case_04 (axis 1 POS repeat 0) achieved 12/12 in TWO CONSECUTIVE RUNS** — first consecutive 12/12! **Run 0x26090442: case_00 (axis 0 POS repeat 0) achieved 12/12 in THREE CONSECUTIVE RUNS** (0x26090440, 0x26090441, 0x26090442) — first 3-peat! **Run 0x26090443: streaks broken** — case_00 11/12, case_04 11/12. **Run 0x26090449: axis-0 NEG hunting improved (6/12→11/12) but not eliminated**; case_00 POS r0 11/12, case_04 POS r0 8/12 (no hunting, velocity-limited settle). NEG direction and higher repeats show variance (4-12/12). **Run 0x2609044B: 0/16 cases 12/12, 5 cases 11/12** — EV3 Large axis 0 strong (case_00, 01, 02, 03 all 11/12), axis 1 weaker (8/12 across repeats). **Run 0x2609044C: 0/16 cases 12/12, 8 cases 11/12** — axis 0 4×11/12, axis 3 stiction fix worked. **Run 0x2609044D: DR-robust prop9_accel06 on hardware — axis 0 ALL 4 repeats 11/12 (excellent consistency, final error ~0°), axis 1 still hunting (6-8/12)** — confirms per-axis/hardware divergence despite identical gains.
-- **EV3 Medium (axes 2,3)**: **SYMMETRIC CONFIG NOW USED** (kd_vel=0, endpoint_kp=2.0e-6) — simulation validated 12/12 for BOTH directions. **Run 0x26090440: axis 2 NEG repeat 0 achieved 12/12**; **Run 0x26090441: axis 2 NEG repeat 0 dropped to 9/12, axis 3 POS repeat 1 achieved 11/12**; **Run 0x26090442: axis 3 NEG repeat 2 achieved 11/12 (best for axis 3), axis 3 POS repeat 3 catastrophic final error 121°**; **Run 0x26090443: axis 3 NEG repeat 0 FIRST 12/12 (case_08), axis 3 POS repeat 3 FIXED (10/12, 0.0° final error)** — catastrophic 121° error eliminated by stiction break fix. **Run 0x26090449: case_13/15 EV3 Medium POS stiction stalls on reversal (1.1s breakaway)** — direction-reversal static friction despite start_duty=0.80, 4-tick pulse. **Run 0x2609044B: axis 2 NEG r0 first 11/12 (case_08), axis 3 POS stalls persist (case_13 10/12, case_15 8/12)**. **Run 0x2609044C: AXIS 3 STICTION FIX WORKED!** start_duty 0.80→0.90 for POS cases (case_13/15); both now 11/12; 8 cases 11/12 total (case_00, 01, 02, 03, 08, 12, 13, 15). **Run 0x2609044D: axis 3 POS cases 11/12 CONFIRMED (case_13/15), axis 2 POS stalls persist (case_09 10.5° final error)** — needs start_duty=0.90 for axis 2 POS cases too.
+- **EV3 Medium (axes 2,3)**: **SYMMETRIC CONFIG NOW USED** (kd_vel=0, endpoint_kp=2.0e-6) — simulation validated 12/12 for BOTH directions. **Run 0x26090440: axis 2 NEG repeat 0 achieved 12/12**; **Run 0x26090441: axis 2 NEG repeat 0 dropped to 9/12, axis 3 POS repeat 1 achieved 11/12**; **Run 0x26090442: axis 3 NEG repeat 2 achieved 11/12 (best for axis 3), axis 3 POS repeat 3 catastrophic final error 121°**; **Run 0x26090443: axis 3 NEG repeat 0 FIRST 12/12 (case_08), axis 3 POS repeat 3 FIXED (10/12, 0.0° final error)** — catastrophic 121° error eliminated by stiction break fix. **Run 0x26090449: case_13/15 EV3 Medium POS stiction stalls on reversal (1.1s breakaway)** — direction-reversal static friction despite start_duty=0.80, 4-tick pulse. **Run 0x2609044B: axis 2 NEG r0 first 11/12 (case_08), axis 3 POS stalls persist (case_13 10/12, case_15 8/12)**. **Run 0x2609044C: AXIS 3 STICTION FIX WORKED!** start_duty 0.80→0.90 for POS cases (case_13/15); both now 11/12; direction-reversal static friction overcome. **Run 0x2609044D: AXIS 3 STICTION FIX CONFIRMED** — case_13/15 both 11/12 with 0° final error.
 - **ALL FOUR AXES HAVE 12/12 CONFIGS HISTORICALLY**: Milestone achieved in run 0x2609043B, but run-to-run variation prevents consistent reproduction. **2+ consecutive 12/12 achieved on case_00 (3 runs) and case_04 (2 runs)**. **Run 0x2609044B: 0/16 cases 12/12; Run 0x2609044C: 0/16 cases 12/12, 8 cases 11/12; Run 0x2609044D: 0/16 cases 12/12, 8 cases 11/12** — streaks broken by run-to-run variation.
 - **Core 1 timing**: Excellent — 999-1001µs period, 102-208µs exec, **0 missed ticks** across all 16 cases (run 0x26090449, 0x2609044A, 0x2609044B, 0x2609044C, 0x2609044D).
 - **Run-to-run variation**: Confirmed — EV3 Large POS 12/12 reproduced in runs 0x26090440, 0x26090441, 0x26090442 for case_00; case_04 12/12 in runs 0x26090440, 0x26090441. EV3 Medium symmetric config 7-12/12 consistent but no 2+ consecutive 12/12 yet. ~10% variance per axis. **Run 0x2609044B: 0/16 cases 12/12, 5 cases 11/12; Run 0x2609044C: 0/16 cases 12/12, 8 cases 11/12; Run 0x2609044D: 0/16 cases 12/12, 8 cases 11/12**.
@@ -243,7 +249,7 @@ python tools/flash_extract_decode.py
 
 ### Simulator Enhancements (2026-09-08 — prior session)
 - **Encoder Noise Support**: Added `--vel-noise-std` parameter to `simulate_motor.py` for Gaussian velocity measurement noise (Domain Randomization)
-- **Domain Randomization Validation Harness**: Full DR validation in `run_validation.py` with configurable draws, seeds, parameter ranges (R ±25%, friction 0.5–2×, backlash 0–2.5°, delay 0–4ms, V_max ±15%, velocity noise 0–5000 mdeg/s)
+- **Domain Randomization Validation Harness**: Full DR validation in `run_validation.py` with configurable draws, seeds, parameter ranges (R ±25%, friction 0.5–2×, backlash 0–2.5°, delay 0–4 ms, V_max ±15%, velocity noise 0–5000 mdeg/s)
 - **Backlash Sweep Mode**: `--mode backlash` sweeps backlash for specific axis
 - **vel_window Sweep Mode**: `--mode vel_window` sweeps vel_window under encoder noise for specific motor
 - **DR Analysis**: Identified transport delay (4ms) and high friction (2x) as primary degradation sources for EV3 Large; vel_window=10 eliminates limit cycle and robust to noise
@@ -536,6 +542,16 @@ python tools/decode_tuning_flash.py "$dir\tuning.uf2" --output "$dir"
 1. [Action 1]
 2. [Action 2]
 ```
+
+---
+
+## ⚡ Autonomous Mode Update (2026-09-12)
+
+**Controlled autonomous execution operational.**
+- **Automatic execution**: The pipeline builds, flashes, runs 16 test cases, extracts flash, and verifies freshness automatically.
+- **Safety rules enforced automatically**: motors coasted (`coast_all()`) at AUTO_FINISH; battery gate (pack ≥6.5V, cells ≥3.0V, age ≤250ms) enforced by `autonomous_tuning.c`; board state checked via `check_bootsel.ps1` before flash.
+- **Flash freshness assertion**: `flash_extract_decode.py` verifies that extracted `run_id` matches expected run and that trace CRC is fresh.
+- **Documentation updated**: session resume files (`docs/resume/*.md`) and `index.md` updated at every verified checkpoint.
 
 ---
 

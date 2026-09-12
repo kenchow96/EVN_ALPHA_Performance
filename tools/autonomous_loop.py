@@ -1,13 +1,75 @@
 #!/usr/bin/env python3
 """
-EVN ALPHA Autonomous Loop — Continuous iteration per docs/resume/index.md workflow.
-Runs continuously until explicitly interrupted (Ctrl+C) or user prompts stop.
-Loop: read latest results → apply next adjustment → bump run ID → launch pipeline → document.
+EVN ALPHA Autonomous Loop — Automated tuning pipeline with safety guards.
+Features:
+  - Automatically bumps EVN_TUNING_RUN_ID in hal/hal_tuning_log.h before each run
+    so firmware executes fresh test cases instead of seeing completed ones.
+  - Runs flash_extract_decode.py with stale-flash verification.
+  - Monitors convergence: checks for 16/16 12/12 passes or consecutive winning runs.
+  - Stops cleanly on failure, convergence, or user interrupt.
 """
-import subprocess, sys, time, os, glob
+import argparse
+import csv
+import glob
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
 
-RESULTS_DIR = "bench/results"
-RUN_LOG = "hal/hal_tuning_log.h"
+REPO_ROOT = Path(__file__).parent.parent
+RESULTS_DIR = REPO_ROOT / "bench" / "results"
+RUN_LOG_PATH = REPO_ROOT / "hal" / "hal_tuning_log.h"
+
+
+def get_current_run_id():
+    """Read current EVN_TUNING_RUN_ID from hal_tuning_log.h."""
+    text = RUN_LOG_PATH.read_text()
+    m = re.search(r"#define\s+EVN_TUNING_RUN_ID\s+0x([0-9A-Fa-f]+)u?", text)
+    if m:
+        return int(m.group(1), 16)
+    return None
+
+
+def bump_run_id():
+    """Increment EVN_TUNING_RUN_ID by 1 in hal_tuning_log.h."""
+    text = RUN_LOG_PATH.read_text()
+    m = re.search(r"#define\s+EVN_TUNING_RUN_ID\s+0x([0-9A-Fa-f]+)u?", text)
+    if not m:
+        raise ValueError("Could not find EVN_TUNING_RUN_ID in hal_tuning_log.h")
+    cur_val = int(m.group(1), 16)
+    next_val = cur_val + 1
+    new_text = re.sub(
+        r"#define\s+EVN_TUNING_RUN_ID\s+0x[0-9A-Fa-f]+u?",
+        f"#define EVN_TUNING_RUN_ID             0x{next_val:08X}u",
+        text,
+        count=1
+    )
+    RUN_LOG_PATH.write_text(new_text)
+    print(f"[autonomous_loop] Bumped EVN_TUNING_RUN_ID: 0x{cur_val:08X} -> 0x{next_val:08X}")
+    return next_val
+
+
+def parse_summary_passes(summary_path):
+    """Return count of full passes (12/12) and total cases from summary.csv."""
+    if not os.path.exists(summary_path):
+        return 0, 0
+    passes = 0
+    total_cases = 0
+    with open(summary_path, "r") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            total_cases += 1
+            try:
+                p = int(row.get("passed", 0))
+                tot = int(row.get("total", 0))
+                if tot > 0 and p == tot:
+                    passes += 1
+            except (ValueError, TypeError):
+                pass
+    return passes, total_cases
+
 
 def find_latest_summary():
     dirs = sorted(glob.glob(f"{RESULTS_DIR}/autonomous_auto_*"), key=os.path.getmtime, reverse=True)
@@ -17,33 +79,55 @@ def find_latest_summary():
             return s, d
     return None, None
 
+
 def main():
-    print("[autonomous_loop] Starting continuous loop. Press Ctrl+C to stop.")
+    parser = argparse.ArgumentParser(description="EVN Autonomous Tuning Loop")
+    parser.add_argument("--max-iterations", type=int, default=1, help="Max iterations to run (default: 1 for controlled validation)")
+    parser.add_argument("--timeout", type=int, default=900, help="Pipeline timeout in seconds (default 900)")
+    args = parser.parse_args()
+
+    print(f"[autonomous_loop] Starting autonomous loop (max {args.max_iterations} iterations). Press Ctrl+C to stop.")
     iteration = 0
-    while True:
+
+    while iteration < args.max_iterations:
         iteration += 1
-        print(f"\n=== LOOP ITERATION {iteration} ===")
-        summary, dir_path = find_latest_summary()
-        if summary:
-            print(f"[autonomous_loop] Latest results: {summary}")
-        # Launch pipeline (build + flash + extract + decode)
-        print("[autonomous_loop] Launching pipeline...")
+        print(f"\n==================================================")
+        print(f"=== LOOP ITERATION {iteration} / {args.max_iterations} ===")
+        print(f"==================================================")
+
+        # Bump Run ID so firmware sees fresh cases
+        new_run_id = bump_run_id()
+
+        # Launch pipeline (build + flash + wait bootsel + extract + decode)
+        print(f"[autonomous_loop] Launching pipeline for run 0x{new_run_id:08X}...")
         result = subprocess.run(
-            [sys.executable, "tools/flash_extract_decode.py", "--timeout", "900"],
+            [sys.executable, "tools/flash_extract_decode.py", "--timeout", str(args.timeout)],
             capture_output=False
         )
-        print(f"[autonomous_loop] Pipeline completed (exit={result.returncode}).")
-        # After pipeline, read new summary and document
-        new_summary, new_dir = find_latest_summary()
-        if new_summary:
-            print(f"[autonomous_loop] New results documented at: {new_summary}")
-        # Loop continues automatically
-        print("[autonomous_loop] Loop continuing... (next iteration in 5s)")
-        time.sleep(5)
+
+        if result.returncode != 0:
+            print(f"[autonomous_loop] ERROR: Pipeline returned non-zero exit code {result.returncode}. Stopping.")
+            sys.exit(result.returncode)
+
+        # Check results
+        summary, dir_path = find_latest_summary()
+        if summary:
+            passes, total_cases = parse_summary_passes(summary)
+            print(f"[autonomous_loop] Iteration {iteration} result: {passes}/{total_cases} cases full 12/12 PASS.")
+            if total_cases > 0 and passes == total_cases:
+                print(f"[autonomous_loop] CONVERGENCE ACHIEVED: 16/16 cases 12/12 passed! Halting loop.")
+                break
+
+        if iteration < args.max_iterations:
+            print("[autonomous_loop] Pausing 5s before next iteration...")
+            time.sleep(5)
+
+    print("[autonomous_loop] Autonomous execution finished.")
+
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n[autonomous_loop] Stopped by user (explicit prompt). Session halted.")
+        print("\n[autonomous_loop] Stopped by user (Ctrl+C).")
         sys.exit(0)

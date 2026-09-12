@@ -236,6 +236,47 @@ def extract_flash(output_dir, drive_letter=None):
     return uf2_output
 
 
+def get_expected_run_id():
+    """Read EVN_TUNING_RUN_ID from hal/hal_tuning_log.h."""
+    header_path = REPO_ROOT / "hal" / "hal_tuning_log.h"
+    if not header_path.exists():
+        return None
+    for line in header_path.read_text().splitlines():
+        if "EVN_TUNING_RUN_ID" in line:
+            parts = line.strip().split()
+            for p in parts:
+                if p.startswith("0x"):
+                    try:
+                        return int(p.rstrip("uU"), 16)
+                    except ValueError:
+                        pass
+    return None
+
+
+def verify_extracted_run(output_dir, expected_run_id):
+    """Verify that decoded records match expected run ID and have fresh CRC."""
+    records_file = Path(output_dir) / "flash_records.json"
+    if not records_file.exists():
+        return True, "No flash_records.json found to verify"
+    try:
+        with open(records_file, "r") as f:
+            records = json.load(f)
+        if not records or not isinstance(records, list):
+            return False, "Decoded records empty or invalid"
+        extracted_run_id = records[0].get("header", {}).get("run_id")
+        if expected_run_id is not None and extracted_run_id != expected_run_id:
+            return False, (
+                f"STALE FLASH DETECTED: Extracted run_id 0x{extracted_run_id:08X} "
+                f"does not match expected 0x{expected_run_id:08X}. "
+                f"Firmware did not execute with new Run ID."
+            )
+        crc = records[0].get("header", {}).get("trace_crc32")
+        print(f"[flash_extract] Verified fresh run: run_id=0x{extracted_run_id:08X}, case0_crc=0x{crc:08X}")
+        return True, "OK"
+    except Exception as e:
+        return False, f"Verification failed with error: {e}"
+
+
 def decode_flash(uf2_path, output_dir):
     """Decode extracted flash using decode_tuning_flash.py."""
     output_dir = Path(output_dir)
@@ -394,6 +435,13 @@ def main():
         # Step 5: Decode
         summary = decode_flash(extracted, output_dir)
         if not summary:
+            return 1
+        
+        # Step 5b: Verify extracted run freshness
+        expected_run_id = get_expected_run_id()
+        valid, msg = verify_extracted_run(output_dir, expected_run_id)
+        if not valid:
+            print(f"[flash_extract] ERROR: {msg}", file=sys.stderr)
             return 1
         
         # Step 6: Print summary

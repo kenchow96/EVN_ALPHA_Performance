@@ -246,7 +246,9 @@ def case_name(header):
         return f"{prefix}{header['repeat_index']}_{direction}"
     gain = round(header["kv"] * 1e7)
     direction = "pos" if header["delta_mdeg"] >= 0 else "neg"
-    return f"W{header['speed_window']}_K{gain}_{direction}"
+    axis_labels = {1: "M1_EV3L", 2: "M2_EV3L", 3: "M3_EV3M", 4: "M4_EV3M"}
+    axis_str = axis_labels.get(header.get("axis", 0), f"ax{header.get('axis', 0)}")
+    return f"{axis_str}_W{header['speed_window']}_K{gain}_{direction}"
 
 
 def decode_rows(image, case_index, header):
