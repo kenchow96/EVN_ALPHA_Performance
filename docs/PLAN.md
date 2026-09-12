@@ -177,7 +177,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
 | 7 — Motion engine | ✅ Done | 2026-09-02 | `4319fb7` |
 | **7u — Motor Model Calibration** | **✅ Done** | **2026-09-04** | **`14f81b1`** |
-| 7v — Autonomous Validation (perfection) | ✅ **Run 0x2609044E Complete & Firmware Updated**: DR-robust prop9_accel06 gains (kp_pos=2.0e-4, kp_vel=1.0e-5, endpoint_kp=2.5e-6, accel_scale=0.60, vel_window=10) with start_duty_POS=0.90 on axes 2/3. Results: 2/16 cases 12/12 (axis 0 NEG repeat 0, axis 3 NEG repeat 0), 16/16 traces. Axis 2 POS stiction fix WORKED: start_duty 0.80→0.90 achieved 11/12 on case_09/11. EV3 Large axis 0 case_12 (NEG repeat 0) 12/12, axis 1 case_14 (NEG repeat 2) 11/12. Core 1: PERFECT — 999-1001µs period, 0 missed ticks. **Firmware defaults updated to match run 0x2609044E config. I2C firmware race fixed with scan-active guard. Run ID bumped to 0x2609044E.** | 2026-09-12 | `this commit` |
+| 7v — Autonomous Validation (perfection) | ✅ **Run 0x2609044F (2026-09-12)**: 0/16 12/12, best 11/12 (case_13/14/15). Axis 2 POS start_duty=0.90 applied (case_09 9/12, partial — final error 1.508° vs 10.5° prior). vel_window=10 all axes (no negative impact). Core 1 PERFECT. Stiction fix PARTIALLY CONFIRMED. Per-axis divergence (axis 0 10/12 vs axis 1 9/12) confirmed. Commit `21967d2`. **Run 0x2609044E (2026-09-12)**: Firmware defaults updated to prop9_accel06; I2C race fixed; run ID 0x2609044E. | 2026-09-12 | `21967d2` |
 | 8 — Drive base | ⬜ Not started — **BLOCKED** until stiction fix + 2+ consecutive 12/12 runs | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 

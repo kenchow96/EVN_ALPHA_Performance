@@ -83,11 +83,11 @@ static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.5e-6f, 800, 200, 4, 0.12f, 0, 2,  720.0f,  800.0f, 1600.0f, 0, 2.0e-4f, 1.0e-5f, 500, 2.5e-6f, 0.60f, 0.0f, 0.0f},
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.5e-6f, 800, 200, 4, 0.12f, 0, 3, -720.0f,  800.0f, 1600.0f, 0, 2.0e-4f, 1.0e-5f, 500, 2.5e-6f, 0.60f, 0.0f, 0.0f},
     
-    /* Axis 1 (EV3 Large, 800 deg/s max): DR-robust prop9_accel06 config */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.5e-6f, 800, 200, 4, 0.12f, 1, 0,  720.0f,  800.0f, 1600.0f, 0, 2.0e-4f, 1.0e-5f, 500, 2.5e-6f, 0.60f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.5e-6f, 800, 200, 4, 0.12f, 1, 1, -720.0f,  800.0f, 1600.0f, 0, 2.0e-4f, 1.0e-5f, 500, 2.5e-6f, 0.60f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.5e-6f, 800, 200, 4, 0.12f, 1, 2,  720.0f,  800.0f, 1600.0f, 0, 2.0e-4f, 1.0e-5f, 500, 2.5e-6f, 0.60f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.5e-6f, 800, 200, 4, 0.12f, 1, 3, -720.0f,  800.0f, 1600.0f, 0, 2.0e-4f, 1.0e-5f, 500, 2.5e-6f, 0.60f, 0.0f, 0.0f},
+    /* Axis 1 (EV3 Large, 800 deg/s max): DR-robust prop9_accel06 + per-axis endpoint_kp=3.0e-6 (hunting fix) */
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 3.0e-6f, 800, 200, 4, 0.12f, 1, 0,  720.0f,  800.0f, 1600.0f, 0, 2.0e-4f, 1.0e-5f, 500, 3.0e-6f, 0.60f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 3.0e-6f, 800, 200, 4, 0.12f, 1, 1, -720.0f,  800.0f, 1600.0f, 0, 2.0e-4f, 1.0e-5f, 500, 3.0e-6f, 0.60f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 3.0e-6f, 800, 200, 4, 0.12f, 1, 2,  720.0f,  800.0f, 1600.0f, 0, 2.0e-4f, 1.0e-5f, 500, 3.0e-6f, 0.60f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 3.0e-6f, 800, 200, 4, 0.12f, 1, 3, -720.0f,  800.0f, 1600.0f, 0, 2.0e-4f, 1.0e-5f, 500, 3.0e-6f, 0.60f, 0.0f, 0.0f},
     
     /* Axis 2 (EV3 Medium UNLOADED, 1200 deg/s max): NEG direction - REPRODUCE 12/12 */
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
