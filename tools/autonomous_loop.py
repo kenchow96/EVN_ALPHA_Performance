@@ -18,6 +18,8 @@ import sys
 import time
 from pathlib import Path
 
+from sim_integration import run_simulation_preflight, compare_sim_to_real
+
 REPO_ROOT = Path(__file__).parent.parent
 RESULTS_DIR = REPO_ROOT / "bench" / "results"
 RUN_LOG_PATH = REPO_ROOT / "hal" / "hal_tuning_log.h"
@@ -84,6 +86,8 @@ def main():
     parser = argparse.ArgumentParser(description="EVN Autonomous Tuning Loop")
     parser.add_argument("--max-iterations", type=int, default=1, help="Max iterations to run (default: 1 for controlled validation)")
     parser.add_argument("--timeout", type=int, default=900, help="Pipeline timeout in seconds (default 900)")
+    parser.add_argument("--no-sim-gate", action="store_true", help="Skip pre-flight simulation gate check")
+    parser.add_argument("--no-sim-compare", action="store_true", help="Skip post-run Sim-to-Real comparison")
     args = parser.parse_args()
 
     print(f"[autonomous_loop] Starting autonomous loop (max {args.max_iterations} iterations). Press Ctrl+C to stop.")
@@ -95,10 +99,19 @@ def main():
         print(f"=== LOOP ITERATION {iteration} / {args.max_iterations} ===")
         print(f"==================================================")
 
-        # Bump Run ID so firmware sees fresh cases
+        # Step 1: Simulator Pre-Flight Validation Gate
+        if not args.no_sim_gate:
+            print("[autonomous_loop] Running Simulator Pre-Flight Gate...")
+            gate_ok, _ = run_simulation_preflight()
+            if not gate_ok:
+                print("[autonomous_loop] ERROR: Simulator pre-flight gate failed! Proposed gains are unstable. Halting.")
+                sys.exit(1)
+            print("[autonomous_loop] Simulator pre-flight gate passed successfully.")
+
+        # Step 2: Bump Run ID so firmware sees fresh cases
         new_run_id = bump_run_id()
 
-        # Launch pipeline (build + flash + wait bootsel + extract + decode)
+        # Step 3: Launch pipeline (build + flash + wait bootsel + extract + decode)
         print(f"[autonomous_loop] Launching pipeline for run 0x{new_run_id:08X}...")
         result = subprocess.run(
             [sys.executable, "tools/flash_extract_decode.py", "--timeout", str(args.timeout)],
@@ -109,11 +122,16 @@ def main():
             print(f"[autonomous_loop] ERROR: Pipeline returned non-zero exit code {result.returncode}. Stopping.")
             sys.exit(result.returncode)
 
-        # Check results
+        # Step 4: Check results & Sim-to-Real Comparison
         summary, dir_path = find_latest_summary()
-        if summary:
+        if summary and dir_path:
             passes, total_cases = parse_summary_passes(summary)
             print(f"[autonomous_loop] Iteration {iteration} result: {passes}/{total_cases} cases full 12/12 PASS.")
+
+            if not args.no_sim_compare:
+                print(f"[autonomous_loop] Running Sim-to-Real telemetry comparison...")
+                compare_sim_to_real(Path(dir_path))
+
             if total_cases > 0 and passes == total_cases:
                 print(f"[autonomous_loop] CONVERGENCE ACHIEVED: 16/16 cases 12/12 passed! Halting loop.")
                 break

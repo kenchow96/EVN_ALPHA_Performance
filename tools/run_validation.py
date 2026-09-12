@@ -7,7 +7,11 @@ import argparse
 import random
 import json
 import statistics
+from pathlib import Path
 from typing import List, Tuple
+
+REPO_ROOT = Path(__file__).parent.parent
+OUTPUT_DIR = REPO_ROOT / 'bench' / 'results' / 'validation_runs'
 
 # Test cases from autonomous_tuning.c
 # vel_window: EV3 Large uses 10 (calibrated sim shows this eliminates the endpoint
@@ -63,6 +67,9 @@ def run_single_sim(motor, kp_pos, ki_pos, kp_vel, endpoint_kp_vel, accel_scale,
         max_vel_final = max_vel * dr_params['V_max_scale']
         max_accel_final = max_accel * dr_params['V_max_scale']
     
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_file = OUTPUT_DIR / f'validation_{name}.txt'
+
     cmd = [
         sys.executable, 'tools/simulate_motor.py',
         '--motor', motor,
@@ -80,7 +87,7 @@ def run_single_sim(motor, kp_pos, ki_pos, kp_vel, endpoint_kp_vel, accel_scale,
         '--max-vel', str(max_vel_final),
         '--max-accel', str(max_accel_final),
         '--duration', '4',
-        '--output', f'validation_{name}.txt',
+        '--output', str(out_file),
         '--trace'
     ]
     
@@ -103,7 +110,7 @@ def run_single_sim(motor, kp_pos, ki_pos, kp_vel, endpoint_kp_vel, accel_scale,
         return None, f'SIM_FAILED: {result.stderr[:100]}'
     
     # Run metrics
-    cmd = [sys.executable, 'tools/motion_metrics.py', f'validation_{name}.txt']
+    cmd = [sys.executable, 'tools/motion_metrics.py', str(out_file)]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
     if result.returncode != 0:
         return None, f'METRICS_FAILED: {result.stderr[:100]}'
