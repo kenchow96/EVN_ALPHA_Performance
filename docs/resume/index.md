@@ -172,22 +172,19 @@ python tools/flash_extract_decode.py
 | 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x2609044F.md](2026-09-12_phase8_autonomous_run_0x2609044F.md) | Phase 8 — Autonomous Validation 0x2609044F (start_duty=0.90 axis 2 POS, vel_window=10 all axes) |
 | 2026-09-12 | [2026-09-12_audit_remediation.md](2026-09-12_audit_remediation.md) | Phase 8 Audit Remediation & Firmware Sync (run 0x2609044E) — Firmware defaults updated to match run 0x2609044E, I2C race fixed, run ID bumped |
 | 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x26090451.md](2026-09-12_phase8_autonomous_run_0x26090451.md) | Phase 8 — Autonomous Validation 0x26090451 (Stale flash guard & explicit motor labels validated, Core 1 perfect) |
+| 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x26090452.md](2026-09-12_phase8_autonomous_run_0x26090452.md) | Phase 8 — Autonomous Optimization 0x26090452 (One pass of auto_tuner.py, Sim-to-Real 92.5% agreement on Large motors) |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-12 — **Run 0x26090451 physical validation complete**; 16/16 traces verified fresh; **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks, max exec 208µs; Root pollution eliminated; Stale flash protection active)
+## 📋 Quick Reference — Current State (as of 2026-09-12 — **Run 0x26090452 complete**; 16/16 physical traces; **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks, max exec 208µs; Closed-loop auto-tuner active; Console firmware restored)
 
 | Item | Value |
 |------|-------|
 | **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** |
 | **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console (0 errors) |
-| **Current Run ID** | `0x26090451` |
-| **Autonomous Tuning** | Fully functional and verified with fresh run detection and explicit motor attribution |
-| **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
-| **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (new motor on port 4 per user) |
-| **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with stiction fix + symmetric EV3 Medium config |
-| **Next Run ID** | `0x26090450` (bump `hal/hal_tuning_log.h` from `0x2609044F` before next run) |
+| **Current Run ID** | `0x26090452` |
+| **Autonomous Tuning** | Closed-loop mathematical optimizer with Sim pre-flight and Sim-to-Real telemetry comparison |
 | **Autonomous Tuning** | Disabled in `CMakeLists.txt` (restored after run) |
 | **Hardware Validation** | Complete — 224/224 cases run across 14 autonomous runs, all traces decoded |
 | **Motor Model Calibration** | Complete — EV3 Medium model fixed for unloaded operation, sim 12/12 both directions |
