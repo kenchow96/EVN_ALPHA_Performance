@@ -91,9 +91,9 @@ static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
     
     /* Axis 2 (EV3 Medium UNLOADED, 1200 deg/s max): NEG direction - REPRODUCE 12/12 */
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 0, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.90f, 2, 1,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
     {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 2, -720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.80f, 2, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.0e-6f, 800, 200, 4, 0.90f, 2, 3,  720.0f, 1100.0f, 2200.0f, 0, 2.5e-4f, 1.0e-6f, 500, 2.0e-6f, 0.35f, 0.0f, 0.0f},
 
     /* Axis 3 (EV3 Medium UNLOADED, 1200 deg/s max): POS direction - REPRODUCE 12/12
      * Simulation validation: symmetric NEG config (kd_vel=0, endpoint_kp=2.0e-6) passes 12/12 for BOTH directions.
@@ -311,11 +311,7 @@ void autonomous_tuning_service(void) {
      * though encoder oscillation (~213° pp) persists.
      * Keep 40 for EV3 Medium (axes 2,3) as they were unaffected.
      */
-    int window = 10;
-    if (axis >= 2 && axis != 3) {
-        window = 40;  /* EV3 Medium axis 2 only */
-    }
-    /* axis 3 (new EV3 Medium motor): use vel_window=10 to reduce phase lag on reversals */
+    int window = 10;  /* vel_window=10 for ALL axes: EV3 Large (0,1) eliminates limit cycle; EV3 Medium (2,3) reduces reversal phase lag */
     evn_motion_set_speed_window(axis, window);
         evn_motion_set_edge_speed_alpha(axis, 0.05f);
         float vel_scale = (axis >= 2) ? 0.85f : 1.0f;
