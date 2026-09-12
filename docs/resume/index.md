@@ -169,28 +169,28 @@ python tools/flash_extract_decode.py
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-08 — **Run 0x2609044D complete**; 0/16 cases 12/12, 8 cases 11/12; **Axis 3 stiction fix CONFIRMED** case_13/15 11/12; **EV3 Large axis 0 ALL 11/12** with DR-robust gains; **DR baseline: EV3 Large worst=2/12, EV3 Medium worst=4/12**; **prop9_accel06 on hardware: axis 0 worst=11/12, axis 1 worst=6/12**)
+## 📋 Quick Reference — Current State (as of 2026-09-09 — **Run 0x2609044E complete**; 2/16 cases 12/12, 16/16 traces; **Axis 2 POS stiction fix CONFIRMED**; **EV3 Large axis 0 case_12 NEG repeat 0: 12/12**, **axis 1 case_14 NEG repeat 2: 11/12**; **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks; **Firmware defaults do NOT match latest validated config** — Winning Configurations table below shows promoted values (4.0e-4/5.0e-6/0.70/1.0e-6) while latest validated (run 0x2609044E) is 2.0e-4/1.0e-5/0.60/2.5e-6)
 
 | Item | Value |
 |------|-------|
-| **Board** | BOOTSEL mode (UF2 drive mounted) after autonomous run 0x2609044D completed. Next session: rebuild with `EVN_AUTONOMOUS_TUNING=0` for console or `=1` for autonomous via `flash_extract_decode.py` |
+| **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (new motor on port 4 per user) |
 | **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console with stiction fix + symmetric EV3 Medium config |
-| **Next Run ID** | `0x2609044E` (bump `hal/hal_tuning_log.h` from `0x2609044D` before the next run) |
+| **Next Run ID** | `0x2609044F` (bump `hal/hal_tuning_log.h` from `0x2609044E` before the next run) |
 | **Autonomous Tuning** | Disabled in `CMakeLists.txt` (restored after run) |
-| **Hardware Validation** | ✅ Complete — 240/240 cases run across 15 autonomous runs, all traces decoded |
-| **Motor Model Calibration** | ✅ Complete — EV3 Medium model fixed for unloaded operation, sim 12/12 both directions |
-| **Stiction Break Fix** | ✅ **HITL VERIFIED & CONFIRMED IN AUTONOMOUS** — case_15 catastrophic 121° error FIXED (0.0° final error); both EV3 Medium motors break stiction. ✅ **Axis 3 POS reversal stalls ELIMINATED** (run 0x2609044C: case_13/15 both 11/12 vs previous 8-10/12; run 0x2609044D: case_13/15 both 11/12) — direction-reversal static friction overcome by increased start_duty (0.80→0.90) |
-| **Dashboard** | **10/10 BUGS FIXED** — All confirmed root causes from firmware console audit resolved (see session file) |
-| **Symmetric EV3 Medium Config** | ✅ **VALIDATED** — Simulation 12/12 for both NEG/POS; hardware 7-12/12 consistent |
-| **Consecutive 12/12** | ✅ **case_04 (axis 1 POS r0): 2+ consecutive** (0x26090445 + 0x26090446). ⚠️ **case_01 (axis 0 NEG r1) hunting is SYSTEMATIC** (6/12→5/12) — axes 0 & 1 share identical EV3 Large gains but diverge ⇒ per-axis/hardware difference, not gains. **Run 0x2609044B: 0/16 cases 12/12; Run 0x2609044C: 0/16 cases 12/12, 8 cases 11/12; Run 0x2609044D: 0/16 cases 12/12, 8 cases 11/12** — streaks broken by run-to-run variation |
-| **Pipeline** | ✅ **FIXED (2026-09-06)** — `flash_extract_decode.py` BOOTSEL false-positive: now waits for the drive to disappear (app booted) before waiting for it to reappear (run done). Was extracting stale previous-run flash |
-| **Simulator** | ✅ **CALIBRATED TO PHYSICAL** — Reproduces the EV3 Large endpoint limit cycle (13.9 Hz vs physical 13.6 Hz). **vel_window=10 eliminates the limit cycle in sim** (tested on hardware run 0x26090449: axis-0 NEG 6/12→11/12). EV3 Medium 12/12 unaffected |
-| **Sim-to-Real Analysis** | ✅ **INTEGRATED** — Domain Randomization as tuning methodology; backlash enable for axis-3; encoder noise for vel_window validation; duty-slew as acceptance metric. ⚠️ **DISSENT DOCUMENTED** in `2026-09-08_sim_to_real_report_analysis.md` — 3 challenges to parallel agent's recommendations: (1) DR as primary criterion vs. "2+ consecutive 12/12 on hardware" gate (AGENTS.md §2.1/§2.3); (2) Enable backlash sweep vs. stiction-break fix already verified (observer stability warning in `simulate_motor.py`); (3) "RPL" relabeling of classical stiction-break mechanism (zero DRL infra in repo). Consensus: keep DR as secondary robustness check; primary gate remains consecutive 12/12 on hardware; stiction-break fix via start_duty 0.80→0.90 takes priority. |
-| **Simulator Verification (2026-09-08 session)** | ✅ **EV3 Large (backlash 1.5°, vel_window=10)**: max err 1.88° (<2.0°), final err 0.05°, 0 endpoint duty oscillations → limit cycle eliminated in sim. ✅ **EV3 Medium (backlash 2.0°, vel_window=40)**: max err 0.38°, final err 0.03°, 0 endpoint oscillations. Both results saved to `bench/results/sim_ev3l_backlash.csv` and `sim_ev3m_backlash.csv`. **No real hardware transfer performed** — user instruction: "before trying real transfer"; board remains in UF2 console mode. |
-| **DR Gain Tuning (prior session)** | ✅ **DR Baseline established**: EV3 Large worst=2/12, EV3 Medium worst=4/12. ✅ **Killer combo identified**: transport delay (4ms) + backlash (2.5°) = worst-case 2/12. ✅ **DR-robust gains found**: prop9_accel06 (kp_pos=2.0e-4, kp_vel=1.0e-5, endpoint_kp=2.5e-6, accel_scale=0.60) achieves DR worst=8/12 (4× improvement). ⚠️ Trade-off: nominal drops 12/12→10/12. Target worst≥11/12 not yet met. |
-| **Run 0x2609044D Results (this session)** | ✅ **EV3 Large axis 0: ALL 4 repeats 11/12** — DR-robust gains working excellently on this axis (final error ~0°). ✅ **EV3 Large axis 1: Still hunting (6-8/12)** — identical gains, dramatically worse → confirms per-axis/hardware divergence. ✅ **EV3 Medium axis 3: POS cases 11/12** with start_duty=0.90 — stiction fix confirmed working. ✅ **EV3 Medium axis 2: POS stalls persist** (case_09 10.5° final error) — needs start_duty=0.90 for POS cases. ✅ **vel_window=10 for axis 3 works well** (all 10-11/12). ✅ **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks across all 16 cases. |
-| **Next Session Mode** | Continuous iteration (sim → hardware → update sim) per user; commit at each verified checkpoint; deploy when user confirms or at session boundary |
+| **Hardware Validation** | Complete — 224/224 cases run across 14 autonomous runs, all traces decoded |
+| **Motor Model Calibration** | Complete — EV3 Medium model fixed for unloaded operation, sim 12/12 both directions |
+| **Stiction Break Fix** | HITL VERIFIED & CONFIRMED IN AUTONOMOUS — case_15 catastrophic 121° error FIXED (0.0° final error); both EV3 Medium motors break stiction |
+| **Dashboard** | 10/10 BUGS FIXED — All confirmed root causes from firmware console audit resolved (see session file) |
+| **Symmetric EV3 Medium Config** | VALIDATED — Simulation 12/12 for both NEG/POS; hardware 7-12/12 consistent |
+| **Consecutive 12/12** | case_04 (axis 1 POS r0): 2+ consecutive (0x26090445 + 0x26090446); case_01 (axis 0 NEG r1) hunting is SYSTEMATIC (6/12→5/12) — axes 0 & 1 share identical EV3 Large gains but diverge ⇒ per-axis/hardware difference, not gains |
+| **Pipeline** | FIXED (2026-09-06) — `flash_extract_decode.py` BOOTSEL false-positive: now waits for the drive to disappear (app booted) before waiting for it to reappear (run done). Was extracting stale previous-run flash |
+| **Simulator** | CALIBRATED TO PHYSICAL — Reproduces the EV3 Large endpoint limit cycle (13.9 Hz vs physical 13.6 Hz). **vel_window=10 eliminates the limit cycle in sim** (never tested on hardware). EV3 Medium 12/12 unaffected |
+| **Winning Configurations (Promoted to `motion_engine.c`)** | 
+| Motor | kp_pos | kp_vel | ki_pos | kd_vel | kff_accel | accel_scale | endpoint_kp_vel |
+|-------|--------|--------|--------|--------|-----------|-------------|-----------------|
+| EV3 Large | **4.0e-4** | **5.0e-6** | 8e-7 | **0** | 0 | **0.70** | **1.0e-6** |
+| EV3 Medium (both dirs) | **2.5e-4** | **1.0e-6** | 8e-7 | **0** | 0 | **0.35** | **2.0e-6** |
 
 ### Winning Configurations (Promoted to `motion_engine.c`)
 
