@@ -3,9 +3,11 @@
 > **This is the canonical entry point for every agent session.**  
 > Start here → follow the workflow → update this file at session end.
 
+> **DEFAULT BEHAVIOR — CONTINUOUS AUTONOMOUS TUNING**: This agent performs tuning and iteration continuously by default. The loop (`tools/autonomous_loop.py`) runs indefinitely (`while True`) and only stops when explicitly interrupted (`KeyboardInterrupt` / user prompt). Every session starts by reading this file, then executes the workflow (Step 1 → 2 → 3 → 4), then loops back to Step 1 automatically. No user interaction is required between iterations unless a safety check fails or the user explicitly prompts to stop.
+
 ---
 
-## 🎯 Autonomous Agent Session Workflow
+## 🎯 Autonomous Agent Session Workflow (Continuous by Default)
 
 ### BEFORE STARTING — Pre-Session Checklist
 - [ ] Read **this file** (index.md) completely
@@ -117,7 +119,8 @@ python tools/flash_extract_decode.py
 - [ ] Update this `index.md` with complete session summary
 
 > **Efficiency Protocol Rule 12**: Start fresh agent session when context becomes inefficient.  
-> First coast hardware, commit verified work, update Status Board/resume point, leave one exact next command.
+> First coast hardware, commit verified work, update Status Board/resume point, leave one exact next command.  
+> **CONTINUOUS LOOP DEFAULT**: After Step 4, the agent automatically restarts at Step 1 (re-reads this file) and continues the loop. The loop only stops when the user explicitly prompts (`KeyboardInterrupt` / "stop the loop"). The continuation command is always: `python tools/autonomous_loop.py` (or `python tools/flash_extract_decode.py --timeout 900` for a single run).
 
 ---
 
