@@ -15,7 +15,7 @@
  * Example: 0x2609042B = 2026-09-04, run #43 (0x2B = 43 decimal)
  * Increment for each autonomous run. Reusing a run ID causes firmware to skip completed cases.
  */
-#define EVN_TUNING_RUN_ID             0x26090454u
+#define EVN_TUNING_RUN_ID             0x26090455u
 #define EVN_TUNING_SCHEMA_VERSION     1u
 #define EVN_TUNING_CASE_COUNT         16u
 #define EVN_TUNING_FLASH_BASE_OFFSET  0x00F00000u
@@ -30,12 +30,33 @@
 
 #define EVN_TUNING_SUPER_MAGIC  0x31535645u
 #define EVN_TUNING_RECORD_MAGIC 0x31525645u
+#define EVN_TUNING_PARAM_MAGIC  0x31505645u  /* 'EVP1' NVM parameter table */
+#define EVN_TUNING_PARAM_OFFSET 0x00FF8000u  /* Top 32KB of flash */
 
 typedef enum {
     EVN_TUNING_STATUS_COMPLETE = 1,
     EVN_TUNING_STATUS_BATTERY_ABORT = 2,
     EVN_TUNING_STATUS_INTERNAL_ERROR = 3,
 } evn_tuning_status_t;
+
+/* In-flash configurable parameter table for zero-recompile tuning */
+typedef struct {
+    uint32_t magic;
+    uint32_t schema_version;
+    uint32_t run_id;
+    uint32_t active_flags;   /* bit 0 = use_nvm_params */
+    struct {
+        float kp_pos;
+        float kp_vel;
+        float endpoint_kp_vel;
+        float accel_scale;
+        float start_duty;
+        float reserved[3];
+    } axis_params[4];
+    uint32_t crc32;
+    uint8_t  padding[108];
+} evn_tuning_nvm_params_t;
+_Static_assert(sizeof(evn_tuning_nvm_params_t) == 256, "NVM param table must be one 256-byte page");
 
 typedef struct {
     uint32_t magic;
@@ -111,5 +132,8 @@ bool hal_tuning_log_program_trace(uint32_t case_index, const void *data,
 bool hal_tuning_log_commit_case(uint32_t case_index,
                                 const evn_tuning_record_header_t *header);
 uint32_t hal_tuning_log_crc32(uint32_t crc, const void *data, size_t length);
+
+/* NVM parameter table API */
+bool hal_tuning_log_load_nvm_params(evn_tuning_nvm_params_t *out);
 
 #endif

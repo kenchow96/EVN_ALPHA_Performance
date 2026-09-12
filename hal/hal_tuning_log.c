@@ -154,3 +154,20 @@ bool hal_tuning_log_commit_case(uint32_t case_index,
     return safe_program(slot_offset(case_index), (const uint8_t *)&committed,
                         sizeof committed);
 }
+
+bool hal_tuning_log_load_nvm_params(evn_tuning_nvm_params_t *out) {
+    if (!out) return false;
+    const evn_tuning_nvm_params_t *stored =
+        (const evn_tuning_nvm_params_t *)(XIP_BASE + EVN_TUNING_PARAM_OFFSET);
+    evn_tuning_nvm_params_t copy = *stored;
+    if (copy.magic != EVN_TUNING_PARAM_MAGIC ||
+        copy.schema_version != EVN_TUNING_SCHEMA_VERSION ||
+        !(copy.active_flags & 1u))
+        return false;
+    uint32_t expected = copy.crc32;
+    copy.crc32 = 0;
+    if (hal_tuning_log_crc32(0, &copy, sizeof copy) != expected)
+        return false;
+    *out = *stored;
+    return true;
+}

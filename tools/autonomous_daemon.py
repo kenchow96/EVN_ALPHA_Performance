@@ -39,7 +39,7 @@ RESULTS_DIR = BENCH_DIR / "results"
 ENDURANCE_LOG = RESULTS_DIR / "endurance_log.csv"
 
 from auto_tuner import update_firmware_cases, bump_run_id, LARGE_PARAM_BOUNDS, MEDIUM_PARAM_BOUNDS
-from optimizer import AutonomousOptimizer, compute_scalar_cost
+from optimizer import AutonomousOptimizer, OnlineCMAOptimizer, compute_scalar_cost
 from storage_manager import prune_storage
 from sim_integration import run_simulation_preflight, compare_sim_to_real
 
@@ -123,6 +123,10 @@ def run_daemon(
         "accel_scale": 0.35, "start_duty_pos": 0.90
     }
 
+    # Closed-loop Online CMA-ES optimizers for Large and Medium motor clusters
+    opt_large = OnlineCMAOptimizer(LARGE_PARAM_BOUNDS, init_large, pop_size=4, sigma0=0.15, seed=101)
+    opt_medium = OnlineCMAOptimizer(MEDIUM_PARAM_BOUNDS, init_medium, pop_size=4, sigma0=0.15, seed=202)
+
     cur_large = init_large.copy()
     cur_medium = init_medium.copy()
 
@@ -138,6 +142,15 @@ def run_daemon(
             break
 
         print(f"\n>>> [DAEMON ITERATION {iteration}] (Day {elapsed_s/86400:.2f}/{max_days}) <<<")
+
+        # Step 0: Ask CMA-ES for next parameter candidate vector
+        if iteration > 1:
+            cand_l = opt_large.ask()
+            cand_m = opt_medium.ask()
+            cur_large.update(cand_l)
+            cur_medium.update(cand_m)
+            print(f"[Daemon] CMA-ES Proposed Large: kp={cur_large['kp_pos']:.2e}, kv={cur_large['kp_vel']:.2e}, end_kp={cur_large['endpoint_kp_vel']:.2e}")
+            print(f"[Daemon] CMA-ES Proposed Medium: kp={cur_medium['kp_pos']:.2e}, kv={cur_medium['kp_vel']:.2e}, start_duty={cur_medium['start_duty_pos']:.2f}")
 
         # Step 1: Simulator Pre-Flight Validation
         print("[Daemon] Evaluating candidate in Digital Twin...")
@@ -215,20 +228,20 @@ def run_daemon(
             print(f"[Daemon] CONVERGENCE ACHIEVED: 16/16 cases 12/12 pass! Halting loop.")
             break
 
-        # Step 8: Battery Health & Recharge Protection
+        # Step 8: Closed-Loop CMA-ES Feedback (Tell cost to optimizer)
+        opt_large.tell(cur_large, avg_cost)
+        opt_medium.tell(cur_medium, avg_cost)
+
+        # Step 9: Battery Health & Recharge Protection
         if pack_mv > 0 and pack_mv < BATTERY_RECHARGE_TRIGGER_MV:
             print(f"[Daemon] Battery pack voltage ({pack_mv/1000.0:.2f}V) is below recharge trigger ({BATTERY_RECHARGE_TRIGGER_MV/1000.0:.2f}V).")
-            print(f"[Daemon] Entering automated trickle-charge pause until pack reaches >={BATTERY_RESUME_MV/1000.0:.2f}V...")
-            while True:
-                # Allow USB charger to recharge pack (checking periodically)
-                time.sleep(300)  # Wait 5 minutes
-                # Check via picotool or serial if needed, or backoff
-                print("[Daemon] Trickle-charging pack... (300s sleep complete)")
-                # After 20 mins recharge backoff, allow next cycle
-                break
-
-        # Step 9: Gentle perturbation for next iteration
-        cur_large["endpoint_kp_vel"] = min(4.5e-6, cur_large["endpoint_kp_vel"] * 1.05)
+            print(f"[Daemon] Entering automated trickle-charge pause until pack recovers...")
+            charge_cycles = 0
+            while charge_cycles < 6:  # up to 30 mins recharge
+                time.sleep(300)       # 5 minutes per cycle
+                charge_cycles += 1
+                print(f"[Daemon] Trickle-charging pack ({charge_cycles*5} min elapsed)...")
+            print("[Daemon] Recharge interval completed. Resuming autonomous sweep.")
 
         # Inter-run rest
         if inter_run_rest_s > 0:

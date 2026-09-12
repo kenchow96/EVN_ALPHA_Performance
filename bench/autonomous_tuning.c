@@ -308,7 +308,31 @@ void autonomous_tuning_service(void) {
     evn_motion_set_speed_window(axis, window);
         evn_motion_set_edge_speed_alpha(axis, 0.05f);
         float vel_scale = (axis >= 2) ? 0.85f : 1.0f;
-        evn_motion_set_profile_scale(axis, vel_scale, test->accel_scale);
+        float kp_pos = test->kp_pos;
+        float kp_vel = test->kp_vel;
+        float endpoint_kp = test->endpoint_kp;
+        float accel_scale = test->accel_scale;
+        float start_duty = test->start_duty;
+
+        /* If valid NVM parameter table exists in flash, override test parameters dynamically
+         * without requiring a full code recompile. */
+        evn_tuning_nvm_params_t nvm_params;
+        if (hal_tuning_log_load_nvm_params(&nvm_params)) {
+            if (axis < 4) {
+                if (nvm_params.axis_params[axis].kp_pos > 0.0f)
+                    kp_pos = nvm_params.axis_params[axis].kp_pos;
+                if (nvm_params.axis_params[axis].kp_vel > 0.0f)
+                    kp_vel = nvm_params.axis_params[axis].kp_vel;
+                if (nvm_params.axis_params[axis].endpoint_kp_vel > 0.0f)
+                    endpoint_kp = nvm_params.axis_params[axis].endpoint_kp_vel;
+                if (nvm_params.axis_params[axis].accel_scale > 0.0f)
+                    accel_scale = nvm_params.axis_params[axis].accel_scale;
+                if (nvm_params.axis_params[axis].start_duty > 0.0f)
+                    start_duty = nvm_params.axis_params[axis].start_duty;
+            }
+        }
+
+        evn_motion_set_profile_scale(axis, vel_scale, accel_scale);
         evn_motion_set_trajectory_type(axis, test->trajectory_type);
         evn_motion_set_startup_reference_governor(
             axis, test->startup_reference_governor);
@@ -317,14 +341,14 @@ void autonomous_tuning_service(void) {
         evn_motion_set_startup_release_speed(
             axis, test->startup_release_speed_mdegs / 1000.0f);
         evn_motion_set_edge_watchdog(axis, test->edge_watchdog_enabled);
-        evn_motion_set_endpoint_velocity_gain(axis, test->endpoint_kp);
+        evn_motion_set_endpoint_velocity_gain(axis, endpoint_kp);
         evn_motion_set_startup_ramp_ms(axis, test->startup_ramp_ms);
         evn_motion_set_restart_ramp_ms(axis, test->restart_ramp_ms);
         evn_motion_set_startup_pulse_on_ticks(
             axis, test->startup_pulse_on_ticks);
-        evn_motion_set_gains_axis(axis, test->kp_pos, 8.0e-7f,
-                      test->kp_vel, test->kd_vel, test->kff_accel);
-        evn_motion_set_stiction(axis, test->start_duty, 0.55f);
+        evn_motion_set_gains_axis(axis, kp_pos, 8.0e-7f,
+                      kp_vel, test->kd_vel, test->kff_accel);
+        evn_motion_set_stiction(axis, start_duty, 0.55f);
         float angle, speed;
         bool stalled, done;
         evn_motion_get_state(axis, &angle, &speed, &stalled, &done);

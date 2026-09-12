@@ -153,6 +153,9 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         a->active_friction_feedforward_permille = 500u;
         a->edge_watchdog_enabled = is_medium;
         a->active_edge_watchdog_enabled = is_medium;
+        a->dob_enabled = true;
+        a->dob_gain = 0.50f;   /* compensate 50% of observer feedback voltage residual */
+        a->dob_dist_voltage_mv = 0;
         a->traj.active = false;
         a->traj.done = true;
         a->cmd_seq = 0;
@@ -391,6 +394,19 @@ const evn_pid_t *evn_motion_axis_pid(uint8_t axis) {
 void evn_motion_set_feedforward(bool on) { s_ff_on = on; }
 bool evn_motion_feedforward_on(void) { return s_ff_on; }
 
+void evn_motion_set_dob(uint8_t axis, bool enabled, float gain) {
+    if (axis > 3 || !(s_mask & (1u << axis))) return;
+    s_axis[axis].dob_enabled = enabled;
+    if (gain < 0.0f) gain = 0.0f;
+    if (gain > 1.0f) gain = 1.0f;
+    s_axis[axis].dob_gain = gain;
+}
+
+int32_t evn_motion_get_disturbance_voltage(uint8_t axis) {
+    if (axis > 3 || !(s_mask & (1u << axis))) return 0;
+    return s_axis[axis].dob_dist_voltage_mv;
+}
+
 void evn_motion_set_observer(int32_t stall_speed_limit, int32_t stall_time_ms,
                              int32_t fb_negligible, int32_t fb_stall_ratio) {
     for (int i = 0; i < 4; i++) {
@@ -579,6 +595,17 @@ void __not_in_flash_func(evn_motion_tick)(void) {
                 a->active_friction_feedforward_permille);
             int32_t v_ff = evn_observer_torque_to_voltage(a->model, t_ff);
             feedforward_duty = (float)v_ff / (float)vbus_mv;
+        }
+
+        /* Disturbance Observer (DOB): compute model/reality divergence from observer feedback voltage.
+         * The feedback voltage represents external load torque / friction divergence not accounted
+         * for in the nominal motor model. Feed it forward with low-pass filtering. */
+        if (a->dob_enabled && vbus_mv > 0) {
+            int32_t raw_fb_mv = evn_observer_feedback_voltage(&a->observer, angle_mdeg);
+            /* First-order filter: α = 0.10 at 1 kHz (~16 Hz cutoff to suppress sensor noise) */
+            a->dob_dist_voltage_mv += (raw_fb_mv - a->dob_dist_voltage_mv) / 10;
+            float dob_duty = (float)(a->dob_dist_voltage_mv * a->dob_gain) / (float)vbus_mv;
+            feedforward_duty += dob_duty;
         }
 
         float duty = evn_pid_update(&a->pid, pos_ref, vel_ref, accel_ref,

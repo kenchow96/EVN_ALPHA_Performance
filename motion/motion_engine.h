@@ -50,6 +50,9 @@ typedef struct {
     uint16_t               active_friction_feedforward_permille;
     bool                   edge_watchdog_enabled;
     bool                   active_edge_watchdog_enabled;
+    bool                   dob_enabled;
+    float                  dob_gain;              /* disturbance observer compensation gain [0..1] */
+    int32_t                dob_dist_voltage_mv;   /* filtered estimated disturbance voltage (mV) */
 
     /* commanded state (Core 0 → Core 1 handover) */
     volatile uint32_t cmd_seq;
@@ -140,6 +143,10 @@ void evn_motion_set_observer(int32_t stall_speed_limit, int32_t stall_time_ms,
 /* Model-based feedforward (friction + back-EMF + accel → voltage) toggle. */
 void evn_motion_set_feedforward(bool on);
 bool evn_motion_feedforward_on(void);
+
+/* Disturbance Observer (DOB) active payload compensation */
+void evn_motion_set_dob(uint8_t axis, bool enabled, float gain);
+int32_t evn_motion_get_disturbance_voltage(uint8_t axis);
 
 /* --- 200 Hz per-axis diagnostic trace; control remains at 1 kHz --- */
 #define EVN_TRACE_MAX 2500

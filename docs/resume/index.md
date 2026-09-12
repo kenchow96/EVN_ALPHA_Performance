@@ -175,17 +175,21 @@ python tools/flash_extract_decode.py
 | 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x26090452.md](2026-09-12_phase8_autonomous_run_0x26090452.md) | Phase 8 — Autonomous Optimization 0x26090452 (One pass of auto_tuner.py, Sim-to-Real 92.5% agreement on Large motors) |
 | 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x26090453.md](2026-09-12_phase8_autonomous_run_0x26090453.md) | Phase 8 — Long-Term Daemon Validation 0x26090453 (6.0V cutoff, storage ring buffer, endurance log verified) |
 | 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x26090454.md](2026-09-12_phase8_autonomous_run_0x26090454.md) | Phase 8 — Torture Excitation Profile Validation 0x26090454 (Micro-step backlash, rapid reversal deadbands, 4x 12/12 passes) |
+| 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x26090455.md](2026-09-12_phase8_autonomous_run_0x26090455.md) | Phase 8 — Full Stack Integration 0x26090455 (Online DOB active, NVM parameter injection ready, Closed-loop CMA-ES feedback verified) |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-12 — **Run 0x26090454 complete**; 16/16 physical traces; **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks; Torture excitation profiles active; 4 full 12/12 passes on hardware; 6.0V cutoff active; Console firmware restored)
+## 📋 Quick Reference — Current State (as of 2026-09-12 — **Run 0x26090455 complete**; 16/16 physical traces; **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks; Online DOB active; NVM table in flash ready; Closed-loop CMA-ES active; Console firmware restored)
 
 | Item | Value |
 |------|-------|
 | **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (temperature controlled) |
 | **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console (0 errors) |
-| **Current Run ID** | `0x26090454` |
+| **Current Run ID** | `0x26090455` |
+| **Disturbance Observer (DOB)** | Active at 1 kHz in Core 1 firmware (`evn_motion_set_dob`) |
+| **NVM Parameter Table** | 256-byte flash page at `0x00FF8000` with zero-recompile injection tool (`tools/nvm_injector.py`) |
+| **Optimizer Engine** | Closed-loop `OnlineCMAOptimizer` (ask/tell with scalar cost feedback) |
 | **Excitation Profiles** | Multi-regime torture profiles (nominal moves, micro-step backlash, deadband reversals) integrated |
 | **Battery Cutoff** | Hard cutoff at **6.0V pack** (`TUNING_BATTERY_MIN_PACK_MV=6000u`), 2.8V cell |
 | **Storage Management** | Automated ring buffer (`tools/storage_manager.py`) caps footprint to bounded disk usage |

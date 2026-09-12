@@ -172,6 +172,122 @@ class AutonomousOptimizer:
         return overall_best_phys, float(best_cost), history
 
 
+class OnlineCMAOptimizer:
+    """Step-by-step ask/tell CMA-ES optimizer for continuous hardware evaluations.
+    Maintains persistent evolutionary state across hardware test iterations."""
+
+    def __init__(
+        self,
+        param_bounds: Dict[str, Tuple[float, float]],
+        initial_params: Optional[Dict[str, float]] = None,
+        pop_size: int = 4,
+        sigma0: float = 0.20,
+        seed: int = 42,
+    ):
+        self.param_names = list(param_bounds.keys())
+        self.bounds = np.array([param_bounds[k] for k in self.param_names], dtype=float)
+        self.dim = len(self.param_names)
+        self.rng = np.random.default_rng(seed)
+
+        self.span = self.bounds[:, 1] - self.bounds[:, 0]
+        self.span[self.span == 0] = 1.0
+
+        if initial_params:
+            x0 = np.array([initial_params[k] for k in self.param_names], dtype=float)
+        else:
+            x0 = (self.bounds[:, 0] + self.bounds[:, 1]) / 2.0
+        x0 = np.clip(x0, self.bounds[:, 0], self.bounds[:, 1])
+
+        self.xmean = (x0 - self.bounds[:, 0]) / self.span
+        self.sigma = sigma0
+
+        n = self.dim
+        self.lam = pop_size
+        self.mu = max(1, self.lam // 2)
+
+        raw_weights = math.log(self.mu + 0.5) - np.log(np.arange(1, self.mu + 1))
+        self.weights = raw_weights / np.sum(raw_weights)
+        self.mueff = float(1.0 / np.sum(self.weights**2))
+
+        self.cc = (4 + self.mueff / n) / (n + 4 + 2 * self.mueff / n)
+        self.cs = (self.mueff + 2) / (n + self.mueff + 5)
+        self.c1 = 2 / ((n + 1.3) ** 2 + self.mueff)
+        self.cmu = min(1 - self.c1, 2 * (self.mueff - 2 + 1 / self.mueff) / ((n + 2) ** 2 + self.mueff))
+        self.damps = 1 + 2 * max(0.0, math.sqrt((self.mueff - 1) / (n + 1)) - 1) + self.cs
+        self.chiN = math.sqrt(n) * (1 - 1 / (4 * n) + 1 / (21 * n**2))
+
+        self.pc = np.zeros(n)
+        self.ps = np.zeros(n)
+        self.B = np.eye(n)
+        self.D = np.ones(n)
+        self.C = np.eye(n)
+
+        self.gen = 0
+        self.current_pop = []
+        self.current_costs = []
+        self.best_candidate = x0.copy()
+        self.best_cost = float("inf")
+
+    def vec_to_dict(self, norm_x: np.ndarray) -> Dict[str, float]:
+        phys = self.bounds[:, 0] + np.clip(norm_x, 0.0, 1.0) * self.span
+        return {name: float(val) for name, val in zip(self.param_names, phys)}
+
+    def ask(self) -> Dict[str, float]:
+        """Propose the next candidate parameter dictionary to test."""
+        n = self.dim
+        z = self.rng.standard_normal(n)
+        d = self.D * z
+        cand_norm = self.xmean + self.sigma * (self.B @ d)
+        cand_norm = np.clip(cand_norm, 0.0, 1.0)
+        self.current_pop.append(cand_norm)
+        return self.vec_to_dict(cand_norm)
+
+    def tell(self, candidate_dict: Dict[str, float], cost: float):
+        """Report the evaluated cost of the proposed candidate."""
+        self.current_costs.append(cost)
+        if cost < self.best_cost:
+            self.best_cost = cost
+            self.best_candidate = np.array([candidate_dict[k] for k in self.param_names], dtype=float)
+
+        # If batch is complete, update CMA-ES distribution
+        if len(self.current_pop) >= self.lam:
+            pop = np.array(self.current_pop)
+            costs = np.array(self.current_costs)
+
+            sort_idx = np.argsort(costs)
+            pop = pop[sort_idx]
+            costs = costs[sort_idx]
+
+            n = self.dim
+            xold = self.xmean.copy()
+            self.xmean = np.sum(pop[:self.mu] * self.weights[:, None], axis=0)
+
+            invsqrtC = self.B @ np.diag(1.0 / self.D) @ self.B.T
+            self.ps = (1 - self.cs) * self.ps + math.sqrt(self.cs * (2 - self.cs) * self.mueff) * (invsqrtC @ (self.xmean - xold)) / self.sigma
+            hsig = float(np.linalg.norm(self.ps) / math.sqrt(1 - (1 - self.cs) ** (2 * (self.gen + 1))) / self.chiN < (1.4 + 2 / (n + 1)))
+            self.pc = (1 - self.cc) * self.pc + hsig * math.sqrt(self.cc * (2 - self.cc) * self.mueff) * (self.xmean - xold) / self.sigma
+
+            artmp = (pop[:self.mu] - xold[None, :]) / self.sigma
+            self.C = (
+                (1 - self.c1 - self.cmu) * self.C
+                + self.c1 * (np.outer(self.pc, self.pc) + (1 - hsig) * self.cc * (2 - self.cc) * self.C)
+                + self.cmu * np.sum(self.weights[:, None, None] * (artmp[:, :, None] @ artmp[:, None, :]), axis=0)
+            )
+
+            self.sigma = self.sigma * math.exp((self.cs / self.damps) * (np.linalg.norm(self.ps) / self.chiN - 1))
+
+            self.C = np.triu(self.C) + np.triu(self.C, 1).T
+            evals, evecs = np.linalg.eigh(self.C)
+            evals = np.maximum(evals, 1e-14)
+            self.D = np.sqrt(evals)
+            self.B = evecs
+
+            self.gen += 1
+            print(f"[CMA-ES Generation {self.gen}] Population evaluated. Best Cost: {costs[0]:.4f} | Overall: {self.best_cost:.4f} | Sigma: {self.sigma:.4f}")
+            self.current_pop = []
+            self.current_costs = []
+
+
 def compute_scalar_cost(metrics: Dict[str, float]) -> float:
     """Compute mathematical composite penalty J for a set of trajectory metrics.
 
