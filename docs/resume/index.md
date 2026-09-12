@@ -179,21 +179,52 @@ python tools/flash_extract_decode.py
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-12 — **Run 0x26090455 complete**; 16/16 physical traces; **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks; Online DOB active; NVM table in flash ready; Closed-loop CMA-ES active; Console firmware restored)
+## 📋 Quick Reference — Current State (as of 2026-09-12 — **Hardened Autonomous Tuning Stack Operational**; Run `0x26090455` verified on physical hardware; **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks; Online DOB active; NVM parameter injection ready; Closed-loop CMA-ES evolutionary feedback active; 6.0V battery cutoff active; Storage ring buffer active; Temperature-controlled environment confirmed)
 
 | Item | Value |
 |------|-------|
-| **Board** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
-| **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (temperature controlled) |
+| **Board State** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
+| **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (operated in temperature-controlled room) |
 | **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console (0 errors) |
-| **Current Run ID** | `0x26090455` |
-| **Disturbance Observer (DOB)** | Active at 1 kHz in Core 1 firmware (`evn_motion_set_dob`) |
+| **Current Run ID** | `0x26090455` (auto-incremented by daemon/loop) |
+| **Disturbance Observer (DOB)** | Active at 1 kHz in Core 1 firmware (`evn_motion_set_dob`) for online payload & friction compensation |
 | **NVM Parameter Table** | 256-byte flash page at `0x00FF8000` with zero-recompile injection tool (`tools/nvm_injector.py`) |
 | **Optimizer Engine** | Closed-loop `OnlineCMAOptimizer` (ask/tell with scalar cost feedback) |
 | **Excitation Profiles** | Multi-regime torture profiles (nominal moves, micro-step backlash, deadband reversals) integrated |
 | **Battery Cutoff** | Hard cutoff at **6.0V pack** (`TUNING_BATTERY_MIN_PACK_MV=6000u`), 2.8V cell |
+| **Battery Management** | Automatic trickle-charge pause if pack drops below 7.0V until recharged |
 | **Storage Management** | Automated ring buffer (`tools/storage_manager.py`) caps footprint to bounded disk usage |
-| **Long-Term Tuning** | Automated daemon (`tools/autonomous_daemon.py`) with battery management and cumulative endurance logging |
+| **Long-Term Tuning Daemon** | Automated daemon (`tools/autonomous_daemon.py`) with battery management and cumulative endurance logging (`bench/results/endurance_log.csv`) |
+| **Weak Agent Handoff** | Ready for unsupervised execution via `tools/autonomous_daemon.py` |
+
+---
+
+## 🤖 Weak Agent Protocol & Long-Term Autonomous Execution
+
+To run fully autonomous tuning for extended periods (e.g. 1 month) without code editing mistakes, context window loss, or hardware damage:
+
+### Golden Execution Rule for the Weak Agent
+**DO NOT MANUALLY GUESS OR EDIT GAIN NUMBERS IN C FILES.**  
+The entire mathematical proposal, simulation pre-flight validation, NVM parameter injection, hardware execution, telemetry extraction, and Sim-to-Real evaluation are managed automatically by the daemon.
+
+### Exact Launch Command for the Weak Agent
+To start or resume the autonomous tuning process for 30 days:
+```powershell
+python tools/autonomous_daemon.py --days 30 --rest-seconds 15
+```
+
+### Supervisory Monitoring Commands (Read-Only)
+The agent should only inspect progress using lightweight read-only commands:
+- **Inspect overall progress and latest iteration scores**:
+  ```powershell
+  Get-Content bench/results/endurance_log.csv | Select-Object -Last 10
+  ```
+- **Inspect disk footprint and active runs**:
+  ```powershell
+  python tools/storage_manager.py
+  ```
+- **Stop or pause the daemon safely**:
+  Send `Ctrl+C`. The daemon catches the signal, coasts all motors, restores the console firmware, and leaves the board in a safe idle state.
 | **Autonomous Tuning** | Disabled in `CMakeLists.txt` (restored after run) |
 | **Hardware Validation** | Complete — 224/224 cases run across 14 autonomous runs, all traces decoded |
 | **Motor Model Calibration** | Complete — EV3 Medium model fixed for unloaded operation, sim 12/12 both directions |
