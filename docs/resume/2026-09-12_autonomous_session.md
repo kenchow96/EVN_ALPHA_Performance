@@ -20,3 +20,4 @@
 - Loop: once pipeline completes → read `summary.csv` → update this file + index.md → restart loop (re-read index.md).
 - Continuation command (exact): `python tools/flash_extract_decode.py --timeout 900` (after verifying `summary.csv` results and applying any new per-axis gain adjustments).
 - Session handoff: Board will reboot to BOOTSEL at AUTO_FINISH; motors coasted (`coast_all()`); firmware defaults match prop9_accel06; I2C race fixed; run ID 0x26090450.
+- AUTONOMOUS LOOP ACTIVE: `tools/autonomous_loop.py` runs continuously (`while True`) — stops ONLY on `KeyboardInterrupt` (explicit user prompt / Ctrl+C).
