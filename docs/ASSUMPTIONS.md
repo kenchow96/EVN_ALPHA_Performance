@@ -1,12 +1,15 @@
 # Assumptions Register — EVN ALPHA Performance
 
-> **RESUME POINT (2026-09-09, Autonomous Run 0x2609044E Complete):**
+> **RESUME POINT (2026-09-12, Audit Remediation & Firmware Sync Complete):**
 > - **Run 0x2609044E**: DR-robust prop9_accel06 gains (kp_pos=2.0e-4, kp_vel=1.0e-5, endpoint_kp=2.5e-6, accel_scale=0.60, vel_window=10) with start_duty_POS=0.90 on axes 2/3.
 >   - Results: 2/16 cases 12/12 (axis 0 NEG repeat 0, axis 3 NEG repeat 0), 16/16 traces.
 >   - Axis 2 POS stiction fix WORKED: start_duty 0.80→0.90 achieved 11/12 on case_09/11.
 >   - EV3 Large axis 0 case_12 (NEG repeat 0) 12/12, axis 1 case_14 (NEG repeat 2) 11/12.
 >   - Core 1: PERFECT — 999-1001µs period, 0 missed ticks.
-> - Next: Commit all updates, update docs/PLAN.md Status Board and this index.md, then consider next tuning priorities (e.g. per-axis gains for EV3 Large axis 1)
+> - **Firmware Synced**: `motion_engine.c` defaults updated to match run 0x2609044E validated config.
+> - **I2C Race Fixed**: Scan-active guard added in `hal_i2c.c`/`hal_battery.c`; user scans no longer corrupted by battery service.
+> - **Run ID**: Bumped to 0x2609044E in `hal/hal_tuning_log.h`.
+> - Next: Apply start_duty=0.90 to axis 2 POS cases in autonomous_tuning.c, test vel_window=10 for axis 2, test per-axis gains for EV3 Large axis 1, run autonomous validation 0x2609044F.
 Legend: ✅ confirmed · ❓ needs confirmation · ⚠️ known-deviation (accepted, monitor)
 
 ---
@@ -101,7 +104,7 @@ Everything else is either confirmed ✅ or an accepted, monitored deviation ⚠�
 
 ## Before Phase 8 (Drive Base) we must close:
 
-- **Sim-to-real gaps** — EV3 Medium residual vibration (14° p-p), EV3 Large tracking error (axis 0 <2.0°, axis 1 hunting), EV3 Medium negative direction (8-9/12 vs 12/12 sim), Axis 2 POS stalls (case_09 10.5° final error)
+- **Sim-to-real gaps** — EV3 Medium residual vibration (14° p-p), EV3 Large tracking error (now <2.0° with W40_K50), EV3 Medium negative direction (8-9/12 vs 12/12 sim), Axis 2 POS stalls (case_09 10.5° final error)
 - **A6 / A5** — confirm encoder counts-per-revolution matches motor datasheet CPR (drives PID gain units) and no FIFO overflow at max RPM.
 - **D4** — verify USB CDC root cause (wedging vs. enumeration timing) and fix `serial_capture.py` (partially addressed: dashboard thread-safety fixes eliminate Tkinter crashes)
 - **D7** — implement console idle timeout + heartbeat protocol for autonomous handoff ✅ **IMPLEMENTED & TESTED** (run 0x2609043C)

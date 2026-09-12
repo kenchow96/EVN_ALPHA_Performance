@@ -81,4 +81,10 @@ void hal_i2c_scan_all(uint8_t counts[EVN_I2C_PORT_COUNT],
 /* Diagnostics: last error per bus, mux cache state. */
 uint8_t hal_i2c_cached_channel(uint8_t bus_index); /* 0 or 1; 0xFF = none */
 
+/* Scan-active guard: set/clear when a user-initiated I2C scan is in progress.
+ * When active, hal_battery_service() defers its mux select on port 16
+ * to avoid corrupting the scan. */
+void hal_i2c_set_scan_active(bool active);
+bool hal_i2c_get_scan_active(void);
+
 #endif /* HAL_I2C_H */

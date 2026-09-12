@@ -78,6 +78,10 @@ bool hal_battery_init(void) {
 bool hal_battery_service(void) {
     if (!s_cache.present) return false;
 
+    /* If a user-initiated I2C scan is in progress, defer battery service
+     * to avoid corrupting the scan by re-selecting the mux on port 16. */
+    if (hal_i2c_get_scan_active()) return false;
+
     uint32_t now = time_us_32();
 
     if (!s_adc_pending) {

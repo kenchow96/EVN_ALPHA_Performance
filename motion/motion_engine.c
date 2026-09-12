@@ -108,11 +108,12 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
         evn_observer_init(&a->observer, a->model, &a->observer.settings, 0);
         evn_pid_init(&a->pid);
         /* Winning configurations promoted from autonomous tuning (see
-         * docs/resume/2026-09-04_phase8_stiction_fix.md and run 0x26090437+).
+         * docs/resume/2026-09-09_phase8_autonomous_run_0x2609044E.md and run 0x2609044E).
          * EV3 Medium (axes 2,3): kp=2.5e-4, kv=1.0e-6, kd=0, endpoint_kp=2.0e-6,
-         *   accel_scale=0.35, start_duty=0.80 (symmetric, stiction-break fix)
-         * EV3 Large (axes 0,1):  kp=4.0e-4, kv=5.0e-6, kd=0, endpoint_kp=1.0e-6,
-         *   accel_scale=0.70 (W40_K50 config, 3 consecutive 12/12 runs) */
+         *   accel_scale=0.35, start_duty=0.80 (NEG)/0.90 (POS, stiction-break fix),
+         *   vel_window=10 (axis 3) / 40 (axis 2 testing)
+         * EV3 Large (axes 0,1):  kp=2.0e-4, kv=1.0e-5, kd=0, endpoint_kp=2.5e-6,
+         *   accel_scale=0.60, start_duty=0.12, vel_window=10 (DR-robust prop9_accel06) */
         bool is_medium =
             a->model == evn_motor_model_get(EVN_MOTOR_MODEL_EV3_MEDIUM);
         if (is_medium) {
@@ -125,12 +126,12 @@ void evn_motion_init(const evn_motor_model_t *const models[4],
             a->pid.startup_ramp_ticks = 800u;
             a->pid.restart_ramp_ticks = 200u;
             a->pid.startup_pulse_on_ticks = 4u;
-            a->pid.vel_window = 40;
+            a->pid.vel_window = 10;
         } else {   /* EV3 Large / NXT */
-            a->pid.kp_pos = 4.0e-4f; a->pid.kp_vel = 5.0e-6f;
+            a->pid.kp_pos = 2.0e-4f; a->pid.kp_vel = 1.0e-5f;
             a->pid.ki_pos = 8.0e-7f; a->pid.kd_vel = 0.0f;
             a->pid.kff_accel = 0.0f;
-            a->pid.endpoint_kp_vel = 1.0e-6f;
+            a->pid.endpoint_kp_vel = 2.5e-6f;
             a->pid.start_duty = 0.12f; a->pid.min_duty = 0.12f;
             a->pid.startup_release_speed_mdegs = 10000.0f;
             a->pid.startup_ramp_ticks = 800u;

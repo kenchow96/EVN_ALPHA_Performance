@@ -166,10 +166,11 @@ python tools/flash_extract_decode.py
 | 2026-09-08 | [2026-09-08_phase8_autonomous_run_0x2609044C.md](2026-09-08_phase8_autonomous_run_0x2609044C.md) | Phase 8 Autonomous Validation Run 0x2609044C — **Axis 3 stiction fix WORKED!** start_duty 0.80→0.90; 8 cases 11/12 (case_13/15 now 11/12), EV3 Large axis 0 4×11/12 |
 | 2026-09-08 | [2026-09-08_phase8_dr_gain_tuning.md](2026-09-08_phase8_dr_gain_tuning.md) | Phase 8 DR Gain Tuning for EV3 Large — Identified delay+backlash as killer combo; prop9_accel06 (kp_pos=2.0e-4, kp_vel=1.0e-5, endpoint_kp=2.5e-6, accel_scale=0.60) achieves DR worst=8/12 (4× improvement over baseline 2/12) |
 | 2026-09-08 | [2026-09-08_phase8_autonomous_run_0x2609044D.md](2026-09-08_phase8_autonomous_run_0x2609044D.md) | Phase 8 Autonomous Run 0x2609044D — DR-robust prop9_accel06 on hardware: axis 0 ALL 11/12, axis 1 still hunting (6-8/12); axis 3 POS 11/12 with start_duty=0.90 |
+| 2026-09-12 | [2026-09-12_audit_remediation.md](2026-09-12_audit_remediation.md) | Phase 8 Audit Remediation & Firmware Sync (run 0x2609044E) — Firmware defaults updated to match run 0x2609044E, I2C race fixed, run ID bumped |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-09 — **Run 0x2609044E complete**; 2/16 cases 12/12, 16/16 traces; **Axis 2 POS stiction fix CONFIRMED**; **EV3 Large axis 0 case_12 NEG repeat 0: 12/12**, **axis 1 case_14 NEG repeat 2: 11/12**; **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks; **Firmware defaults do NOT match latest validated config** — Winning Configurations table below shows promoted values (4.0e-4/5.0e-6/0.70/1.0e-6) while latest validated (run 0x2609044E) is 2.0e-4/1.0e-5/0.60/2.5e-6)
+## 📋 Quick Reference — Current State (as of 2026-09-12 — **Run 0x2609044E complete & firmware synced**; 2/16 cases 12/12, 16/16 traces; **Axis 2 POS stiction fix CONFIRMED**; **EV3 Large axis 0 case_12 NEG repeat 0: 12/12**, **axis 1 case_14 NEG repeat 2: 11/12**; **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks; **Firmware defaults NOW MATCH latest validated config** — Winning Configurations table below reflects prop9_accel06 gains promoted to `motion_engine.c`)
 
 | Item | Value |
 |------|-------|
@@ -186,11 +187,7 @@ python tools/flash_extract_decode.py
 | **Consecutive 12/12** | case_04 (axis 1 POS r0): 2+ consecutive (0x26090445 + 0x26090446); case_01 (axis 0 NEG r1) hunting is SYSTEMATIC (6/12→5/12) — axes 0 & 1 share identical EV3 Large gains but diverge ⇒ per-axis/hardware difference, not gains |
 | **Pipeline** | FIXED (2026-09-06) — `flash_extract_decode.py` BOOTSEL false-positive: now waits for the drive to disappear (app booted) before waiting for it to reappear (run done). Was extracting stale previous-run flash |
 | **Simulator** | CALIBRATED TO PHYSICAL — Reproduces the EV3 Large endpoint limit cycle (13.9 Hz vs physical 13.6 Hz). **vel_window=10 eliminates the limit cycle in sim** (never tested on hardware). EV3 Medium 12/12 unaffected |
-| **Winning Configurations (Promoted to `motion_engine.c`)** | 
-| Motor | kp_pos | kp_vel | ki_pos | kd_vel | kff_accel | accel_scale | endpoint_kp_vel |
-|-------|--------|--------|--------|--------|-----------|-------------|-----------------|
-| EV3 Large | **4.0e-4** | **5.0e-6** | 8e-7 | **0** | 0 | **0.70** | **1.0e-6** |
-| EV3 Medium (both dirs) | **2.5e-4** | **1.0e-6** | 8e-7 | **0** | 0 | **0.35** | **2.0e-6** |
+| **I2C Firmware Race** | **FIXED** — scan-active guard in `hal_i2c.c`/`hal_battery.c` prevents battery service from corrupting user scans |
 
 ### Winning Configurations (Promoted to `motion_engine.c`)
 
@@ -198,11 +195,11 @@ python tools/flash_extract_decode.py
 |-------|--------|--------|--------|--------|-----------|-------------|-----------------|------------|------------|
 | EV3 Large (axis 0) | **2.0e-4** | **1.0e-5** | 8e-7 | 0 | 0 | **0.60** | **2.5e-6** | 0.12 | **10** |
 | EV3 Large (axis 1) | 2.0e-4 | 1.0e-5 | 8e-7 | 0 | 0 | 0.60 | 2.5e-6 | 0.12 | **10** |
-| EV3 Medium (axis 2) | **2.5e-4** | **1.0e-6** | 8e-7 | 0 | 0 | **0.35** | **2.0e-6** | 0.80/0.90* | 40/10** |
+| EV3 Medium (axis 2) | **2.5e-4** | **1.0e-6** | 8e-7 | 0 | 0 | **0.35** | **2.0e-6** | 0.80/0.90* | **10** |
 | EV3 Medium (axis 3) | **2.5e-4** | **1.0e-6** | 8e-7 | 0 | 0 | **0.35** | **2.0e-6** | 0.80/0.90* | **10** |
 
 * start_duty=0.80 for NEG, 0.90 for POS cases (stiction-break fix)
-** vel_window=10 for axis 3, 40 for axis 2 (testing; axis 3 shows vel_window=10 works well)
+** vel_window=10 for both axes 2 & 3 (axis 2 testing; axis 3 confirmed working)
 
 ### Key Results Summary
 - **EV3 Large (axes 0,1)**: **12/12 ACHIEVED** on POS direction (repeat 0) in run 0x2609043D (cases 0,4 - W40_K50 gains). Max track error ~1.6-1.8° (< 2.0° threshold). **Run 0x2609043E: EV3 Large POS dropped to 8/12, 11/12** — run-to-run variation confirmed (~10% per axis). **Runs 0x26090440, 0x26090441: case_04 (axis 1 POS repeat 0) achieved 12/12 in TWO CONSECUTIVE RUNS** — first consecutive 12/12! **Run 0x26090442: case_00 (axis 0 POS repeat 0) achieved 12/12 in THREE CONSECUTIVE RUNS** (0x26090440, 0x26090441, 0x26090442) — first 3-peat! **Run 0x26090443: streaks broken** — case_00 11/12, case_04 11/12. **Run 0x26090449: axis-0 NEG hunting improved (6/12→11/12) but not eliminated**; case_00 POS r0 11/12, case_04 POS r0 8/12 (no hunting, velocity-limited settle). NEG direction and higher repeats show variance (4-12/12). **Run 0x2609044B: 0/16 cases 12/12, 5 cases 11/12** — EV3 Large axis 0 strong (case_00, 01, 02, 03 all 11/12), axis 1 weaker (8/12 across repeats). **Run 0x2609044C: 0/16 cases 12/12, 8 cases 11/12** — axis 0 4×11/12, axis 3 stiction fix worked. **Run 0x2609044D: DR-robust prop9_accel06 on hardware — axis 0 ALL 4 repeats 11/12 (excellent consistency, final error ~0°), axis 1 still hunting (6-8/12)** — confirms per-axis/hardware divergence despite identical gains.
@@ -258,7 +255,7 @@ python tools/flash_extract_decode.py
 ### 2. Test vel_window=10 for EV3 Medium axis 2 — **HIGH PRIORITY**
 - **Finding (run 0x2609044D)**: Axis 3 with vel_window=10 achieves 10-11/12 on all cases. Axis 2 with vel_window=40 shows POS stalls.
 - **Hypothesis**: vel_window=10 reduces phase lag on reversals, helping stiction break.
-- **Action**: Update autonomous_tuning.c to use vel_window=10 for axis 2 (in AUTO_RUN_MOTION logic) and test on hardware.
+- **Action**: Update autonomous_tuning.c to use vel_window=10 for axis 2 (in AUTO_RUN_MOTION logic) and test on hardware. (Note: firmware default now vel_window=10 for both axes 2 & 3)
 
 ### 3. EV3 Large axis 1 hunting — **HIGH PRIORITY** (per-axis hardware divergence)
 - **Finding (run 0x2609044D)**: Axis 0 ALL 11/12 with DR-robust gains; Axis 1 6-8/12 with identical gains. Motor-swap experiment (run 0x26090448) confirmed hunting follows NEITHER motor NOR axis.
@@ -269,12 +266,12 @@ python tools/flash_extract_decode.py
   - Option C: Accept axis 0 as reference, add mechanical damping to axis 1
   - For now: Test slightly different gains for axis 1 in next autonomous run (e.g., higher kp_vel or endpoint_kp)
 
-### 4. Run Autonomous Validation 0x2609044E — **HIGH PRIORITY** (with above fixes)
+### 4. Run Autonomous Validation 0x2609044F — **HIGH PRIORITY** (with above fixes)
 - Config: 
   - EV3 Large (axes 0,1): prop9_accel06 gains, vel_window=10, start_duty=0.12
-  - EV3 Medium axis 2: symmetric gains, **vel_window=10**, start_duty=0.80 (NEG) / **0.90 (POS)**
+  - EV3 Medium axis 2: symmetric gains, vel_window=10, start_duty=0.80 (NEG) / 0.90 (POS)
   - EV3 Medium axis 3: symmetric gains, vel_window=10, start_duty=0.80 (NEG) / 0.90 (POS)
-- Run ID: bump `hal/hal_tuning_log.h` to `0x2609044E`
+- Run ID: bump `hal/hal_tuning_log.h` to `0x2609044F`
 - Command: `python tools/flash_extract_decode.py --timeout 900`
 
 ### 5. Adopt Domain Randomization as Tuning Methodology — **HIGH PRIORITY** (Sim-to-Real Report; DR harness implemented)

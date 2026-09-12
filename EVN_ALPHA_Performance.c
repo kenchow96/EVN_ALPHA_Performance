@@ -401,6 +401,7 @@ static void handle_command(void) {
     }
     case 'I': {  /* I2C scan: I [port 1-16] */
         unsigned long port = 0;
+        hal_i2c_set_scan_active(true);
         if (sscanf(p + 1, "%lu", &port) == 1 && port >= 1 && port <= 16) {
             evn_i2c_status_t st = hal_i2c_select_port((uint8_t)port);
             if (st != EVN_I2C_OK) { con_printf("?? I2C select port %lu failed: %d\n", port, st); break; }
@@ -425,6 +426,7 @@ static void handle_command(void) {
                 }
             }
         } else con_printf("?? usage: I [port 1-16]\n");
+        hal_i2c_set_scan_active(false);
         break;
     }
     case 'y': {  /* Button query: y */

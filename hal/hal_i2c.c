@@ -19,6 +19,10 @@
 /* Mux channel-cache: 0xFF = nothing selected. One entry per bus. */
 static uint8_t s_cached_channel[2] = { 0xFFu, 0xFFu };
 
+/* Scan-active guard: when true, hal_battery_service() must NOT call
+ * hal_i2c_select_port(BQ_PORT) to avoid corrupting a user-initiated scan. */
+static bool s_scan_active = false;
+
 /* Bus most recently chosen by hal_i2c_select_port(). Raw write/read/probe
  * helpers target this bus; callers pipeline per-bus so this is unambiguous
  * in single-threaded Core 0 use. */
@@ -187,4 +191,14 @@ void hal_i2c_scan_all(uint8_t counts[EVN_I2C_PORT_COUNT],
 uint8_t hal_i2c_cached_channel(uint8_t bus_idx) {
     if (bus_idx > 1u) return 0xFFu;
     return s_cached_channel[bus_idx];
+}
+
+/* Scan-active guard: allow callers to indicate a scan is in progress so that
+ * hal_battery_service() defers its mux select on port 16. */
+void hal_i2c_set_scan_active(bool active) {
+    s_scan_active = active;
+}
+
+bool hal_i2c_get_scan_active(void) {
+    return s_scan_active;
 }
