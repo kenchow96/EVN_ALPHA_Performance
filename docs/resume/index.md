@@ -503,7 +503,7 @@ python tools/decode_tuning_flash.py "$dir\tuning.uf2" --output "$dir"
 | Master plan | `docs/PLAN.md` (Status Board) |
 | Assumptions | `docs/ASSUMPTIONS.md` |
 | Procedures | `docs/PROCEDURES.md` |
-| Agent rules | `docs/AGENTS.md` |
+| Agent rules | `../../AGENTS.md` |
 
 ---
 
