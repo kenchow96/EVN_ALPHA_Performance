@@ -40,6 +40,7 @@ RESULTS_DIR = BENCH_DIR / "results"
 
 from optimizer import AutonomousOptimizer, compute_scalar_cost
 from sim_integration import run_sim_case, compare_sim_to_real
+from excitation_profiles import get_torture_test_profiles
 
 
 # Search parameter bounds for motor tuning
@@ -60,33 +61,16 @@ MEDIUM_PARAM_BOUNDS = {
 }
 
 
-def update_firmware_cases(large_params: Dict[str, float], medium_params: Dict[str, float]):
-    """Update s_cases in autonomous_tuning.c with newly proposed parameters."""
+def update_firmware_cases(large_params: Dict[str, float], medium_params: Dict[str, float], use_torture_profiles: bool = True):
+    """Update s_cases in autonomous_tuning.c with newly proposed parameters and excitation profiles."""
     text = AUTONOMOUS_C.read_text()
 
-    # Reconstruct the 16 cases cleanly
-    lines = []
-    # Axis 0 (EV3 Large, M1)
     kp_l = large_params["kp_pos"]
     kv_l = large_params["kp_vel"]
     ekp_l = large_params["endpoint_kp_vel"]
     asc_l = large_params["accel_scale"]
     sd_l = large_params["start_duty"]
 
-    # Axis 1 (EV3 Large, M2) - can have separate endpoint_kp if needed
-    lines.append("    /* Axis 0 (EV3 Large, 800 deg/s max): Automated Tuner */")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_l:.1e}f, 800, 200, 4, {sd_l:.2f}f, 0, 0,  720.0f,  800.0f, 1600.0f, 0, {kp_l:.1e}f, {kv_l:.1e}f, 500, {ekp_l:.1e}f, {asc_l:.2f}f, 0.0f, 0.0f}},")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_l:.1e}f, 800, 200, 4, {sd_l:.2f}f, 0, 1, -720.0f,  800.0f, 1600.0f, 0, {kp_l:.1e}f, {kv_l:.1e}f, 500, {ekp_l:.1e}f, {asc_l:.2f}f, 0.0f, 0.0f}},")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_l:.1e}f, 800, 200, 4, {sd_l:.2f}f, 0, 2,  720.0f,  800.0f, 1600.0f, 0, {kp_l:.1e}f, {kv_l:.1e}f, 500, {ekp_l:.1e}f, {asc_l:.2f}f, 0.0f, 0.0f}},")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_l:.1e}f, 800, 200, 4, {sd_l:.2f}f, 0, 3, -720.0f,  800.0f, 1600.0f, 0, {kp_l:.1e}f, {kv_l:.1e}f, 500, {ekp_l:.1e}f, {asc_l:.2f}f, 0.0f, 0.0f}},")
-
-    lines.append("    /* Axis 1 (EV3 Large, 800 deg/s max): Automated Tuner */")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_l:.1e}f, 800, 200, 4, {sd_l:.2f}f, 1, 0,  720.0f,  800.0f, 1600.0f, 0, {kp_l:.1e}f, {kv_l:.1e}f, 500, {ekp_l:.1e}f, {asc_l:.2f}f, 0.0f, 0.0f}},")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_l:.1e}f, 800, 200, 4, {sd_l:.2f}f, 1, 1, -720.0f,  800.0f, 1600.0f, 0, {kp_l:.1e}f, {kv_l:.1e}f, 500, {ekp_l:.1e}f, {asc_l:.2f}f, 0.0f, 0.0f}},")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_l:.1e}f, 800, 200, 4, {sd_l:.2f}f, 1, 2,  720.0f,  800.0f, 1600.0f, 0, {kp_l:.1e}f, {kv_l:.1e}f, 500, {ekp_l:.1e}f, {asc_l:.2f}f, 0.0f, 0.0f}},")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_l:.1e}f, 800, 200, 4, {sd_l:.2f}f, 1, 3, -720.0f,  800.0f, 1600.0f, 0, {kp_l:.1e}f, {kv_l:.1e}f, 500, {ekp_l:.1e}f, {asc_l:.2f}f, 0.0f, 0.0f}},")
-
-    # Axes 2 & 3 (EV3 Medium, M3 & M4)
     kp_m = medium_params["kp_pos"]
     kv_m = medium_params["kp_vel"]
     ekp_m = medium_params["endpoint_kp_vel"]
@@ -94,17 +78,65 @@ def update_firmware_cases(large_params: Dict[str, float], medium_params: Dict[st
     sd_m_pos = medium_params["start_duty_pos"]
     sd_m_neg = 0.80
 
-    lines.append("    /* Axis 2 (EV3 Medium UNLOADED, 1100 deg/s max): Automated Tuner */")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_m:.1e}f, 800, 200, 4, {sd_m_neg:.2f}f, 2, 0, -720.0f, 1100.0f, 2200.0f, 0, {kp_m:.1e}f, {kv_m:.1e}f, 500, {ekp_m:.1e}f, {asc_m:.2f}f, 0.0f, 0.0f}},")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_m:.1e}f, 800, 200, 4, {sd_m_pos:.2f}f, 2, 1,  720.0f, 1100.0f, 2200.0f, 0, {kp_m:.1e}f, {kv_m:.1e}f, 500, {ekp_m:.1e}f, {asc_m:.2f}f, 0.0f, 0.0f}},")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_m:.1e}f, 800, 200, 4, {sd_m_neg:.2f}f, 2, 2, -720.0f, 1100.0f, 2200.0f, 0, {kp_m:.1e}f, {kv_m:.1e}f, 500, {ekp_m:.1e}f, {asc_m:.2f}f, 0.0f, 0.0f}},")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_m:.1e}f, 800, 200, 4, {sd_m_pos:.2f}f, 2, 3,  720.0f, 1100.0f, 2200.0f, 0, {kp_m:.1e}f, {kv_m:.1e}f, 500, {ekp_m:.1e}f, {asc_m:.2f}f, 0.0f, 0.0f}},")
+    lines = []
 
-    lines.append("    /* Axis 3 (EV3 Medium UNLOADED, 1100 deg/s max): Automated Tuner */")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_m:.1e}f, 800, 200, 4, {sd_m_neg:.2f}f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, {kp_m:.1e}f, {kv_m:.1e}f, 500, {ekp_m:.1e}f, {asc_m:.2f}f, 0.0f, 0.0f}},")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_m:.1e}f, 800, 200, 4, {sd_m_pos:.2f}f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, {kp_m:.1e}f, {kv_m:.1e}f, 500, {ekp_m:.1e}f, {asc_m:.2f}f, 0.0f, 0.0f}},")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_m:.1e}f, 800, 200, 4, {sd_m_neg:.2f}f, 3, 2, -720.0f, 1100.0f, 2200.0f, 0, {kp_m:.1e}f, {kv_m:.1e}f, 500, {ekp_m:.1e}f, {asc_m:.2f}f, 0.0f, 0.0f}},")
-    lines.append(f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp_m:.1e}f, 800, 200, 4, {sd_m_pos:.2f}f, 3, 3,  720.0f, 1100.0f, 2200.0f, 0, {kp_m:.1e}f, {kv_m:.1e}f, 500, {ekp_m:.1e}f, {asc_m:.2f}f, 0.0f, 0.0f}},")
+    if use_torture_profiles:
+        profiles = get_torture_test_profiles()
+        for idx, p in enumerate(profiles):
+            axis = p["axis"]
+            repeat = p["repeat_index"]
+            delta = p["delta_deg"]
+            vmax = p["max_vel_degs"]
+            accel = p["max_accel_degs2"]
+            ptype = p["profile_type"]
+
+            if axis in (0, 1):
+                # EV3 Large
+                kp = kp_l
+                kv = kv_l
+                ekp = ekp_l
+                asc = asc_l
+                sd = sd_l
+                label = f"Axis {axis} (EV3 Large, M{axis+1}): {ptype}"
+            else:
+                # EV3 Medium
+                kp = kp_m
+                kv = kv_m
+                ekp = ekp_m
+                asc = asc_m
+                sd = sd_m_pos if delta >= 0 else sd_m_neg
+                label = f"Axis {axis} (EV3 Medium, M{axis+1}): {ptype}"
+
+            if repeat == 0:
+                lines.append(f"    /* {label} */")
+
+            lines.append(
+                f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp:.1e}f, 800, 200, 4, {sd:.2f}f, "
+                f"{axis}, {repeat}, {delta:6.1f}f, {vmax:6.1f}f, {accel:6.1f}f, 0, "
+                f"{kp:.1e}f, {kv:.1e}f, 500, {ekp:.1e}f, {asc:.2f}f, 0.0f, 0.0f}},"
+            )
+    else:
+        # Standard nominal 720 deg moves
+        for axis in range(4):
+            is_med = axis >= 2
+            kp = kp_m if is_med else kp_l
+            kv = kv_m if is_med else kv_l
+            ekp = ekp_m if is_med else ekp_l
+            asc = asc_m if is_med else asc_l
+            vmax = 1100.0 if is_med else 800.0
+            accel = 2200.0 if is_med else 1600.0
+            lines.append(f"    /* Axis {axis} ({'EV3 Medium' if is_med else 'EV3 Large'}) */")
+            for rep in range(4):
+                delta = 720.0 if (rep % 2 == 0) else -720.0
+                if is_med:
+                    sd = sd_m_pos if delta >= 0 else sd_m_neg
+                else:
+                    sd = sd_l
+                lines.append(
+                    f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp:.1e}f, 800, 200, 4, {sd:.2f}f, "
+                    f"{axis}, {rep}, {delta:6.1f}f, {vmax:6.1f}f, {accel:6.1f}f, 0, "
+                    f"{kp:.1e}f, {kv:.1e}f, 500, {ekp:.1e}f, {asc:.2f}f, 0.0f, 0.0f}},"
+                )
 
     new_cases_block = "static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {\n" + "\n".join(lines) + "\n};"
 
