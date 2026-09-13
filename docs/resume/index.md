@@ -176,25 +176,26 @@ python tools/flash_extract_decode.py
 | 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x26090453.md](2026-09-12_phase8_autonomous_run_0x26090453.md) | Phase 8 — Long-Term Daemon Validation 0x26090453 (6.0V cutoff, storage ring buffer, endurance log verified) |
 | 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x26090454.md](2026-09-12_phase8_autonomous_run_0x26090454.md) | Phase 8 — Torture Excitation Profile Validation 0x26090454 (Micro-step backlash, rapid reversal deadbands, 4x 12/12 passes) |
 | 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x26090455.md](2026-09-12_phase8_autonomous_run_0x26090455.md) | Phase 8 — Full Stack Integration 0x26090455 (Online DOB active, NVM parameter injection ready, Closed-loop CMA-ES feedback verified) |
+| 2026-09-13 | [2026-09-13_phase8_autonomous_daemon_461_runs.md](2026-09-13_phase8_autonomous_daemon_461_runs.md) | Phase 8 — Autonomous Daemon 2-Day Run 0x26090456–0x26090628 (461 iterations, CMA-ES closed-loop, battery 8.19→7.00V, cost 52→26) |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-12 — **Hardened Autonomous Tuning Stack Operational**; Run `0x26090455` verified on physical hardware; **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks; Online DOB active; NVM parameter injection ready; Closed-loop CMA-ES evolutionary feedback active; 6.0V battery cutoff active; Storage ring buffer active; Temperature-controlled environment confirmed)
+## 📋 Quick Reference — Current State (as of 2026-09-13 — **Autonomous Daemon 2-Day Run Complete**; 461 iterations, runs `0x26090456–0x26090628`; **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks across 7,376 cases; CMA-ES closed-loop operational; 6.0V battery cutoff active; Storage ring buffer active; Board OFF for charging)
 
 | Item | Value |
 |------|-------|
-| **Board State** | Console firmware (`EVN_AUTONOMOUS_TUNING=0`), USB CDC functional after power cycle |
+| **Board State** | **OFF for charging** (was console firmware `EVN_AUTONOMOUS_TUNING=0`, USB CDC functional) |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (operated in temperature-controlled room) |
 | **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console (0 errors) |
-| **Current Run ID** | `0x26090455` (auto-incremented by daemon/loop) |
+| **Current Run ID** | `0x26090628` (auto-incremented by daemon/loop) |
 | **Disturbance Observer (DOB)** | Active at 1 kHz in Core 1 firmware (`evn_motion_set_dob`) for online payload & friction compensation |
 | **NVM Parameter Table** | 256-byte flash page at `0x00FF8000` with zero-recompile injection tool (`tools/nvm_injector.py`) |
-| **Optimizer Engine** | Closed-loop `OnlineCMAOptimizer` (ask/tell with scalar cost feedback) |
+| **Optimizer Engine** | Closed-loop `OnlineCMAOptimizer` (ask/tell with scalar cost feedback) — **VERIFIED 461 iterations** |
 | **Excitation Profiles** | Multi-regime torture profiles (nominal moves, micro-step backlash, deadband reversals) integrated |
 | **Battery Cutoff** | Hard cutoff at **6.0V pack** (`TUNING_BATTERY_MIN_PACK_MV=6000u`), 2.8V cell |
-| **Battery Management** | Automatic trickle-charge pause if pack drops below 7.0V until recharged |
+| **Battery Management** | Automatic trickle-charge pause if pack drops below 7.0V until recharged — **TRIGGERED at 7.00V** |
 | **Storage Management** | Automated ring buffer (`tools/storage_manager.py`) caps footprint to bounded disk usage |
-| **Long-Term Tuning Daemon** | Automated daemon (`tools/autonomous_daemon.py`) with battery management and cumulative endurance logging (`bench/results/endurance_log.csv`) |
+| **Long-Term Tuning Daemon** | Automated daemon (`tools/autonomous_daemon.py`) with battery management and cumulative endurance logging (`bench/results/endurance_log.csv`) — **461 iterations complete** |
 | **Weak Agent Handoff** | Ready for unsupervised execution via `tools/autonomous_daemon.py` |
 
 ---
@@ -296,77 +297,57 @@ The agent should only inspect progress using lightweight read-only commands:
 
 ## 🎯 Next Session Priorities
 
-### 1. Apply start_duty=0.90 to EV3 Medium axis 2 POS cases — ✅ COMPLETED (run 0x2609044F)
-- **Result**: case_09 9/12 (final error 1.508° vs previous 10.5°) — PARTIAL improvement; case_11 9/12. 12/12 NOT achieved. Stiction fix partially confirmed but not fully validated.
+### 1. Charge Battery — **CRITICAL** (Board is OFF for charging)
+- Board switched off at 7.00V pack (3.50/3.50V cells) — below recharge trigger (7.0V)
+- Must charge to ≥7.6V before resuming autonomous daemon
+- Daemon will auto-resume from run 0x26090629 when restarted
 
-### 2. Test vel_window=10 for EV3 Medium axis 2 — ✅ COMPLETED (run 0x2609044F)
-- **Result**: Applied to ALL axes (window=10). No negative impact; axis 2/3 consistent with prior runs. Not independently falsifiable from single run.
+### 2. EV3 Large Axis 1 Hunting — **HIGH PRIORITY** (per-axis hardware divergence persists)
+- **Finding (461 runs)**: Axis 0 consistently outperforms axis 1 with identical gains (CMA-ES converged to ~3.1e-4/1.3e-5/2.8e-6/0.63)
+- **Run 454**: axis 0 had 2/16 passes, axis 1 had 0 — confirmed per-axis/hardware divergence
+- **Next action**: Test per-axis gains for axis 1 (e.g., endpoint_kp=3.0e-6 or kp_vel=1.5e-5) via CMA-ES or manual override
 
-### 3. EV3 Large axis 1 hunting — **HIGH PRIORITY** (per-axis hardware divergence — NEXT)
-- **Finding (run 0x2609044F)**: Axis 0 10/12, axis 1 9/12 with identical prop9_accel06 gains. Motor-swap (run 0x26090448) confirmed hunting follows NEITHER motor NOR axis.
-- **Next action**: Test slightly different gains for axis 1 (e.g., endpoint_kp=3.0e-6 or kp_vel=1.5e-5) in autonomous run 0x26090450.
+### 3. EV3 Medium POS Stiction — **HIGH PRIORITY**
+- **Finding**: start_duty 0.85 for POS helps but doesn't eliminate stalls on direction reversal (axis 2)
+- **Run 461**: axis 2 POS cases still showing stalls (case_09, case_11 ~9/12)
+- **Next action**: Test start_duty=0.90 for axis 2 POS cases (axis 3 confirmed working at 0.90)
 
-### 4. Run Autonomous Validation 0x2609044F — **HIGH PRIORITY** (with above fixes)
-- Config: 
-  - EV3 Large (axes 0,1): prop9_accel06 gains, vel_window=10, start_duty=0.12
-  - EV3 Medium axis 2: symmetric gains, vel_window=10, start_duty=0.80 (NEG) / 0.90 (POS)
-  - EV3 Medium axis 3: symmetric gains, vel_window=10, start_duty=0.80 (NEG) / 0.90 (POS)
-- Run ID: bump `hal/hal_tuning_log.h` to `0x2609044F`
-- Command: `python tools/flash_extract_decode.py --timeout 900`
+### 4. Domain Randomization Promotion Criterion — **HIGH PRIORITY** (Sim-to-Real gap)
+- **Problem**: 461 runs show sim-to-real mean agreement ~38-42%; sim predicts 12/12, hardware gets 0-11/12
+- **Action**: Use DR harness in `tools/run_validation.py` — N draws × 16 cases, report worst-case
+- **Promotion Change**: Require worst-case ≥ 11/12 across DR ensemble to promote to `motion_engine.c`
 
-### 5. Adopt Domain Randomization as Tuning Methodology — **HIGH PRIORITY** (Sim-to-Real Report; DR harness implemented)
-- **Problem**: EV3 Large config marginally stable across gear-train variability range (runs 0x26090447/48). Run 0x2609044D: axis 0 worst=11/12, axis 1 worst=6/12 — DR target worst≥11/12 not met.
-- **Report Insight**: Tune gains for worst-case over randomized ensemble (R ±25%, friction 0.5–2×, backlash 0–2.5°, delay 0–4 ms, V_max ±15%, Gaussian velocity noise).
-- **Action**: Use DR harness in `tools/run_validation.py` — N randomized draws × 16 cases, report worst-case and pass-distribution per config.
-- **Promotion Criterion Change**: Require worst-case ≥ 11/12 across ensemble to promote to `motion_engine.c` (instead of nominal sim 12/12).
+### 5. Formalize Duty Slew as Acceptance Metric — **HIGH PRIORITY**
+- **Finding**: EV3 Large limit cycle = duty chatter (±full at ~13.6 Hz)
+- **Action**: Add max endpoint duty slew as formal pass/fail metric in validation harness
 
-### 6. Formalize Duty Slew as Acceptance Metric — **HIGH PRIORITY**
-- **Finding**: EV3 Large limit cycle is duty chatter (duty swinging ±full at ~13.6 Hz).
-- **Report Insight**: Reward function penalizes |V_t - V_{t-1}| to suppress chatter.
-- **Action**: Treat max endpoint duty slew as formal pass/fail metric alongside position error in validation harness.
+### 6. Resume Autonomous Daemon — **HIGH PRIORITY** (after battery charge)
+- **Command**: `python tools/autonomous_daemon.py --days 1 --rest-seconds 5`
+- Will resume from run 0x26090629 with CMA-ES state preserved
+- Target: push cost below 25, achieve first 12/12 passes
 
 ### 7. EV3 Medium Consistency (Axes 2 & 3) — **MEDIUM PRIORITY**
-- **Finding**: Runs 0x26090445/46/4B/4C/4D — axis 2: 7-11/12; axis 3: 8-11/12 (run-to-run variation, stiction fix working for POS cases on axis 3).
-- **Hypothesis**: Symmetric config works (sim 12/12), but hardware needs slight tuning for consistency.
-- **Action**: Sweep endpoint_kp (2.0e-6 → 2.5e-6) and accel_scale (0.35 → 0.40) for both EV3 Medium axes in DR ensemble.
+- **Finding**: 461 runs — axis 2: 7-11/12; axis 3: 8-11/12 (run-to-run variation)
+- **Action**: Sweep endpoint_kp (2.6e-6 → 3.0e-6) and accel_scale (0.31 → 0.35) for both axes in DR ensemble
 
 ### 8. Enable Gearbox Backlash in Sim & Sweep for Axis-3 — **MEDIUM PRIORITY**
-- **Finding**: [simulate_motor.py](tools/simulate_motor.py) has backlash/compliance model written but **disabled by default** (`gearbox_backlash_mdeg = 0`).
-- **Report Insight**: Backlash is a primary sim-to-real gap source; axis-3 POS reversal stalls match direction-reversal deadzone failure mode.
-- **Action**: Enable backlash for EV3 Medium axis-3 plant and sweep 0.5–2.5°. Check whether this reproduces stall signature. If yes, tune axis-3 stiction-break params in sim.
+- **Finding**: `simulate_motor.py` backlash model disabled by default
+- **Action**: Enable backlash for EV3 Medium axis-3 plant, sweep 0.5–2.5°
 
 ### 9. Repeat-Dependent Degradation Analysis — **MEDIUM PRIORITY**
-- **Finding**: Repeat-index-dependent variation persists across runs (e.g. run 0x26090443: axis 2 repeat 0 NEG 11/12 → repeat 3 POS 7/12).
-- **Hypothesis**: Thermal drift, encoder accumulation, or observer state divergence over consecutive moves.
-- **Action**: Add inter-move cooldown, reset observer state between repeats, or investigate thermal effects.
+- **Finding**: Repeat-index variation persists (e.g., repeat 0 NEG 11/12 → repeat 3 POS 7/12)
+- **Action**: Add inter-move cooldown, reset observer state between repeats
 
 ### 10. Feed Thermal Effects Back Into Electrical Model — **MEDIUM PRIORITY**
-- Simulator now tracks winding/core/case temperatures but runs open-loop
-- **Action**: Close the loop — temp → R_phase (copper), flux_factor → torque/voltage conversion
-- **Impact**: Improve long-run accuracy and thermal drift prediction
+- Simulator tracks temperatures open-loop; close the loop: temp → R_phase, flux_factor → torque
 
 ### 11. Add Stochastic Variation to Simulator — **MEDIUM PRIORITY**
-- Hardware shows ~10% run-to-run variation; simulation is deterministic
+- Hardware ~10% run-to-run variation; simulation deterministic
 - **Action**: Add encoder noise, parameter tolerances (±5-10%), voltage noise
-- **Impact**: Better prediction of hardware pass rates, confidence intervals
-
-### 12. Continuous Iteration Protocol (2026-09-08 session — user directive)
-- **Mode**: Simulate → test on hardware → update simulation continuously until told to break.
-- **Commit**: At every verified checkpoint (sim result, hardware run, config change).
-- **Deployment**: All hardware ready; no further permission required this session. Board is in UF2 (console firmware, `EVN_AUTONOMOUS_TUNING=0`); deploy via `Run Project` (picotool) or `Flash` (OpenOCD) when a verified checkpoint requires it.
-- **Safety**: Before any motor test — confirm motors free, battery ≥6.5V, coast all motors (`hal_motor_coast_all()`) at test end. Before any flash — confirm board powered (primary: `check_bootsel.ps1`; secondary: ask user if undetected).
-- **Next cycle (sim → hardware)**: (a) Apply start_duty=0.90 to axis 2 POS cases; (b) Test vel_window=10 for axis 2; (c) Test per-axis gains for EV3 Large axis 1; (d) Run autonomous validation 0x2609044E. Target: achieve 12/12 on all axes with 2+ consecutive runs.
 
 ### 12. Phase 8 (Drive Base) — **BLOCKED**
-- Cannot proceed until 2+ consecutive 12/12 runs on all 4 axes.
-- Current state: 1/4 axes with 2+ consecutive 12/12 (case_04, EV3 Large axis 1 POS repeat 0 — runs 0x26090445+46). Axis 0 NEG hunting is systematic (Priority 1); axes 2/3 at 8-12/12 without consecutive 12/12.
-
-### 13. Continuous Iteration Protocol (2026-09-08 session — user directive)
-- **Mode**: Simulate → test on hardware → update simulation continuously until told to break.
-- **Commit**: At every verified checkpoint (sim result, hardware run, config change).
-- **Deployment**: All hardware ready; no further permission required this session. Board is in UF2 (console firmware, `EVN_AUTONOMOUS_TUNING=0`); deploy via `Run Project` (picotool) or `Flash` (OpenOCD) when a verified checkpoint requires it.
-- **Safety**: Before any motor test — confirm motors free, battery ≥6.5V, coast all motors (`hal_motor_coast_all()`) at test end. Before any flash — confirm board powered (primary: `check_bootsel.ps1`; secondary: ask user if undetected).
-- **Next cycle (sim → hardware)**: (a) ✅ Axis 2 POS start_duty=0.90 applied (run 0x2609044F — partial, 9/12); (b) ✅ vel_window=10 for axis 2 applied (run 0x2609044F — consistent); (c) **Test per-axis gains for EV3 Large axis 1** (different from axis 0 — e.g., endpoint_kp=3.0e-6 or kp_vel=1.5e-5); (d) **Run autonomous validation 0x26090450** via `python tools/flash_extract_decode.py --timeout 900`. Target: achieve 12/12 on all axes with 2+ consecutive runs.
+- Cannot proceed until 2+ consecutive 12/12 runs on all 4 axes
+- Current: 0/4 axes with consecutive 12/12 (best: axis 0 2/16 passes in single run 454)
 
 | # | Symptom | Verified root cause | Fix location |
 |---|---------|--------------------|--------------|
