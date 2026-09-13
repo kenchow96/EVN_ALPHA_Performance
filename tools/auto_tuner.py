@@ -113,9 +113,11 @@ def update_firmware_cases(large_params: Dict[str, float], medium_params: Dict[st
             if repeat == 0:
                 lines.append(f"    /* {label} */")
 
+            traj_type = "EVN_TRAJECTORY_MINIMUM_JERK" if p.get("trajectory_type", 0) == 1 else "EVN_TRAJECTORY_TRAPEZOID"
+            t_type = p.get("test_type", 0)
             lines.append(
-                f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp:.1e}f, 800, 200, 4, {sd:.2f}f, "
-                f"{axis}, {repeat}, {delta:6.1f}f, {vmax:6.1f}f, {accel:6.1f}f, 0, "
+                f"    {{{traj_type}, true, 500, 10000, true, {ekp:.1e}f, 800, 200, 4, {sd:.2f}f, "
+                f"{axis}, {repeat}, {delta:6.1f}f, {vmax:6.1f}f, {accel:6.1f}f, {t_type}, "
                 f"{kp:.1e}f, {kv:.1e}f, 500, {ekp:.1e}f, {asc:.2f}f, 0.0f, 0.0f}},"
             )
     else:

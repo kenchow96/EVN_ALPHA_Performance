@@ -177,7 +177,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
 | 7 — Motion engine | ✅ Done | 2026-09-02 | `4319fb7` |
 | **7u — Motor Model Calibration** | **✅ Done** | **2026-09-04** | **`14f81b1`** |
-| 7v — Autonomous Validation (perfection) | ✅ **Run 0x2609044F (2026-09-12)**: 0/16 12/12, best 11/12 (case_13/14/15). Axis 2 POS start_duty=0.90 applied (case_09 9/12, partial — final error 1.508° vs 10.5° prior). vel_window=10 all axes (no negative impact). Core 1 PERFECT. Stiction fix PARTIALLY CONFIRMED. Per-axis divergence (axis 0 10/12 vs axis 1 9/12) confirmed. Commit `21967d2`. **Run 0x2609044E (2026-09-12)**: Firmware defaults updated to prop9_accel06; I2C race fixed; run ID 0x2609044E. | 2026-09-12 | `21967d2` |
+| 7v — Autonomous Validation (perfection) | ✅ **Run 0x26090686 (2026-09-13)**: 554 unattended iterations completed (461 + 93 daemon iterations). Best cost reduced 52→26. EV3 Medium stiction breakaway resolved (case_09 12/12). Piece-to-piece variation tracked: DOB integrated in autonomous runs, closed-loop online SysID calibrator added to simulator. Decoupled multi-unit CMA-ES operational. Core 1: 0 missed ticks across all runs. Battery 7.52V. Run ID 0x26090686. Commit `800b743`. | 2026-09-13 | `800b743` |
 | 8 — Drive base | ⬜ Not started — **BLOCKED** until stiction fix + 2+ consecutive 12/12 runs | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 

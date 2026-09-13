@@ -15,6 +15,10 @@ validation_*.txt
 __pycache__/
 *.pyc
 
+# node / extension builds
+node_modules/
+evn-battery-status/node_modules/
+
 # OS/editor files
 .DS_Store
 Thumbs.db

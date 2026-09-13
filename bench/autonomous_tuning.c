@@ -78,25 +78,25 @@ typedef enum {
  * Key insight: EV3 Medium now uses SYMMETRIC gains for both axes. Need 2+ consecutive 12/12 runs on all axes before Phase 8. */
 static const tuning_case_t s_cases[EVN_TUNING_CASE_COUNT] = {
     /* Axis 0 (EV3 Large, M1): nominal_pos */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.8e-06f, 800, 200, 4, 0.11f, 0, 0,  720.0f,  800.0f, 1600.0f, 0, 3.1e-04f, 1.3e-05f, 500, 2.8e-06f, 0.63f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.8e-06f, 800, 200, 4, 0.11f, 0, 1, -720.0f,  800.0f, 1600.0f, 0, 3.1e-04f, 1.3e-05f, 500, 2.8e-06f, 0.63f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.8e-06f, 800, 200, 4, 0.11f, 0, 2,   45.0f,  400.0f, 2000.0f, 0, 3.1e-04f, 1.3e-05f, 500, 2.8e-06f, 0.63f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.8e-06f, 800, 200, 4, 0.11f, 0, 3,  -90.0f,  600.0f, 1800.0f, 0, 3.1e-04f, 1.3e-05f, 500, 2.8e-06f, 0.63f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-06f, 800, 200, 4, 0.20f, 0, 0,  720.0f,  800.0f, 1600.0f, 0, 2.9e-04f, 1.4e-05f, 500, 1.0e-06f, 0.68f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-06f, 800, 200, 4, 0.20f, 0, 1, -720.0f, 1000.0f, 2200.0f, 0, 2.9e-04f, 1.4e-05f, 500, 1.0e-06f, 0.68f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-06f, 800, 200, 4, 0.20f, 0, 2,   35.0f,  350.0f, 2400.0f, 0, 2.9e-04f, 1.4e-05f, 500, 1.0e-06f, 0.68f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_MINIMUM_JERK, true, 500, 10000, true, 1.0e-06f, 800, 200, 4, 0.20f, 0, 3, -180.0f,  600.0f, 1800.0f, 0, 2.9e-04f, 1.4e-05f, 500, 1.0e-06f, 0.68f, 0.0f, 0.0f},
     /* Axis 1 (EV3 Large, M2): nominal_pos */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.8e-06f, 800, 200, 4, 0.11f, 1, 0,  720.0f,  800.0f, 1600.0f, 0, 3.1e-04f, 1.3e-05f, 500, 2.8e-06f, 0.63f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.8e-06f, 800, 200, 4, 0.11f, 1, 1, -720.0f,  800.0f, 1600.0f, 0, 3.1e-04f, 1.3e-05f, 500, 2.8e-06f, 0.63f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.8e-06f, 800, 200, 4, 0.11f, 1, 2,   45.0f,  400.0f, 2000.0f, 0, 3.1e-04f, 1.3e-05f, 500, 2.8e-06f, 0.63f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.8e-06f, 800, 200, 4, 0.11f, 1, 3,  -90.0f,  600.0f, 1800.0f, 0, 3.1e-04f, 1.3e-05f, 500, 2.8e-06f, 0.63f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-06f, 800, 200, 4, 0.20f, 1, 0,  720.0f,  800.0f, 1600.0f, 0, 2.9e-04f, 1.4e-05f, 500, 1.0e-06f, 0.68f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-06f, 800, 200, 4, 0.20f, 1, 1, -720.0f, 1000.0f, 2200.0f, 0, 2.9e-04f, 1.4e-05f, 500, 1.0e-06f, 0.68f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 1.0e-06f, 800, 200, 4, 0.20f, 1, 2,   35.0f,  350.0f, 2400.0f, 0, 2.9e-04f, 1.4e-05f, 500, 1.0e-06f, 0.68f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_MINIMUM_JERK, true, 500, 10000, true, 1.0e-06f, 800, 200, 4, 0.20f, 1, 3, -180.0f,  600.0f, 1800.0f, 0, 2.9e-04f, 1.4e-05f, 500, 1.0e-06f, 0.68f, 0.0f, 0.0f},
     /* Axis 2 (EV3 Medium, M3): nominal_neg */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.6e-06f, 800, 200, 4, 0.80f, 2, 0, -720.0f, 1100.0f, 2200.0f, 0, 3.8e-04f, 1.4e-06f, 500, 2.6e-06f, 0.31f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.6e-06f, 800, 200, 4, 0.85f, 2, 1,  720.0f, 1100.0f, 2200.0f, 0, 3.8e-04f, 1.4e-06f, 500, 2.6e-06f, 0.31f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.6e-06f, 800, 200, 4, 0.80f, 2, 2, -360.0f, 1200.0f, 2500.0f, 0, 3.8e-04f, 1.4e-06f, 500, 2.6e-06f, 0.31f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.6e-06f, 800, 200, 4, 0.85f, 2, 3,   60.0f,  600.0f, 2400.0f, 0, 3.8e-04f, 1.4e-06f, 500, 2.6e-06f, 0.31f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 3.1e-06f, 800, 200, 4, 0.94f, 2, 0, -720.0f, 1100.0f, 2200.0f, 0, 3.6e-04f, 1.7e-06f, 500, 3.1e-06f, 0.50f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 3.1e-06f, 800, 200, 4, 0.94f, 2, 1,  720.0f, 1400.0f, 3000.0f, 0, 3.6e-04f, 1.7e-06f, 500, 3.1e-06f, 0.50f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 3.1e-06f, 800, 200, 4, 0.94f, 2, 2,  -45.0f,  500.0f, 2600.0f, 0, 3.6e-04f, 1.7e-06f, 500, 3.1e-06f, 0.50f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_MINIMUM_JERK, true, 500, 10000, true, 3.1e-06f, 800, 200, 4, 0.94f, 2, 3,  180.0f,  800.0f, 2200.0f, 0, 3.6e-04f, 1.7e-06f, 500, 3.1e-06f, 0.50f, 0.0f, 0.0f},
     /* Axis 3 (EV3 Medium, M4): nominal_neg */
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.6e-06f, 800, 200, 4, 0.80f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 3.8e-04f, 1.4e-06f, 500, 2.6e-06f, 0.31f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.6e-06f, 800, 200, 4, 0.85f, 3, 1,  720.0f, 1100.0f, 2200.0f, 0, 3.8e-04f, 1.4e-06f, 500, 2.6e-06f, 0.31f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.6e-06f, 800, 200, 4, 0.80f, 3, 2, -360.0f, 1200.0f, 2500.0f, 0, 3.8e-04f, 1.4e-06f, 500, 2.6e-06f, 0.31f, 0.0f, 0.0f},
-    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 2.6e-06f, 800, 200, 4, 0.85f, 3, 3,   60.0f,  600.0f, 2400.0f, 0, 3.8e-04f, 1.4e-06f, 500, 2.6e-06f, 0.31f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 3.1e-06f, 800, 200, 4, 0.94f, 3, 0, -720.0f, 1100.0f, 2200.0f, 0, 3.6e-04f, 1.7e-06f, 500, 3.1e-06f, 0.50f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 3.1e-06f, 800, 200, 4, 0.94f, 3, 1,  720.0f, 1400.0f, 3000.0f, 0, 3.6e-04f, 1.7e-06f, 500, 3.1e-06f, 0.50f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, 3.1e-06f, 800, 200, 4, 0.94f, 3, 2,  -45.0f,  500.0f, 2600.0f, 0, 3.6e-04f, 1.7e-06f, 500, 3.1e-06f, 0.50f, 0.0f, 0.0f},
+    {EVN_TRAJECTORY_MINIMUM_JERK, true, 500, 10000, true, 3.1e-06f, 800, 200, 4, 0.94f, 3, 3,  180.0f,  800.0f, 2200.0f, 0, 3.6e-04f, 1.7e-06f, 500, 3.1e-06f, 0.50f, 0.0f, 0.0f},
 };
 
 static auto_state_t s_state = AUTO_DISABLED;
@@ -349,6 +349,10 @@ void autonomous_tuning_service(void) {
         evn_motion_set_gains_axis(axis, kp_pos, 8.0e-7f,
                       kp_vel, test->kd_vel, test->kff_accel);
         evn_motion_set_stiction(axis, start_duty, 0.55f);
+
+        /* Active Disturbance Observer (DOB) for online rejection of load & piece-to-piece torque variations */
+        evn_motion_set_dob(axis, true, 0.40f);
+
         float angle, speed;
         bool stalled, done;
         evn_motion_get_state(axis, &angle, &speed, &stalled, &done);

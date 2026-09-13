@@ -80,6 +80,8 @@ def parse_tuning_cases_from_c(c_file_path: Path = AUTONOMOUS_TUNING_C) -> List[d
         dir_str = "pos" if delta >= 0 else "neg"
         motor = axis_models.get(axis, "EV3_Large")
         motor_label = axis_labels.get(axis, f"M{axis+1}")
+        traj_raw = tokens[0].strip()
+        traj_type = "quintic" if "MINIMUM_JERK" in traj_raw or traj_raw == "1" else "trapezoid"
 
         parsed_cases.append({
             "case_index": idx,
@@ -89,6 +91,7 @@ def parse_tuning_cases_from_c(c_file_path: Path = AUTONOMOUS_TUNING_C) -> List[d
             "repeat_index": repeat,
             "delta_deg": delta,
             "direction": dir_str,
+            "trajectory_type": traj_type,
             "name": f"case_{idx:02d}_r{repeat}_{motor_label}_W40_K10_{dir_str}" if axis >= 2 else f"case_{idx:02d}_r{repeat}_{motor_label}_W40_K100_{dir_str}",
             "kp_pos": float(tokens[16]),
             "kp_vel": float(tokens[17]),
@@ -124,6 +127,7 @@ def run_sim_case(case_def: dict, output_dir: Path) -> Tuple[Optional[int], Optio
         "--restart-ramp-ticks", str(case_def["restart_ramp_ticks"]),
         "--startup-pulse-on-ticks", str(case_def["startup_pulse_on_ticks"]),
         "--vel-window", str(case_def.get("vel_window", 10)),
+        "--trajectory", case_def.get("trajectory_type", "trapezoid"),
         "--target", str(case_def["delta_deg"]),
         "--max-vel", str(case_def["max_vel_degs"]),
         "--max-accel", str(case_def["max_accel_degs2"]),

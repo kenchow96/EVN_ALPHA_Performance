@@ -27,6 +27,7 @@ if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
 from sim_integration import run_simulation_preflight, compare_sim_to_real
+from sysid_motor import run_online_sysid
 
 
 def get_current_run_id():
@@ -135,6 +136,7 @@ def main():
             if not args.no_sim_compare:
                 print(f"[autonomous_loop] Running Sim-to-Real telemetry comparison...")
                 compare_sim_to_real(Path(dir_path))
+                run_online_sysid(Path(dir_path))
 
             if total_cases > 0 and passes == total_cases:
                 print(f"[autonomous_loop] CONVERGENCE ACHIEVED: 16/16 cases 12/12 passed! Halting loop.")

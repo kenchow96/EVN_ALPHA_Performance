@@ -45,6 +45,7 @@ from auto_tuner import update_firmware_cases, bump_run_id, LARGE_PARAM_BOUNDS, M
 from optimizer import AutonomousOptimizer, OnlineCMAOptimizer, compute_scalar_cost
 from storage_manager import prune_storage
 from sim_integration import run_simulation_preflight, compare_sim_to_real
+from sysid_motor import run_online_sysid
 
 
 # Battery Thresholds
@@ -240,8 +241,9 @@ def run_daemon(
         print(f"[Daemon] Iteration {iteration} Result: {passed_cases}/{total_cases} passed. Overall Avg Cost: {avg_cost:.4f}")
         print(f"[Daemon] Decoupled Unit Costs -> Large (M1={mean_m1:.2f}, M2={mean_m2:.2f} => J={cost_large:.2f}) | Medium (M3={mean_m3:.2f}, M4={mean_m4:.2f} => J={cost_medium:.2f})")
 
-        # Step 4: Run Sim-to-Real Comparison
+        # Step 4: Run Sim-to-Real Comparison & Online Model Calibration
         compare_sim_to_real(latest_dir)
+        run_online_sysid(latest_dir)
 
         # Step 5: Log to cumulative endurance log
         log_endurance_entry(
