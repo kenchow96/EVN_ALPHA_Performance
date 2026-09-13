@@ -308,6 +308,7 @@ def compute_scalar_cost(metrics: Dict[str, float]) -> float:
     ovr_sht = abs(metrics.get("overshoot_deg", 5.0))
     smooth = metrics.get("duty_smoothness", 0.5)
     ripple = metrics.get("duty_cruise_ripple_pp", 1.0)
+    slew = metrics.get("max_duty_slew", 0.0)
     passed = metrics.get("passed", 0)
     total = metrics.get("total", 12)
 
@@ -327,6 +328,7 @@ def compute_scalar_cost(metrics: Dict[str, float]) -> float:
     # Duty effort / chatter penalty
     smooth_penalty = max(0.0, 0.75 - smooth) * 5.0
     ripple_penalty = ripple * 1.5
+    slew_penalty = (max(0.0, slew - 0.25) ** 2) * 8.0  # Penalize aggressive duty bang-bang slew
 
-    total_cost = pass_penalty + err_cost + smooth_penalty + ripple_penalty
+    total_cost = pass_penalty + err_cost + smooth_penalty + ripple_penalty + slew_penalty
     return float(total_cost)

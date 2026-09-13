@@ -1226,6 +1226,11 @@ class Simulator:
         # Velocity measurement noise (for Domain Randomization)
         self.vel_noise_std = 0.0  # Standard deviation of Gaussian noise (mdeg/s)
 
+        # Disturbance Observer (DOB) matching firmware Core 1
+        self.dob_enabled = True
+        self.dob_gain = 0.40
+        self.dob_dist_voltage_mv = 0.0
+
         # External load torque applied to the load side (unm); set via --load-torque
         self.load_torque_unm = 0
 
@@ -1368,6 +1373,13 @@ class Simulator:
                 self.friction_feedforward_permille)
             v_ff = self.observer.torque_to_voltage(t_ff)
             feedforward_duty = float(v_ff) / float(vbus_mv)
+
+        # --- Disturbance Observer (DOB) active payload / friction compensation ---
+        if getattr(self, 'dob_enabled', False) and vbus_mv > 0:
+            raw_fb_mv = self.observer.feedback_voltage(angle_mdeg)
+            self.dob_dist_voltage_mv += (raw_fb_mv - self.dob_dist_voltage_mv) / 10.0
+            dob_duty = (self.dob_dist_voltage_mv * getattr(self, 'dob_gain', 0.40)) / float(vbus_mv)
+            feedforward_duty += float(dob_duty)
         
         # --- PID update ---
         duty = self.pid.update(pos_ref, vel_ref, accel_ref,

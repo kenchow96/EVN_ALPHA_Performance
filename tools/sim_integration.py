@@ -167,6 +167,8 @@ def run_sim_case(case_def: dict, output_dir: Path) -> Tuple[Optional[int], Optio
             metrics["duty_smoothness"] = float(line_s.split()[-1])
         elif line_s.startswith("duty_cruise_ripple_pp"):
             metrics["duty_cruise_ripple_pp"] = float(line_s.split()[-1])
+        elif line_s.startswith("max_duty_slew"):
+            metrics["max_duty_slew"] = float(line_s.split()[-1])
 
     metrics["passed"] = passed
     metrics["total"] = total

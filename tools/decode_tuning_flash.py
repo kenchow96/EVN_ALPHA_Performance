@@ -396,7 +396,7 @@ def decode(image, output_dir):
     with (output_dir / "summary.csv").open("w", newline="", encoding="utf-8") as handle:
         fields = ["name", "passed", "total", "failures", "score", "max_track_err_deg",
                   "rms_track_err_deg", "overshoot_deg", "final_err_deg",
-                  "duty_smoothness", "duty_cruise_ripple_pp", "core1_status"]
+                  "duty_smoothness", "duty_cruise_ripple_pp", "max_duty_slew", "core1_status"]
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
         for metrics in complete:
@@ -412,6 +412,7 @@ def decode(image, output_dir):
                 "final_err_deg": metrics["final_err_deg"],
                 "duty_smoothness": metrics["duty_smoothness"],
                 "duty_cruise_ripple_pp": metrics["duty_cruise_ripple_pp"],
+                "max_duty_slew": metrics.get("max_duty_slew", 0.0),
                 "core1_status": metrics["core1_status"],
             })
     return results, complete

@@ -198,6 +198,7 @@ def compute(meta, rows):
     # --- control-effort quality ---
     sat = sum(1 for d in duty if abs(d) >= 0.98) / n
     dduty = [abs(duty[i] - duty[i - 1]) for i in range(1, n)]
+    max_duty_slew = max(dduty) if dduty else 0.0
     rough = rms(dduty) / (rms(duty) + 1e-9)
     smoothness = 1.0 / (1.0 + rough)
     cruise_duty = [duty[i] for i in cruise]
@@ -249,6 +250,7 @@ def compute(meta, rows):
         "duty_smoothness": round(smoothness, 3),
         "duty_cruise_ripple_pp": round(duty_ripple, 3),
         "duty_limit_cycle_hz": round(limit_freq, 1),
+        "max_duty_slew": round(max_duty_slew, 3),
         "saturation_margin": round(sat_margin, 3),
 
         # energy proxy
