@@ -38,6 +38,9 @@ AUTONOMOUS_C = BENCH_DIR / "autonomous_tuning.c"
 HAL_LOG_H = REPO_ROOT / "hal" / "hal_tuning_log.h"
 RESULTS_DIR = BENCH_DIR / "results"
 
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+
 from optimizer import AutonomousOptimizer, compute_scalar_cost
 from sim_integration import run_sim_case, compare_sim_to_real
 from excitation_profiles import get_torture_test_profiles
@@ -57,7 +60,7 @@ MEDIUM_PARAM_BOUNDS = {
     "kp_vel": (5.0e-7, 5.0e-6),
     "endpoint_kp_vel": (1.0e-6, 3.5e-6),
     "accel_scale": (0.25, 0.50),
-    "start_duty_pos": (0.80, 0.95),
+    "start_duty": (0.80, 0.95),
 }
 
 
@@ -75,8 +78,8 @@ def update_firmware_cases(large_params: Dict[str, float], medium_params: Dict[st
     kv_m = medium_params["kp_vel"]
     ekp_m = medium_params["endpoint_kp_vel"]
     asc_m = medium_params["accel_scale"]
-    sd_m_pos = medium_params["start_duty_pos"]
-    sd_m_neg = 0.80
+    # Direction-symmetric stiction breakaway duty for EV3 Medium
+    sd_m = medium_params["start_duty"]
 
     lines = []
 
@@ -104,7 +107,7 @@ def update_firmware_cases(large_params: Dict[str, float], medium_params: Dict[st
                 kv = kv_m
                 ekp = ekp_m
                 asc = asc_m
-                sd = sd_m_pos if delta >= 0 else sd_m_neg
+                sd = sd_m
                 label = f"Axis {axis} (EV3 Medium, M{axis+1}): {ptype}"
 
             if repeat == 0:
@@ -123,15 +126,12 @@ def update_firmware_cases(large_params: Dict[str, float], medium_params: Dict[st
             kv = kv_m if is_med else kv_l
             ekp = ekp_m if is_med else ekp_l
             asc = asc_m if is_med else asc_l
+            sd = sd_m if is_med else sd_l
             vmax = 1100.0 if is_med else 800.0
             accel = 2200.0 if is_med else 1600.0
             lines.append(f"    /* Axis {axis} ({'EV3 Medium' if is_med else 'EV3 Large'}) */")
             for rep in range(4):
                 delta = 720.0 if (rep % 2 == 0) else -720.0
-                if is_med:
-                    sd = sd_m_pos if delta >= 0 else sd_m_neg
-                else:
-                    sd = sd_l
                 lines.append(
                     f"    {{EVN_TRAJECTORY_TRAPEZOID, true, 500, 10000, true, {ekp:.1e}f, 800, 200, 4, {sd:.2f}f, "
                     f"{axis}, {rep}, {delta:6.1f}f, {vmax:6.1f}f, {accel:6.1f}f, 0, "
@@ -225,7 +225,7 @@ def main():
     }
     init_medium = {
         "kp_pos": 2.5e-4, "kp_vel": 1.0e-6, "endpoint_kp_vel": 2.0e-6,
-        "accel_scale": 0.35, "start_duty_pos": 0.90
+        "accel_scale": 0.35, "start_duty": 0.90
     }
 
     opt_large = AutonomousOptimizer(LARGE_PARAM_BOUNDS, init_large, seed=101)

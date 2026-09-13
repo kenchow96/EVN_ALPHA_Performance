@@ -38,6 +38,9 @@ TOOLS_DIR = REPO_ROOT / "tools"
 RESULTS_DIR = BENCH_DIR / "results"
 ENDURANCE_LOG = RESULTS_DIR / "endurance_log.csv"
 
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+
 from auto_tuner import update_firmware_cases, bump_run_id, LARGE_PARAM_BOUNDS, MEDIUM_PARAM_BOUNDS
 from optimizer import AutonomousOptimizer, OnlineCMAOptimizer, compute_scalar_cost
 from storage_manager import prune_storage
@@ -120,7 +123,7 @@ def run_daemon(
     }
     init_medium = {
         "kp_pos": 2.5e-4, "kp_vel": 1.0e-6, "endpoint_kp_vel": 2.0e-6,
-        "accel_scale": 0.35, "start_duty_pos": 0.90
+        "accel_scale": 0.35, "start_duty": 0.90
     }
 
     # Closed-loop Online CMA-ES optimizers for Large and Medium motor clusters
@@ -150,7 +153,7 @@ def run_daemon(
             cur_large.update(cand_l)
             cur_medium.update(cand_m)
             print(f"[Daemon] CMA-ES Proposed Large: kp={cur_large['kp_pos']:.2e}, kv={cur_large['kp_vel']:.2e}, end_kp={cur_large['endpoint_kp_vel']:.2e}")
-            print(f"[Daemon] CMA-ES Proposed Medium: kp={cur_medium['kp_pos']:.2e}, kv={cur_medium['kp_vel']:.2e}, start_duty={cur_medium['start_duty_pos']:.2f}")
+            print(f"[Daemon] CMA-ES Proposed Medium: kp={cur_medium['kp_pos']:.2e}, kv={cur_medium['kp_vel']:.2e}, start_duty={cur_medium['start_duty']:.2f}")
 
         # Step 1: Simulator Pre-Flight Validation
         print("[Daemon] Evaluating candidate in Digital Twin...")
@@ -184,11 +187,16 @@ def run_daemon(
         pack_mv, cell1_mv, cell2_mv = check_battery_status_from_records(records_file)
         print(f"[Daemon] Run Battery Status: Pack = {pack_mv/1000.0:.3f}V (Cells: {cell1_mv/1000.0:.3f}V / {cell2_mv/1000.0:.3f}V)")
 
-        # Evaluate performance
+        # Evaluate performance (decoupled per motor type and robust across copies)
         total_cost = 0.0
         passed_cases = 0
         total_cases = 0
         best_case_score = 999.0
+
+        large_costs_m1 = []
+        large_costs_m2 = []
+        medium_costs_m3 = []
+        medium_costs_m4 = []
 
         if records_file.exists():
             with open(records_file, "r") as f:
@@ -196,6 +204,8 @@ def run_daemon(
             total_cases = len(records)
             for r in records:
                 m = r.get("metrics", {})
+                h = r.get("header", {})
+                axis = h.get("axis", 1) - 1  # 1-indexed (1..4) -> 0..3
                 p = m.get("acceptance_passed", 0)
                 tot = m.get("acceptance_total", 12)
                 sc = m.get("score", 999.0)
@@ -203,10 +213,32 @@ def run_daemon(
                     best_case_score = sc
                 if tot > 0 and p == tot:
                     passed_cases += 1
-                total_cost += compute_scalar_cost(m)
+                case_cost = compute_scalar_cost(m)
+                total_cost += case_cost
+
+                if axis == 0:
+                    large_costs_m1.append(case_cost)
+                elif axis == 1:
+                    large_costs_m2.append(case_cost)
+                elif axis == 2:
+                    medium_costs_m3.append(case_cost)
+                elif axis == 3:
+                    medium_costs_m4.append(case_cost)
 
         avg_cost = total_cost / max(1, total_cases)
-        print(f"[Daemon] Iteration {iteration} Result: {passed_cases}/{total_cases} passed. Avg Cost: {avg_cost:.4f}")
+
+        # Multi-unit robust cost formulation:
+        # Penalize worst-case and cross-unit divergence so gains are robust per motor type
+        mean_m1 = sum(large_costs_m1) / max(1, len(large_costs_m1)) if large_costs_m1 else 999.0
+        mean_m2 = sum(large_costs_m2) / max(1, len(large_costs_m2)) if large_costs_m2 else 999.0
+        cost_large = max(mean_m1, mean_m2) + 0.5 * abs(mean_m1 - mean_m2)
+
+        mean_m3 = sum(medium_costs_m3) / max(1, len(medium_costs_m3)) if medium_costs_m3 else 999.0
+        mean_m4 = sum(medium_costs_m4) / max(1, len(medium_costs_m4)) if medium_costs_m4 else 999.0
+        cost_medium = max(mean_m3, mean_m4) + 0.5 * abs(mean_m3 - mean_m4)
+
+        print(f"[Daemon] Iteration {iteration} Result: {passed_cases}/{total_cases} passed. Overall Avg Cost: {avg_cost:.4f}")
+        print(f"[Daemon] Decoupled Unit Costs -> Large (M1={mean_m1:.2f}, M2={mean_m2:.2f} => J={cost_large:.2f}) | Medium (M3={mean_m3:.2f}, M4={mean_m4:.2f} => J={cost_medium:.2f})")
 
         # Step 4: Run Sim-to-Real Comparison
         compare_sim_to_real(latest_dir)
@@ -228,11 +260,11 @@ def run_daemon(
             print(f"[Daemon] CONVERGENCE ACHIEVED: 16/16 cases 12/12 pass! Halting loop.")
             break
 
-        # Step 8: Closed-Loop CMA-ES Feedback (Tell cost to optimizer)
+        # Step 8: Closed-Loop CMA-ES Feedback (Tell decoupled cost to each motor optimizer)
         # Only tell() if we used ask() to get this candidate (iteration > 1)
         if iteration > 1:
-            opt_large.tell(cur_large, avg_cost)
-            opt_medium.tell(cur_medium, avg_cost)
+            opt_large.tell(cur_large, cost_large)
+            opt_medium.tell(cur_medium, cost_medium)
 
         # Step 9: Battery Health & Recharge Protection
         if pack_mv > 0 and pack_mv < BATTERY_RECHARGE_TRIGGER_MV:

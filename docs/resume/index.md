@@ -177,25 +177,26 @@ python tools/flash_extract_decode.py
 | 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x26090454.md](2026-09-12_phase8_autonomous_run_0x26090454.md) | Phase 8 — Torture Excitation Profile Validation 0x26090454 (Micro-step backlash, rapid reversal deadbands, 4x 12/12 passes) |
 | 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x26090455.md](2026-09-12_phase8_autonomous_run_0x26090455.md) | Phase 8 — Full Stack Integration 0x26090455 (Online DOB active, NVM parameter injection ready, Closed-loop CMA-ES feedback verified) |
 | 2026-09-13 | [2026-09-13_phase8_autonomous_daemon_461_runs.md](2026-09-13_phase8_autonomous_daemon_461_runs.md) | Phase 8 — Autonomous Daemon 2-Day Run 0x26090456–0x26090628 (461 iterations, CMA-ES closed-loop, battery 8.19→7.00V, cost 52→26) |
+| 2026-09-13 | [2026-09-13_phase8_autonomous_run_0x26090629.md](2026-09-13_phase8_autonomous_run_0x26090629.md) | Phase 8 — Autonomous Validation Run 0x26090629 (Symmetric Gains, Decoupled Architecture, Verified Physical Pass) |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-13 — **Autonomous Daemon 2-Day Run Complete**; 461 iterations, runs `0x26090456–0x26090628`; **Core 1: PERFECT** — 999-1001µs period, 0 missed ticks across 7,376 cases; CMA-ES closed-loop operational; 6.0V battery cutoff active; Storage ring buffer active; Board OFF for charging)
+## 📋 Quick Reference — Current State (as of 2026-09-13 — **Hardware Validated on Run `0x26090629`**; Battery 7.85V healthy; Symmetric Gains & Decoupled Unit Architecture in Daemon; Core 1: 0 missed ticks; Ready for Unsupervised Execution)
 
 | Item | Value |
 |------|-------|
-| **Board State** | **OFF for charging** (was console firmware `EVN_AUTONOMOUS_TUNING=0`, USB CDC functional) |
+| **Board State** | Console firmware restored (`EVN_AUTONOMOUS_TUNING=0`), USB CDC ready |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (operated in temperature-controlled room) |
 | **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console (0 errors) |
-| **Current Run ID** | `0x26090628` (auto-incremented by daemon/loop) |
+| **Current Run ID** | `0x26090629` (verified physical pass on hardware) |
 | **Disturbance Observer (DOB)** | Active at 1 kHz in Core 1 firmware (`evn_motion_set_dob`) for online payload & friction compensation |
 | **NVM Parameter Table** | 256-byte flash page at `0x00FF8000` with zero-recompile injection tool (`tools/nvm_injector.py`) |
-| **Optimizer Engine** | Closed-loop `OnlineCMAOptimizer` (ask/tell with scalar cost feedback) — **VERIFIED 461 iterations** |
+| **Optimizer Engine** | Closed-loop `OnlineCMAOptimizer` with decoupled per-motor-type credit assignment & worst-case cross-copy penalty |
 | **Excitation Profiles** | Multi-regime torture profiles (nominal moves, micro-step backlash, deadband reversals) integrated |
 | **Battery Cutoff** | Hard cutoff at **6.0V pack** (`TUNING_BATTERY_MIN_PACK_MV=6000u`), 2.8V cell |
-| **Battery Management** | Automatic trickle-charge pause if pack drops below 7.0V until recharged — **TRIGGERED at 7.00V** |
+| **Battery Management** | Pack at **7.85V** (Cell 1: 3.91V, Cell 2: 3.90V). Automatic trickle-charge pause if pack drops below 7.0V |
 | **Storage Management** | Automated ring buffer (`tools/storage_manager.py`) caps footprint to bounded disk usage |
-| **Long-Term Tuning Daemon** | Automated daemon (`tools/autonomous_daemon.py`) with battery management and cumulative endurance logging (`bench/results/endurance_log.csv`) — **461 iterations complete** |
+| **Long-Term Tuning Daemon** | Automated daemon (`tools/autonomous_daemon.py`) with decoupled multi-unit optimizer |
 | **Weak Agent Handoff** | Ready for unsupervised execution via `tools/autonomous_daemon.py` |
 
 ---

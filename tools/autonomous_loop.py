@@ -18,11 +18,15 @@ import sys
 import time
 from pathlib import Path
 
-from sim_integration import run_simulation_preflight, compare_sim_to_real
-
 REPO_ROOT = Path(__file__).parent.parent
 RESULTS_DIR = REPO_ROOT / "bench" / "results"
 RUN_LOG_PATH = REPO_ROOT / "hal" / "hal_tuning_log.h"
+TOOLS_DIR = REPO_ROOT / "tools"
+
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+
+from sim_integration import run_simulation_preflight, compare_sim_to_real
 
 
 def get_current_run_id():
