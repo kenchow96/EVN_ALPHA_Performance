@@ -177,7 +177,7 @@ Acceptance: LED (GP25) toggles per debounced press of button (GP24). **Verified 
 | — | UART loopback (bonus) | ✅ Done | 2026-09-01 | `2f771f5` |
 | 7 — Motion engine | ✅ Done | 2026-09-02 | `4319fb7` |
 | **7u — Motor Model Calibration** | **✅ Done** | **2026-09-04** | **`14f81b1`** |
-| 7v — Autonomous Validation (perfection) | ✅ **Run 0x26090686 (2026-09-13)**: 554 unattended iterations completed (461 + 93 daemon iterations). Best cost reduced 52→26. EV3 Medium stiction breakaway resolved (case_09 12/12). Piece-to-piece variation tracked: DOB integrated in autonomous runs, closed-loop online SysID calibrator added to simulator. Decoupled multi-unit CMA-ES operational. Core 1: 0 missed ticks across all runs. Battery 7.52V. Run ID 0x26090686. Commit `800b743`. | 2026-09-13 | `800b743` |
+| 7v — Autonomous Validation (perfection) | ✅ **Run 0x26090687 (2026-09-13)**: Single validation pass on new multi-regime suite + DOB. 16/16 records decoded, 0 build errors, battery 8.21 V, Core 1 0 missed ticks. 0/16 12/12 (best 11/12: case_07 M2 neg, case_15 M4 pos). DOB + online SysID + duty-slew metric integrated. Commit `ecb34e9`. **Run 0x26090686 (2026-09-13)**: 554 unattended iterations, decoupled CMA-ES, battery 7.52V. Commit `800b743`. | 2026-09-13 | `ecb34e9` |
 | 8 — Drive base | ⬜ Not started — **BLOCKED** until stiction fix + 2+ consecutive 12/12 runs | — | — |
 | 9 — Benchmarks/NVM/hardening | ⬜ Not started | — | — |
 
