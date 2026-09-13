@@ -178,26 +178,27 @@ python tools/flash_extract_decode.py
 | 2026-09-12 | [2026-09-12_phase8_autonomous_run_0x26090455.md](2026-09-12_phase8_autonomous_run_0x26090455.md) | Phase 8 — Full Stack Integration 0x26090455 (Online DOB active, NVM parameter injection ready, Closed-loop CMA-ES feedback verified) |
 | 2026-09-13 | [2026-09-13_phase8_autonomous_daemon_461_runs.md](2026-09-13_phase8_autonomous_daemon_461_runs.md) | Phase 8 — Autonomous Daemon 2-Day Run 0x26090456–0x26090628 (461 iterations, CMA-ES closed-loop, battery 8.19→7.00V, cost 52→26) |
 | 2026-09-13 | [2026-09-13_phase8_autonomous_run_0x26090629.md](2026-09-13_phase8_autonomous_run_0x26090629.md) | Phase 8 — Autonomous Validation Run 0x26090629 (Symmetric Gains, Decoupled Architecture, Verified Physical Pass) |
+| 2026-09-13 | [2026-09-13_phase8_autonomous_daemon_session.md](2026-09-13_phase8_autonomous_daemon_session.md) | Phase 8 — Autonomous Daemon Session (Runs 0x2609062A–0x26090686, 93 iterations) |
 
 ---
 
-## 📋 Quick Reference — Current State (as of 2026-09-13 — **Hardware Validated on Run `0x26090629`**; Battery 7.85V healthy; Symmetric Gains & Decoupled Unit Architecture in Daemon; Core 1: 0 missed ticks; Ready for Unsupervised Execution)
+## 📋 Quick Reference — Current State (as of 2026-09-13 — **Hardware Validated on Run `0x26090686`**; Battery 7.52V; Symmetric Gains & Decoupled Unit Architecture in Daemon; Core 1: 0 missed ticks; Ready for Unsupervised Execution after recharge)
 
 | Item | Value |
 |------|-------|
 | **Board State** | Console firmware restored (`EVN_AUTONOMOUS_TUNING=0`), USB CDC ready |
 | **Motors** | M1/M2 = EV3 Large, M3/M4 = EV3 Medium **UNLOADED** (operated in temperature-controlled room) |
 | **Build** | `build/EVN_ALPHA_Performance.uf2` = non-autonomous console (0 errors) |
-| **Current Run ID** | `0x26090629` (verified physical pass on hardware) |
+| **Current Run ID** | `0x26090686` (93 daemon iterations completed, 1/16 cases 12/12) |
 | **Disturbance Observer (DOB)** | Active at 1 kHz in Core 1 firmware (`evn_motion_set_dob`) for online payload & friction compensation |
 | **NVM Parameter Table** | 256-byte flash page at `0x00FF8000` with zero-recompile injection tool (`tools/nvm_injector.py`) |
-| **Optimizer Engine** | Closed-loop `OnlineCMAOptimizer` with decoupled per-motor-type credit assignment & worst-case cross-copy penalty |
+| **Optimizer Engine** | Closed-loop `OnlineCMAOptimizer` with decoupled per-motor-type credit assignment & worst-case cross-copy penalty (Gen 23) |
 | **Excitation Profiles** | Multi-regime torture profiles (nominal moves, micro-step backlash, deadband reversals) integrated |
 | **Battery Cutoff** | Hard cutoff at **6.0V pack** (`TUNING_BATTERY_MIN_PACK_MV=6000u`), 2.8V cell |
-| **Battery Management** | Pack at **7.85V** (Cell 1: 3.91V, Cell 2: 3.90V). Automatic trickle-charge pause if pack drops below 7.0V |
+| **Battery Management** | Pack at **7.52V** (Cell 1: 3.77V, Cell 2: 3.76V). **Needs recharge** (≥7.6V) before resuming daemon |
 | **Storage Management** | Automated ring buffer (`tools/storage_manager.py`) caps footprint to bounded disk usage |
 | **Long-Term Tuning Daemon** | Automated daemon (`tools/autonomous_daemon.py`) with decoupled multi-unit optimizer |
-| **Weak Agent Handoff** | Ready for unsupervised execution via `tools/autonomous_daemon.py` |
+| **Weak Agent Handoff** | Ready for unsupervised execution via `tools/autonomous_daemon.py` (resumes from run 0x26090687) |
 
 ---
 
@@ -298,23 +299,23 @@ The agent should only inspect progress using lightweight read-only commands:
 
 ## 🎯 Next Session Priorities
 
-### 1. Charge Battery — **CRITICAL** (Board is OFF for charging)
-- Board switched off at 7.00V pack (3.50/3.50V cells) — below recharge trigger (7.0V)
+### 1. Charge Battery — **CRITICAL** (Board is ON but battery at 7.52V)
+- Pack at 7.52V (Cell 1: 3.77V, Cell 2: 3.76V) — below recharge trigger (7.0V) but board still powered
 - Must charge to ≥7.6V before resuming autonomous daemon
-- Daemon will auto-resume from run 0x26090629 when restarted
+- Daemon will auto-resume from run 0x26090687 with CMA-ES state preserved (Gen 23)
 
 ### 2. EV3 Large Axis 1 Hunting — **HIGH PRIORITY** (per-axis hardware divergence persists)
-- **Finding (461 runs)**: Axis 0 consistently outperforms axis 1 with identical gains (CMA-ES converged to ~3.1e-4/1.3e-5/2.8e-6/0.63)
-- **Run 454**: axis 0 had 2/16 passes, axis 1 had 0 — confirmed per-axis/hardware divergence
+- **Finding (554 runs = 461 + 93)**: Axis 0 consistently outperforms axis 1 with identical gains (CMA-ES Gen 23: kp=2.88e-4, kv=1.41e-5, end_kp=1.0e-6)
+- **Run 0x26090686**: axis 0 (M1) best 11/12, axis 1 (M2) best 10/12 — confirmed per-axis/hardware divergence
 - **Next action**: Test per-axis gains for axis 1 (e.g., endpoint_kp=3.0e-6 or kp_vel=1.5e-5) via CMA-ES or manual override
 
-### 3. EV3 Medium POS Stiction — **HIGH PRIORITY**
-- **Finding**: start_duty 0.85 for POS helps but doesn't eliminate stalls on direction reversal (axis 2)
-- **Run 461**: axis 2 POS cases still showing stalls (case_09, case_11 ~9/12)
-- **Next action**: Test start_duty=0.90 for axis 2 POS cases (axis 3 confirmed working at 0.90)
+### 3. EV3 Medium POS Stiction — **HIGH PRIORITY** (PARTIALLY RESOLVED)
+- **Finding**: start_duty=0.90-0.95 for POS working well on axis 3 (case_13 11/12), axis 2 still needs verification
+- **Run 0x26090686**: case_09 (axis 2 POS) 12/12, case_13 (axis 3 POS) 11/12 — strong progress
+- **Next action**: Verify axis 2 POS consistency across runs; tune start_duty if needed
 
 ### 4. Domain Randomization Promotion Criterion — **HIGH PRIORITY** (Sim-to-Real gap)
-- **Problem**: 461 runs show sim-to-real mean agreement ~38-42%; sim predicts 12/12, hardware gets 0-11/12
+- **Problem**: 554 runs show sim-to-real mean agreement ~25-30%; sim predicts 10-12/12 for Large but hardware gets 5-11/12
 - **Action**: Use DR harness in `tools/run_validation.py` — N draws × 16 cases, report worst-case
 - **Promotion Change**: Require worst-case ≥ 11/12 across DR ensemble to promote to `motion_engine.c`
 
@@ -324,8 +325,8 @@ The agent should only inspect progress using lightweight read-only commands:
 
 ### 6. Resume Autonomous Daemon — **HIGH PRIORITY** (after battery charge)
 - **Command**: `python tools/autonomous_daemon.py --days 1 --rest-seconds 5`
-- Will resume from run 0x26090629 with CMA-ES state preserved
-- Target: push cost below 25, achieve first 12/12 passes
+- Will resume from run 0x26090687 with CMA-ES Gen 23 state preserved
+- Target: push cost below 25, achieve first 12/12 passes on EV3 Large
 
 ### 7. EV3 Medium Consistency (Axes 2 & 3) — **MEDIUM PRIORITY**
 - **Finding**: 461 runs — axis 2: 7-11/12; axis 3: 8-11/12 (run-to-run variation)

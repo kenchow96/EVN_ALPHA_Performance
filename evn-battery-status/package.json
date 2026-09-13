@@ -1,0 +1,56 @@
+{
+  "name": "evn-battery-status",
+  "displayName": "EVN ALPHA Battery Status",
+  "description": "Shows EVN ALPHA battery voltage and reading age in VS Code status bar by reading from endurance log CSV (non-interfering, no serial port access)",
+  "version": "0.1.0",
+  "publisher": "evn-alpha",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "EVN Battery Status",
+      "properties": {
+        "evnBatteryStatus.csvPath": {
+          "type": "string",
+          "default": "bench/results/endurance_log.csv",
+          "description": "Path to endurance log CSV relative to workspace root"
+        },
+        "evnBatteryStatus.updateIntervalMs": {
+          "type": "number",
+          "default": 5000,
+          "description": "How often to check the CSV for updates (milliseconds)"
+        },
+        "evnBatteryStatus.showCells": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show individual cell voltages in tooltip"
+        },
+        "evnBatteryStatus.warnAgeSeconds": {
+          "type": "number",
+          "default": 30,
+          "description": "Show warning color if reading older than this many seconds"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
+  }
+}
