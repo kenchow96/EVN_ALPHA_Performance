@@ -229,8 +229,10 @@ def run_daemon(
             break
 
         # Step 8: Closed-Loop CMA-ES Feedback (Tell cost to optimizer)
-        opt_large.tell(cur_large, avg_cost)
-        opt_medium.tell(cur_medium, avg_cost)
+        # Only tell() if we used ask() to get this candidate (iteration > 1)
+        if iteration > 1:
+            opt_large.tell(cur_large, avg_cost)
+            opt_medium.tell(cur_medium, avg_cost)
 
         # Step 9: Battery Health & Recharge Protection
         if pack_mv > 0 and pack_mv < BATTERY_RECHARGE_TRIGGER_MV:

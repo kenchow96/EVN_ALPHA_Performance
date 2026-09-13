@@ -84,7 +84,7 @@ def prune_storage(
             runs.append(meta)
         else:
             # Incomplete or corrupt directory, remove if not actively being written
-            age_s = time.time() - d.stat().st_mtime if hasattr(time, "time") else 0
+            age_s = time.time() - d.stat().st_mtime
             if age_s > 300:
                 shutil.rmtree(d, ignore_errors=True)
 
